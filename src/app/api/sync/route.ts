@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncItems, syncPriceBatch, syncFromMockData } from "@/lib/services/sync-service";
+import { invalidatePattern } from "@/lib/redis/cache";
 
 /**
  * POST /api/sync — Trigger a data sync from the Steam Market.
@@ -27,18 +28,25 @@ export async function POST(request: NextRequest) {
   const fetchPrices = searchParams.get("fetchPrices") === "true";
 
   try {
+    let result;
+
     if (mode === "demo") {
-      const result = await syncFromMockData();
-      return NextResponse.json(result);
-    }
-
-    if (mode === "prices") {
+      result = await syncFromMockData();
+    } else if (mode === "prices") {
       const batchSize = parseInt(searchParams.get("batchSize") || "30");
-      const result = await syncPriceBatch(batchSize);
-      return NextResponse.json(result);
+      result = await syncPriceBatch(batchSize);
+    } else {
+      result = await syncItems(fetchPrices);
     }
 
-    const result = await syncItems(fetchPrices);
+    // Invalidate all cached data after sync
+    if (result.success && result.itemsProcessed > 0) {
+      const cleared = await invalidatePattern("items:*")
+        + await invalidatePattern("item:*")
+        + await invalidatePattern("prices:*");
+      console.log(`[sync] Invalidated ${cleared} cache keys`);
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     console.error("[sync] Route error:", error);
