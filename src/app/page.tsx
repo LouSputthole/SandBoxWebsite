@@ -35,48 +35,74 @@ interface Stats {
   totalVolume: number;
 }
 
+async function safeFetch(url: string) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
 export default function HomePage() {
   const [trending, setTrending] = useState<Item[]>([]);
   const [expensive, setExpensive] = useState<Item[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     async function fetchData() {
-      try {
-        const [trendingRes, expensiveRes, allRes] = await Promise.all([
-          fetch("/api/items?sort=change-desc&limit=6"),
-          fetch("/api/items?sort=price-desc&limit=6"),
-          fetch("/api/items?limit=1"),
-        ]);
+      // Fetch all data in parallel — each call is independent
+      const [trendingData, expensiveData, allData] = await Promise.all([
+        safeFetch("/api/items?sort=change-desc&limit=6"),
+        safeFetch("/api/items?sort=price-desc&limit=6"),
+        safeFetch("/api/items?limit=100"),
+      ]);
 
-        const trendingData = await trendingRes.json();
-        const expensiveData = await expensiveRes.json();
-        const allData = await allRes.json();
+      if (!trendingData && !expensiveData && !allData) {
+        setError(true);
+        setLoading(false);
+        return;
+      }
 
-        setTrending(trendingData.items);
-        setExpensive(expensiveData.items);
+      if (trendingData?.items) setTrending(trendingData.items);
+      if (expensiveData?.items) setExpensive(expensiveData.items);
 
-        // Calculate stats from all items
-        const statsRes = await fetch(`/api/items?limit=${allData.total}`);
-        const statsData = await statsRes.json();
-        const items = statsData.items as Item[];
+      if (allData?.items) {
+        const items = allData.items as Item[];
         const prices = items.map((i) => i.currentPrice ?? 0);
         const volumes = items.map((i) => i.volume ?? 0);
-
         setStats({
           totalItems: allData.total,
-          avgPrice: prices.reduce((a, b) => a + b, 0) / prices.length,
+          avgPrice: prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0,
           totalVolume: volumes.reduce((a, b) => a + b, 0),
         });
-      } catch (e) {
-        console.error("Failed to fetch homepage data:", e);
-      } finally {
-        setLoading(false);
       }
+
+      setLoading(false);
     }
     fetchData();
   }, []);
+
+  if (error) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
+        <p className="text-6xl mb-4">&#x26A0;&#xFE0F;</p>
+        <h2 className="text-2xl font-bold text-white mb-2">Unable to load data</h2>
+        <p className="text-neutral-500 mb-6">
+          The database may be unavailable. Try refreshing the page.
+        </p>
+        <Button
+          onClick={() => window.location.reload()}
+          className="bg-purple-600 hover:bg-purple-700 text-white"
+        >
+          Refresh Page
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div>
