@@ -11,6 +11,7 @@
     "db:migrate": "npx prisma migrate dev",
     "db:seed": "npx tsx prisma/seed.ts",
     "db:studio": "npx prisma studio",
+    "vercel-build": "npx prisma migrate deploy && next build",
     "postinstall": "npx prisma generate"
   },
   "prisma": {

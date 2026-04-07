@@ -78,10 +78,35 @@ src/
 | `DATABASE_URL` | PostgreSQL connection string |
 | `STEAM_API_KEY` | Steam Web API key (optional, for future live data) |
 
-## Deployment
+## Deployment (Vercel)
 
-- **Frontend:** Vercel
-- **Database:** Railway or Supabase (PostgreSQL)
+### Prerequisites
+
+- A PostgreSQL database (e.g., [Neon](https://neon.tech), [Supabase](https://supabase.com), or [Railway](https://railway.app))
+- (Optional) A Redis instance (e.g., [Upstash](https://upstash.com)) — the app works without Redis, caching is just skipped
+
+### Environment Variables
+
+Set these in your Vercel project settings:
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `REDIS_URL` | No | Redis connection string (caching is skipped if unset) |
+| `STEAM_API_KEY` | No | Steam Web API key (for future live data) |
+| `CRON_SECRET` | Yes | Secret token to protect the `/api/sync` cron endpoint |
+
+### Deploy Steps
+
+1. Push this repo to GitHub
+2. Import the project in [Vercel](https://vercel.com/new)
+3. Set the environment variables above in the Vercel dashboard
+4. Vercel will automatically run `vercel-build` which runs Prisma migrations then builds
+5. Seed your database: run `npx prisma db seed` locally against your production DATABASE_URL, or use the sync API
+
+### Cron Jobs
+
+`vercel.json` configures an automatic sync every 6 hours via `POST /api/sync`. The endpoint is protected by the `CRON_SECRET` env var — Vercel sends this automatically for cron-triggered requests.
 
 ## License
 

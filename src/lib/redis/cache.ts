@@ -17,21 +17,25 @@ export async function cached<T>(
   ttlSeconds: number,
   compute: () => Promise<T>
 ): Promise<T> {
-  try {
-    const hit = await redis.get(key);
-    if (hit) {
-      return JSON.parse(hit) as T;
+  if (redis) {
+    try {
+      const hit = await redis.get(key);
+      if (hit) {
+        return JSON.parse(hit) as T;
+      }
+    } catch {
+      // Redis unavailable — fall through to compute
     }
-  } catch {
-    // Redis unavailable — fall through to compute
   }
 
   const value = await compute();
 
-  try {
-    await redis.set(key, JSON.stringify(value), "EX", ttlSeconds);
-  } catch {
-    // Redis unavailable — value still returned uncached
+  if (redis) {
+    try {
+      await redis.set(key, JSON.stringify(value), "EX", ttlSeconds);
+    } catch {
+      // Redis unavailable — value still returned uncached
+    }
   }
 
   return value;
@@ -41,6 +45,7 @@ export async function cached<T>(
  * Invalidate a specific cache key.
  */
 export async function invalidate(key: string): Promise<void> {
+  if (!redis) return;
   try {
     await redis.del(key);
   } catch {
@@ -52,6 +57,7 @@ export async function invalidate(key: string): Promise<void> {
  * Invalidate all keys matching a pattern (e.g. "items:*").
  */
 export async function invalidatePattern(pattern: string): Promise<number> {
+  if (!redis) return 0;
   try {
     const keys = await redis.keys(pattern);
     if (keys.length > 0) {

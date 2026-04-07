@@ -4,8 +4,10 @@ const globalForRedis = globalThis as unknown as {
   redis: Redis | undefined;
 };
 
-function createRedisClient(): Redis {
-  const url = process.env.REDIS_URL || "redis://127.0.0.1:6379";
+function createRedisClient(): Redis | null {
+  const url = process.env.REDIS_URL;
+  if (!url) return null;
+
   return new Redis(url, {
     maxRetriesPerRequest: 3,
     lazyConnect: true,
@@ -16,6 +18,6 @@ function createRedisClient(): Redis {
   });
 }
 
-export const redis = globalForRedis.redis ?? createRedisClient();
+export const redis: Redis | null = globalForRedis.redis ?? createRedisClient();
 
-if (process.env.NODE_ENV !== "production") globalForRedis.redis = redis;
+if (process.env.NODE_ENV !== "production" && redis) globalForRedis.redis = redis;
