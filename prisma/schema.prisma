@@ -26,6 +26,7 @@ model Item {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   priceHistory   PricePoint[]
+  priceAlerts    PriceAlert[]
 
   @@index([type])
   @@index([rarity])
@@ -41,4 +42,20 @@ model PricePoint {
   timestamp DateTime @default(now())
 
   @@index([itemId, timestamp])
+}
+
+model PriceAlert {
+  id          String   @id @default(cuid())
+  email       String
+  itemId      String
+  item        Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  targetPrice Float
+  direction   String   // "below" or "above"
+  active      Boolean  @default(true)
+  triggered   Boolean  @default(false)
+  triggeredAt DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([itemId, active])
+  @@index([email])
 }

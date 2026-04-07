@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncItems, syncPriceBatch, syncFromMockData } from "@/lib/services/sync-service";
+import { checkPriceAlerts } from "@/lib/services/alert-service";
 import { invalidatePattern } from "@/lib/redis/cache";
 
 /**
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
   }
 
   const searchParams = request.nextUrl.searchParams;
-  const mode = searchParams.get("mode") || "items";
+  const mode = searchParams.get("mode") || "auto";
   const fetchPrices = searchParams.get("fetchPrices") === "true";
 
   try {
@@ -35,8 +36,15 @@ export async function POST(request: NextRequest) {
     } else if (mode === "prices") {
       const batchSize = parseInt(searchParams.get("batchSize") || "30");
       result = await syncPriceBatch(batchSize);
-    } else {
+    } else if (mode === "items") {
       result = await syncItems(fetchPrices);
+    } else {
+      // "auto" mode: try Steam API first, fall back to demo
+      result = await syncItems(fetchPrices);
+      if (!result.success || result.itemsProcessed === 0) {
+        console.log("[sync] Steam API unavailable, falling back to demo mode");
+        result = await syncFromMockData();
+      }
     }
 
     // Invalidate all cached data after sync
@@ -45,6 +53,14 @@ export async function POST(request: NextRequest) {
         + await invalidatePattern("item:*")
         + await invalidatePattern("prices:*");
       console.log(`[sync] Invalidated ${cleared} cache keys`);
+    }
+
+    // Check price alerts after sync
+    if (result.success && result.itemsProcessed > 0) {
+      const alertResult = await checkPriceAlerts();
+      if (alertResult.triggered > 0) {
+        console.log(`[sync] ${alertResult.triggered} price alerts triggered`);
+      }
     }
 
     return NextResponse.json(result);
@@ -64,8 +80,10 @@ export async function GET() {
   return NextResponse.json({
     status: "ready",
     endpoints: {
-      "POST /api/sync": "Full item sync from Steam Market",
+      "POST /api/sync": "Auto sync (tries Steam API, falls back to demo)",
+      "POST /api/sync?mode=items": "Full item sync from Steam Market",
       "POST /api/sync?mode=prices": "Sync prices for existing items (batched)",
+      "POST /api/sync?mode=demo": "Sync from mock data (testing)",
       "POST /api/sync?mode=items&fetchPrices=true": "Full sync with detailed prices",
     },
   });

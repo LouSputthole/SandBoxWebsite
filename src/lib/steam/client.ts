@@ -36,30 +36,47 @@ class RateLimiter {
 const rateLimiter = new RateLimiter(3000);
 
 /**
- * Fetch a URL from Steam with proper headers and rate limiting.
+ * Fetch a URL from Steam with proper headers, rate limiting, and retry.
  * Returns null on failure instead of throwing.
  */
-async function steamFetch<T>(url: string): Promise<T | null> {
+async function steamFetch<T>(url: string, retries = 2): Promise<T | null> {
   await rateLimiter.wait();
 
-  try {
-    const response = await fetch(url, {
-      headers: HEADERS,
-      signal: AbortSignal.timeout(15000),
-    });
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: HEADERS,
+        signal: AbortSignal.timeout(15000),
+      });
 
-    if (!response.ok) {
-      console.error(
-        `Steam API error: ${response.status} ${response.statusText} for ${url}`
-      );
+      if (response.status === 429) {
+        // Rate limited — back off exponentially
+        const delay = 5000 * Math.pow(2, attempt);
+        console.warn(`[steam] Rate limited, retrying in ${delay}ms (attempt ${attempt + 1})`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+
+      if (!response.ok) {
+        console.error(
+          `Steam API error: ${response.status} ${response.statusText} for ${url}`
+        );
+        return null;
+      }
+
+      return (await response.json()) as T;
+    } catch (error) {
+      if (attempt < retries) {
+        const delay = 2000 * Math.pow(2, attempt);
+        console.warn(`[steam] Fetch failed, retrying in ${delay}ms (attempt ${attempt + 1}):`, error);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      console.error(`Steam API fetch failed for ${url}:`, error);
       return null;
     }
-
-    return (await response.json()) as T;
-  } catch (error) {
-    console.error(`Steam API fetch failed for ${url}:`, error);
-    return null;
   }
+  return null;
 }
 
 /**
