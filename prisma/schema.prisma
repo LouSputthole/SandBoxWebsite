@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Item {
+  id             String       @id @default(cuid())
+  steamMarketId  String?      @unique
+  name           String
+  slug           String       @unique
+  description    String?
+  type           String       // "character", "clothing", "accessory", "weapon", "tool"
+  rarity         String?      // "common", "uncommon", "rare", "legendary"
+  imageUrl       String?
+  marketUrl      String?
+  currentPrice   Float?
+  lowestPrice    Float?
+  medianPrice    Float?
+  volume         Int?         @default(0)
+  priceChange24h Float?       @default(0)
+  isLimited      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  priceHistory   PricePoint[]
+
+  @@index([type])
+  @@index([rarity])
+  @@index([currentPrice])
+}
+
+model PricePoint {
+  id        String   @id @default(cuid())
+  itemId    String
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  price     Float
+  volume    Int?     @default(0)
+  timestamp DateTime @default(now())
+
+  @@index([itemId, timestamp])
+}
