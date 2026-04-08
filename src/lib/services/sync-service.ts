@@ -45,10 +45,51 @@ function inferItemType(steamType: string): string {
 }
 
 /**
- * Infer rarity from item price and other signals.
- * Since Steam doesn't provide rarity directly for S&box, we estimate based on price.
+ * Map Steam's name_color hex to a rarity tier.
+ * Steam assigns a hex color to each item name based on its rarity/quality.
+ * Standard Valve/Source color mapping (case-insensitive):
+ *   - White/default (empty or "D2D2D2") → common
+ *   - Green variations → uncommon
+ *   - Blue variations → rare
+ *   - Purple/pink variations → legendary
+ *
+ * If name_color is unknown, falls back to price-based inference.
  */
-function inferRarity(priceInDollars: number): string {
+const NAME_COLOR_RARITY: Record<string, string> = {
+  // Common — white, grey, default
+  "": "common",
+  "d2d2d2": "common",
+  "b0c3d9": "common",       // Consumer Grade (CS-style)
+  // Uncommon — green shades
+  "4b69ff": "uncommon",     // Industrial Grade blue (CS) — often used as uncommon
+  "5ba55b": "uncommon",     // Standard green
+  "5e98d9": "uncommon",     // Mil-Spec blue
+  "8847ff": "rare",         // Restricted purple (used in some Valve games as rare)
+  // Rare — blue shades
+  "4680ff": "rare",
+  "3b6fc4": "rare",
+  "0073cf": "rare",
+  // Legendary — purple, pink, gold
+  "d32ce6": "legendary",    // Covert pink (CS)
+  "eb4b4b": "legendary",    // Extraordinary red
+  "ade55c": "legendary",    // High Grade lime (some Valve games)
+  "e4ae39": "legendary",    // Gold/Contraband
+  "af8b00": "legendary",    // Dark gold
+  "8650ac": "legendary",    // Valve purple
+  "cf6a32": "legendary",    // Orange (Immortal in Dota)
+};
+
+function inferRarityFromColor(nameColor: string | undefined, priceInDollars: number): string {
+  if (nameColor) {
+    const normalized = nameColor.toLowerCase().replace("#", "");
+    const mapped = NAME_COLOR_RARITY[normalized];
+    if (mapped) return mapped;
+
+    // Log unknown colors so we can add them
+    console.warn(`[sync] Unknown name_color "${nameColor}" — falling back to price-based rarity`);
+  }
+
+  // Fallback: price-based
   if (priceInDollars >= 20) return "legendary";
   if (priceInDollars >= 5) return "rare";
   if (priceInDollars >= 1) return "uncommon";
@@ -135,7 +176,8 @@ async function upsertItem(
   const slug = slugify(hashName);
   const priceInDollars = steamItem.sell_price / 100; // sell_price is in cents
   const itemType = inferItemType(steamItem.asset_description?.type || "");
-  const rarity = inferRarity(priceInDollars);
+  const nameColor = steamItem.asset_description?.name_color || "";
+  const rarity = inferRarityFromColor(nameColor, priceInDollars);
   const iconUrl = steamItem.asset_description?.icon_url
     ? getSteamImageUrl(steamItem.asset_description.icon_url)
     : null;
@@ -170,7 +212,8 @@ async function upsertItem(
         priceChange24h: Math.round(priceChange * 100) / 100,
         // Preserve existing data if already set
         description: existing.description || undefined,
-        rarity: existing.rarity || rarity,
+        // Always update rarity from Steam name_color (overrides old price-guessed values)
+        rarity,
         imageUrl: existing.imageUrl || iconUrl, // Never overwrite a saved image
       },
     });
