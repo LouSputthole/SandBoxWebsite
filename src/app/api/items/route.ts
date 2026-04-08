@@ -50,8 +50,14 @@ export async function GET(request: NextRequest) {
       case "name-desc":
         orderBy.name = "desc";
         break;
+      case "volume-asc":
+        orderBy.volume = "asc";
+        break;
       case "volume-desc":
         orderBy.volume = "desc";
+        break;
+      case "change-asc":
+        orderBy.priceChange24h = "asc";
         break;
       case "change-desc":
         orderBy.priceChange24h = "desc";

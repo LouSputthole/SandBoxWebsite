@@ -11,10 +11,13 @@ import {
   DollarSign,
   Activity,
   Gamepad2,
+  BarChart3,
+  ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ItemCard } from "@/components/items/item-card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatPrice } from "@/lib/utils";
 
 interface Item {
   id: string;
@@ -32,6 +35,8 @@ interface Item {
 interface Stats {
   totalItems: number;
   avgPrice: number;
+  marketCap: number;
+  totalListings: number;
   totalVolume: number;
 }
 
@@ -54,11 +59,10 @@ export default function HomePage() {
 
   useEffect(() => {
     async function fetchData() {
-      // Fetch all data in parallel — each call is independent
       const [trendingData, expensiveData, allData] = await Promise.all([
         safeFetch("/api/items?sort=change-desc&limit=6"),
         safeFetch("/api/items?sort=price-desc&limit=6"),
-        safeFetch("/api/items?limit=100"),
+        safeFetch("/api/items?limit=200"),
       ]);
 
       if (!trendingData && !expensiveData && !allData) {
@@ -74,10 +78,15 @@ export default function HomePage() {
         const items = allData.items as Item[];
         const prices = items.map((i) => i.currentPrice ?? 0);
         const volumes = items.map((i) => i.volume ?? 0);
+        const marketCap = items.reduce((sum, i) => {
+          return sum + (i.currentPrice ?? 0) * (i.volume ?? 0);
+        }, 0);
         setStats({
           totalItems: allData.total,
           avgPrice: prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0,
-          totalVolume: volumes.reduce((a, b) => a + b, 0),
+          marketCap,
+          totalListings: volumes.reduce((a, b) => a + b, 0),
+          totalVolume: items.filter((i) => (i.priceChange24h ?? 0) !== 0).length,
         });
       }
 
@@ -109,7 +118,7 @@ export default function HomePage() {
       {/* Hero */}
       <section className="relative overflow-hidden border-b border-neutral-800">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-transparent to-blue-900/10" />
-        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-20 sm:py-28">
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16 sm:py-24">
           <div className="text-center max-w-3xl mx-auto">
             <div className="inline-flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-full px-4 py-1.5 mb-6">
               <Gamepad2 className="h-4 w-4 text-purple-400" />
@@ -144,42 +153,51 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stats */}
-      <section className="border-b border-neutral-800 bg-neutral-900/30">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+      {/* Stats Bar */}
+      <section className="border-b border-neutral-800 bg-neutral-900/50">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-5">
           {loading ? (
-            <div className="grid grid-cols-3 gap-6">
-              {[1, 2, 3].map((i) => (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map((i) => (
                 <Skeleton key={i} className="h-16" />
               ))}
             </div>
           ) : stats ? (
-            <div className="grid grid-cols-3 gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-purple-500/10">
-                  <Package className="h-5 w-5 text-purple-400" />
+                <div className="p-2.5 rounded-lg bg-purple-500/10">
+                  <BarChart3 className="h-5 w-5 text-purple-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-white">{stats.totalItems}</p>
-                  <p className="text-xs text-neutral-500">Total Items</p>
+                  <p className="text-xl font-bold text-white">{formatPrice(stats.marketCap)}</p>
+                  <p className="text-[11px] text-neutral-500">Market Cap</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-emerald-500/10">
+                <div className="p-2.5 rounded-lg bg-emerald-500/10">
                   <DollarSign className="h-5 w-5 text-emerald-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-white">${stats.avgPrice.toFixed(2)}</p>
-                  <p className="text-xs text-neutral-500">Avg Price</p>
+                  <p className="text-xl font-bold text-white">{formatPrice(stats.avgPrice)}</p>
+                  <p className="text-[11px] text-neutral-500">Avg Price</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-blue-500/10">
-                  <Activity className="h-5 w-5 text-blue-400" />
+                <div className="p-2.5 rounded-lg bg-blue-500/10">
+                  <ShoppingCart className="h-5 w-5 text-blue-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-white">{stats.totalVolume.toLocaleString()}</p>
-                  <p className="text-xs text-neutral-500">24h Volume</p>
+                  <p className="text-xl font-bold text-white">{stats.totalListings.toLocaleString()}</p>
+                  <p className="text-[11px] text-neutral-500">Active Listings</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-lg bg-amber-500/10">
+                  <Package className="h-5 w-5 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-xl font-bold text-white">{stats.totalItems}</p>
+                  <p className="text-[11px] text-neutral-500">Total Items</p>
                 </div>
               </div>
             </div>
