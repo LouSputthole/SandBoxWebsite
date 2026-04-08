@@ -124,30 +124,54 @@ export async function getPriceOverview(
 
 /**
  * Fetch ALL items from the Steam Market by paginating through search results.
- * S&box typically has <1000 items, so this is feasible.
+ * Steam may return fewer items per page than requested (rate throttling),
+ * so we paginate based on total_count rather than page size.
  */
 export async function fetchAllMarketItems(): Promise<SteamSearchResponse["results"]> {
   const allItems: SteamSearchResponse["results"] = [];
   let start = 0;
   const count = 100;
+  let totalCount = Infinity;
+  let emptyPages = 0;
 
-  while (true) {
+  while (allItems.length < totalCount) {
+    console.log(`[steam] Fetching items ${start}–${start + count} (have ${allItems.length}/${totalCount === Infinity ? "?" : totalCount})...`);
     const response = await searchMarketItems(start, count);
 
-    if (!response || !response.success || !response.results?.length) {
+    if (!response || !response.success) {
+      console.warn("[steam] Search request failed, stopping pagination");
       break;
     }
 
+    // Update total count from Steam's response
+    if (response.total_count !== undefined) {
+      totalCount = response.total_count;
+      console.log(`[steam] Steam reports ${totalCount} total items`);
+    }
+
+    if (!response.results || response.results.length === 0) {
+      emptyPages++;
+      if (emptyPages >= 3) {
+        console.warn("[steam] Got 3 empty pages in a row, stopping");
+        break;
+      }
+      // Steam might be throttling — wait longer and retry same offset
+      console.warn(`[steam] Empty page at start=${start}, waiting 10s before retry...`);
+      await new Promise((r) => setTimeout(r, 10000));
+      continue;
+    }
+
+    emptyPages = 0;
     allItems.push(...response.results);
 
-    // If we got fewer results than requested, we've reached the end
-    if (response.results.length < count || allItems.length >= response.total_count) {
-      break;
-    }
+    // Move to next page
+    start += response.results.length;
 
-    start += count;
+    // Safety: don't loop forever
+    if (start >= totalCount) break;
   }
 
+  console.log(`[steam] Pagination complete: fetched ${allItems.length} of ${totalCount === Infinity ? "unknown" : totalCount} items`);
   return allItems;
 }
 
