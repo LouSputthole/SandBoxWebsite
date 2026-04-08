@@ -19,9 +19,9 @@ export async function cached<T>(
 ): Promise<T> {
   if (redis) {
     try {
-      const hit = await redis.get(key);
-      if (hit) {
-        return JSON.parse(hit) as T;
+      const hit = await redis.get<T>(key);
+      if (hit !== null && hit !== undefined) {
+        return hit;
       }
     } catch {
       // Redis unavailable — fall through to compute
@@ -32,7 +32,7 @@ export async function cached<T>(
 
   if (redis) {
     try {
-      await redis.set(key, JSON.stringify(value), "EX", ttlSeconds);
+      await redis.set(key, value, { ex: ttlSeconds });
     } catch {
       // Redis unavailable — value still returned uncached
     }
@@ -59,7 +59,14 @@ export async function invalidate(key: string): Promise<void> {
 export async function invalidatePattern(pattern: string): Promise<number> {
   if (!redis) return 0;
   try {
-    const keys = await redis.keys(pattern);
+    const keys: string[] = [];
+    let cursor = "0";
+    do {
+      const [nextCursor, results] = await redis.scan(Number(cursor), { match: pattern, count: 100 });
+      cursor = String(nextCursor);
+      keys.push(...results);
+    } while (cursor !== "0");
+
     if (keys.length > 0) {
       await redis.del(...keys);
     }
