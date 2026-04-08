@@ -1,21 +1,15 @@
-import Redis from "ioredis";
+import { Redis } from "@upstash/redis";
 
 const globalForRedis = globalThis as unknown as {
   redis: Redis | undefined;
 };
 
 function createRedisClient(): Redis | null {
-  const url = process.env.REDIS_URL;
-  if (!url) return null;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
 
-  return new Redis(url, {
-    maxRetriesPerRequest: 3,
-    lazyConnect: true,
-    retryStrategy(times) {
-      if (times > 3) return null; // Stop retrying after 3 attempts
-      return Math.min(times * 200, 2000);
-    },
-  });
+  return new Redis({ url, token });
 }
 
 export const redis: Redis | null = globalForRedis.redis ?? createRedisClient();

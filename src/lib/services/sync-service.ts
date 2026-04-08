@@ -6,7 +6,6 @@ import {
   getMarketUrl,
   parseSteamPrice,
 } from "@/lib/steam/client";
-import { mockItems } from "@/lib/steam/mock-data";
 import type { SteamSearchResult, SyncResult } from "@/lib/steam/types";
 import { slugify } from "@/lib/utils";
 
@@ -16,7 +15,7 @@ import { slugify } from "@/lib/utils";
  */
 function inferItemType(steamType: string): string {
   const t = steamType.toLowerCase();
-  if (t.includes("hat") || t.includes("hair") || t.includes("helmet") || t.includes("mask")) {
+  if (t.includes("hat") || t.includes("hair") || t.includes("helmet") || t.includes("mask") || t.includes("head")) {
     return "accessory";
   }
   if (t.includes("shirt") || t.includes("jacket") || t.includes("hoodie") || t.includes("coat") || t.includes("top")) {
@@ -40,24 +39,13 @@ function inferItemType(steamType: string): string {
   if (t.includes("tool")) {
     return "tool";
   }
-  // Default based on common S&box categories
   return "clothing";
-}
-
-/**
- * Infer rarity from item price and other signals.
- * Since Steam doesn't provide rarity directly for S&box, we estimate based on price.
- */
-function inferRarity(priceInDollars: number): string {
-  if (priceInDollars >= 20) return "legendary";
-  if (priceInDollars >= 5) return "rare";
-  if (priceInDollars >= 1) return "uncommon";
-  return "common";
 }
 
 /**
  * Sync all items from the Steam Community Market.
  * Fetches the item list, then optionally fetches price details for each.
+ * NEVER falls back to mock data — only real Steam data.
  */
 export async function syncItems(fetchPrices = false): Promise<SyncResult> {
   const startTime = Date.now();
@@ -72,16 +60,21 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
   };
 
   try {
-    console.log("[sync] Fetching items from Steam Market...");
+    console.log("[sync] Fetching items from Steam Market (appid 590830)...");
     const steamItems = await fetchAllMarketItems();
 
     if (steamItems.length === 0) {
-      result.errors.push("No items returned from Steam Market API");
+      result.errors.push("No items returned from Steam Market API — Steam may be rate-limiting or down");
       result.duration = Date.now() - startTime;
       return result;
     }
 
     console.log(`[sync] Found ${steamItems.length} items on Steam Market`);
+
+    // Log each item name for debugging
+    for (const item of steamItems) {
+      console.log(`[sync]   - "${item.name}" (hash: ${item.hash_name}, price: $${(item.sell_price / 100).toFixed(2)}, listings: ${item.sell_listings})`);
+    }
 
     for (const steamItem of steamItems) {
       try {
@@ -96,15 +89,15 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
 
     // Optionally fetch detailed price overview for each item
     if (fetchPrices) {
-      console.log("[sync] Fetching price details...");
+      console.log("[sync] Fetching detailed price overviews...");
       const items = await prisma.item.findMany({
+        where: { steamMarketId: { not: null } },
         select: { id: true, name: true, steamMarketId: true },
       });
 
       for (const item of items) {
-        if (!item.steamMarketId) continue;
         try {
-          await syncItemPrice(item.id, item.steamMarketId);
+          await syncItemPrice(item.id, item.steamMarketId!);
           result.pricePointsCreated++;
         } catch (error) {
           result.errors.push(`Price fetch failed for "${item.name}": ${error}`);
@@ -119,13 +112,14 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
 
   result.duration = Date.now() - startTime;
   console.log(
-    `[sync] Complete: ${result.itemsProcessed} processed, ${result.itemsCreated} created, ${result.itemsUpdated} updated in ${result.duration}ms`
+    `[sync] Complete: ${result.itemsProcessed} processed, ${result.itemsCreated} created, ${result.itemsUpdated} updated, ${result.pricePointsCreated} price points in ${result.duration}ms`
   );
   return result;
 }
 
 /**
  * Upsert a single item from Steam search results into the database.
+ * Uses steamMarketId (hash_name) as the unique key.
  */
 async function upsertItem(
   steamItem: SteamSearchResult,
@@ -135,7 +129,6 @@ async function upsertItem(
   const slug = slugify(hashName);
   const priceInDollars = steamItem.sell_price / 100; // sell_price is in cents
   const itemType = inferItemType(steamItem.asset_description?.type || "");
-  const rarity = inferRarity(priceInDollars);
   const iconUrl = steamItem.asset_description?.icon_url
     ? getSteamImageUrl(steamItem.asset_description.icon_url)
     : null;
@@ -145,7 +138,6 @@ async function upsertItem(
     slug,
     steamMarketId: hashName,
     type: itemType,
-    rarity,
     imageUrl: iconUrl,
     marketUrl: getMarketUrl(hashName),
     currentPrice: priceInDollars,
@@ -168,9 +160,8 @@ async function upsertItem(
       data: {
         ...data,
         priceChange24h: Math.round(priceChange * 100) / 100,
-        // Preserve existing description and rarity if already set
         description: existing.description || undefined,
-        rarity: existing.rarity || rarity,
+        imageUrl: iconUrl || existing.imageUrl, // Prefer fresh Steam image, keep existing if none
       },
     });
     result.itemsUpdated++;
@@ -180,9 +171,12 @@ async function upsertItem(
   }
 
   // Record a price point
+  const itemId = existing?.id
+    || (await prisma.item.findUnique({ where: { steamMarketId: hashName } }))!.id;
+
   await prisma.pricePoint.create({
     data: {
-      itemId: existing?.id || (await prisma.item.findUnique({ where: { steamMarketId: hashName } }))!.id,
+      itemId,
       price: priceInDollars,
       volume: steamItem.sell_listings,
     },
@@ -232,6 +226,7 @@ async function syncItemPrice(
 /**
  * Sync prices for a batch of items (useful for cron with time limits).
  * Processes up to `batchSize` items that haven't been updated recently.
+ * Only processes items with a valid steamMarketId.
  */
 export async function syncPriceBatch(batchSize = 30): Promise<SyncResult> {
   const startTime = Date.now();
@@ -246,13 +241,14 @@ export async function syncPriceBatch(batchSize = 30): Promise<SyncResult> {
   };
 
   try {
-    // Get items sorted by least recently updated
     const items = await prisma.item.findMany({
       where: { steamMarketId: { not: null } },
       select: { id: true, name: true, steamMarketId: true },
       orderBy: { updatedAt: "asc" },
       take: batchSize,
     });
+
+    console.log(`[sync:prices] Processing ${items.length} items...`);
 
     for (const item of items) {
       try {
@@ -270,14 +266,16 @@ export async function syncPriceBatch(batchSize = 30): Promise<SyncResult> {
   }
 
   result.duration = Date.now() - startTime;
+  console.log(`[sync:prices] Complete: ${result.itemsProcessed} items in ${result.duration}ms`);
   return result;
 }
 
 /**
- * Sync from mock data — tests the full upsert pipeline without hitting Steam's API.
- * Useful for development, testing, or when Steam API is unreachable.
+ * Remove items from the database that don't have a valid steamMarketId.
+ * These are mock/fake items that were created from demo data.
+ * Also removes their associated price points and alerts.
  */
-export async function syncFromMockData(): Promise<SyncResult> {
+export async function cleanupNonSteamItems(): Promise<SyncResult> {
   const startTime = Date.now();
   const result: SyncResult = {
     success: false,
@@ -290,72 +288,50 @@ export async function syncFromMockData(): Promise<SyncResult> {
   };
 
   try {
-    for (const item of mockItems) {
-      const existing = await prisma.item.findUnique({
-        where: { slug: item.slug },
-      });
+    // Find items without a steamMarketId (these are mock data)
+    const fakeItems = await prisma.item.findMany({
+      where: { steamMarketId: null },
+      select: { id: true, name: true, slug: true },
+    });
 
-      // Simulate a small price variation
-      const priceVariation = 1 + (Math.random() - 0.5) * 0.1;
-      const newPrice = Math.round(item.currentPrice * priceVariation * 100) / 100;
-
-      if (existing) {
-        const priceChange =
-          existing.currentPrice && existing.currentPrice > 0
-            ? ((newPrice - existing.currentPrice) / existing.currentPrice) * 100
-            : 0;
-
-        await prisma.item.update({
-          where: { slug: item.slug },
-          data: {
-            currentPrice: newPrice,
-            priceChange24h: Math.round(priceChange * 100) / 100,
-          },
-        });
-        result.itemsUpdated++;
-      } else {
-        await prisma.item.create({
-          data: {
-            name: item.name,
-            slug: item.slug,
-            description: item.description,
-            type: item.type,
-            rarity: item.rarity,
-            imageUrl: item.imageUrl,
-            marketUrl: item.marketUrl,
-            currentPrice: newPrice,
-            lowestPrice: item.lowestPrice,
-            medianPrice: item.medianPrice,
-            volume: item.volume,
-            priceChange24h: item.priceChange24h,
-            isLimited: item.isLimited,
-          },
-        });
-        result.itemsCreated++;
-      }
-
-      // Record a price point
-      const itemRecord = existing || await prisma.item.findUnique({ where: { slug: item.slug } });
-      if (itemRecord) {
-        await prisma.pricePoint.create({
-          data: {
-            itemId: itemRecord.id,
-            price: newPrice,
-            volume: item.volume,
-          },
-        });
-        result.pricePointsCreated++;
-      }
-
-      result.itemsProcessed++;
+    if (fakeItems.length === 0) {
+      console.log("[cleanup] No non-Steam items found — database is clean");
+      result.success = true;
+      result.duration = Date.now() - startTime;
+      return result;
     }
 
+    console.log(`[cleanup] Found ${fakeItems.length} non-Steam items to remove:`);
+    for (const item of fakeItems) {
+      console.log(`[cleanup]   - "${item.name}" (slug: ${item.slug})`);
+    }
+
+    const fakeIds = fakeItems.map((i) => i.id);
+
+    // Delete associated price points first (cascade should handle this, but be explicit)
+    const deletedPoints = await prisma.pricePoint.deleteMany({
+      where: { itemId: { in: fakeIds } },
+    });
+    console.log(`[cleanup] Deleted ${deletedPoints.count} fake price points`);
+
+    // Delete associated price alerts
+    const deletedAlerts = await prisma.priceAlert.deleteMany({
+      where: { itemId: { in: fakeIds } },
+    });
+    console.log(`[cleanup] Deleted ${deletedAlerts.count} fake price alerts`);
+
+    // Delete the fake items
+    const deleted = await prisma.item.deleteMany({
+      where: { id: { in: fakeIds } },
+    });
+    console.log(`[cleanup] Deleted ${deleted.count} non-Steam items`);
+
+    result.itemsProcessed = deleted.count;
     result.success = true;
   } catch (error) {
-    result.errors.push(`Mock sync failed: ${error}`);
+    result.errors.push(`Cleanup failed: ${error}`);
   }
 
   result.duration = Date.now() - startTime;
-  console.log(`[sync:demo] Complete: ${result.itemsProcessed} items in ${result.duration}ms`);
   return result;
 }
