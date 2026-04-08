@@ -19,6 +19,7 @@ export async function cached<T>(
 ): Promise<T> {
   if (redis) {
     try {
+      // @upstash/redis auto-deserializes JSON
       const hit = await redis.get<T>(key);
       if (hit !== null && hit !== undefined) {
         return hit;
@@ -32,6 +33,7 @@ export async function cached<T>(
 
   if (redis) {
     try {
+      // @upstash/redis auto-serializes JSON, uses { ex } option for TTL
       await redis.set(key, value, { ex: ttlSeconds });
     } catch {
       // Redis unavailable — value still returned uncached
@@ -55,22 +57,24 @@ export async function invalidate(key: string): Promise<void> {
 
 /**
  * Invalidate all keys matching a pattern (e.g. "items:*").
+ * Uses SCAN to avoid blocking on large keyspaces.
  */
 export async function invalidatePattern(pattern: string): Promise<number> {
   if (!redis) return 0;
   try {
-    const keys: string[] = [];
-    let cursor = "0";
-    do {
-      const [nextCursor, results] = await redis.scan(Number(cursor), { match: pattern, count: 100 });
-      cursor = String(nextCursor);
-      keys.push(...results);
-    } while (cursor !== "0");
+    let cursor = 0;
+    let totalDeleted = 0;
 
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
-    return keys.length;
+    do {
+      const [nextCursor, keys] = await redis.scan(cursor, { match: pattern, count: 100 });
+      cursor = Number(nextCursor);
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        totalDeleted += keys.length;
+      }
+    } while (cursor !== 0);
+
+    return totalDeleted;
   } catch {
     return 0;
   }
