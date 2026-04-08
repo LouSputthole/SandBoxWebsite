@@ -38,9 +38,7 @@ interface PageProps {
   params: Promise<{ type: string }>;
 }
 
-export async function generateStaticParams() {
-  return VALID_TYPES.map((type) => ({ type }));
-}
+export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { type } = await params;

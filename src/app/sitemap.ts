@@ -1,6 +1,8 @@
 import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 const TYPES = ["character", "clothing", "accessory", "weapon", "tool"];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
