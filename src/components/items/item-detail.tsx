@@ -15,6 +15,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { ItemImage } from "@/components/items/item-image";
 import { PriceChart } from "@/components/charts/price-chart";
 import { PriceAlertForm } from "@/components/alerts/price-alert-form";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
@@ -69,18 +70,21 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
       {/* Item Header */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
         {/* Image */}
-        <div
-          className={`relative rounded-xl border rarity-bg-${rarity} flex items-center justify-center h-80`}
-        >
+        <div className="relative">
+          <ItemImage
+            src={item.imageUrl}
+            name={item.name}
+            type={item.type}
+            rarity={item.rarity}
+            size="lg"
+            className="rounded-xl border border-neutral-700/50 h-80"
+          />
           {item.isLimited && (
             <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-3 py-1 text-xs font-medium">
               <Star className="h-3 w-3 fill-amber-400" />
               Limited
             </div>
           )}
-          <div className={`text-8xl font-bold opacity-20 rarity-${rarity}`}>
-            {item.name.charAt(0)}
-          </div>
         </div>
 
         {/* Info */}

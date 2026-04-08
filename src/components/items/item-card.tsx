@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ItemImage } from "@/components/items/item-image";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
 
 interface ItemCardProps {
@@ -47,12 +48,15 @@ export function ItemCard({ item }: ItemCardProps) {
           </div>
         )}
 
-        {/* Image placeholder */}
-        <div className={`relative mx-auto mb-4 h-32 w-32 rounded-lg border ${rarity ? `rarity-bg-${rarity}` : "bg-neutral-800"} flex items-center justify-center overflow-hidden`}>
-          <div className={`text-4xl font-bold opacity-20 rarity-${rarity}`}>
-            {item.name.charAt(0)}
-          </div>
-        </div>
+        {/* Image */}
+        <ItemImage
+          src={item.imageUrl}
+          name={item.name}
+          type={item.type}
+          rarity={item.rarity}
+          size="sm"
+          className="mx-auto mb-4 h-32 w-32 rounded-lg border border-neutral-700/50"
+        />
 
         {/* Info */}
         <div className="space-y-2">
