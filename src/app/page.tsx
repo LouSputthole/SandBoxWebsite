@@ -122,8 +122,9 @@ export default function HomePage() {
               </span>
             </h1>
             <p className="text-lg text-neutral-400 mb-8 max-w-2xl mx-auto">
-              Browse all S&box skins on the Steam Community Market. Track price history,
-              find trending items, and discover the best deals.
+              The ultimate sbox skins marketplace tracker. Browse all S&box (sandbox) skins
+              on the Steam Community Market. Track price history, find trending items,
+              and discover the best deals.
             </p>
             <div className="flex items-center justify-center gap-4">
               <Link href="/items">

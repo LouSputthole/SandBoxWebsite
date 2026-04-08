@@ -22,8 +22,14 @@ export const metadata: Metadata = {
     template: "%s | sboxskins.gg",
   },
   description:
-    "Browse, search, and track prices for S&box skins on the Steam Community Market. View price history, trends, and find the best deals.",
+    "Browse, search, and track prices for S&box (sbox/sandbox) skins on the Steam Community Market. View price history, trends, and find the best deals on sbox skins.",
   metadataBase: new URL("https://sboxskins.gg"),
+  keywords: [
+    "sbox skins", "s&box skins", "sandbox skins", "s box skins",
+    "sbox marketplace", "s&box marketplace", "sbox skin prices",
+    "s&box price tracker", "sbox trading", "steam market sbox",
+    "facepunch sbox", "sbox cosmetics", "sandbox game skins",
+  ],
   alternates: { canonical: "/" },
   openGraph: {
     siteName: "sboxskins.gg",
@@ -41,7 +47,7 @@ export default function RootLayout({
     "@type": "WebSite",
     name: "sboxskins.gg",
     url: "https://sboxskins.gg",
-    description: "Browse, search, and track prices for S&box skins on the Steam Community Market.",
+    description: "Browse, search, and track prices for S&box (sbox/sandbox) skins on the Steam Community Market.",
     potentialAction: {
       "@type": "SearchAction",
       target: "https://sboxskins.gg/items?q={search_term_string}",
