@@ -18,8 +18,7 @@ async function getItem(slug: string) {
     },
     include: {
       priceHistory: {
-        orderBy: { timestamp: "desc" },
-        take: 90,
+        orderBy: { timestamp: "asc" },
       },
     },
   });
