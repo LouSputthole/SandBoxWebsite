@@ -35,9 +35,26 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "sboxskins.gg",
+    url: "https://sboxskins.gg",
+    description: "Browse, search, and track prices for S&box skins on the Steam Community Market.",
+    potentialAction: {
+      "@type": "SearchAction",
+      target: "https://sboxskins.gg/items?q={search_term_string}",
+      "query-input": "required name=search_term_string",
+    },
+  };
+
   return (
     <html lang="en" className="h-full antialiased dark">
       <body className={`${geistSans.variable} ${geistMono.variable} min-h-full flex flex-col bg-[#0a0a0f] text-neutral-100 font-sans`}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
         <Navbar />
         <main className="flex-1">{children}</main>
         <Footer />

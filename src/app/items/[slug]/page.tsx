@@ -3,8 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { ItemDetail } from "@/components/items/item-detail";
-import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ItemCard } from "@/components/items/item-card";
 import { formatPrice } from "@/lib/utils";
 
 interface PageProps {
@@ -22,6 +21,20 @@ async function getItem(slug: string) {
         take: 90,
       },
     },
+  });
+}
+
+async function getRelatedItems(item: { id: string; type: string; rarity: string | null }) {
+  return prisma.item.findMany({
+    where: {
+      id: { not: item.id },
+      OR: [
+        { type: item.type },
+        { rarity: item.rarity },
+      ],
+    },
+    take: 6,
+    orderBy: { volume: "desc" },
   });
 }
 
@@ -66,5 +79,47 @@ export default async function ItemDetailPage({ params }: PageProps) {
     })),
   };
 
-  return <ItemDetail item={serialized} />;
+  const relatedItems = await getRelatedItems(item);
+
+  const jsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: item.name,
+    description: item.description || `${item.name} - ${item.rarity ?? "common"} ${item.type} for S&box on the Steam Community Market.`,
+    url: `https://sboxskins.gg/items/${item.slug}`,
+    category: item.type,
+    ...(item.imageUrl && !item.imageUrl.startsWith("/items/") ? { image: item.imageUrl } : {}),
+    offers: {
+      "@type": "Offer",
+      price: item.currentPrice ?? 0,
+      priceCurrency: "USD",
+      availability: "https://schema.org/InStock",
+      url: item.marketUrl || `https://sboxskins.gg/items/${item.slug}`,
+    },
+    additionalProperty: [
+      { "@type": "PropertyValue", name: "Rarity", value: item.rarity ?? "common" },
+      { "@type": "PropertyValue", name: "Type", value: item.type },
+      ...(item.volume ? [{ "@type": "PropertyValue", name: "Market Volume", value: item.volume.toString() }] : []),
+    ],
+  };
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <ItemDetail item={serialized} />
+      {relatedItems.length > 0 && (
+        <section className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-12">
+          <h2 className="text-xl font-bold text-white mb-6">Similar Items</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {relatedItems.map((ri) => (
+              <ItemCard key={ri.id} item={ri} />
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
 }
