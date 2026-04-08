@@ -6,11 +6,12 @@ export const alt = "S&box Skin Price";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-const rarityColors: Record<string, string> = {
-  common: "#9ca3af",
-  uncommon: "#4ade80",
-  rare: "#60a5fa",
-  legendary: "#c084fc",
+const typeColors: Record<string, string> = {
+  character: "#a78bfa",
+  clothing: "#60a5fa",
+  accessory: "#4ade80",
+  weapon: "#f87171",
+  tool: "#fbbf24",
 };
 
 export default async function OGImage({ params }: { params: Promise<{ slug: string }> }) {
@@ -31,8 +32,7 @@ export default async function OGImage({ params }: { params: Promise<{ slug: stri
     );
   }
 
-  const rarity = item.rarity ?? "common";
-  const color = rarityColors[rarity] || rarityColors.common;
+  const color = typeColors[item.type] || "#a78bfa";
   const price = item.currentPrice != null ? `$${item.currentPrice.toFixed(2)}` : "N/A";
   const change = item.priceChange24h ?? 0;
   const changeStr = `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`;
@@ -79,24 +79,9 @@ export default async function OGImage({ params }: { params: Promise<{ slug: stri
 
           {/* Info */}
           <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
-              <span
-                style={{
-                  padding: "4px 12px",
-                  borderRadius: "8px",
-                  background: `${color}22`,
-                  color: color,
-                  fontSize: 20,
-                  fontWeight: 600,
-                  textTransform: "capitalize",
-                }}
-              >
-                {rarity}
-              </span>
-              <span style={{ color: "#737373", fontSize: 20, textTransform: "capitalize" }}>
-                {item.type}
-              </span>
-            </div>
+            <span style={{ color: "#737373", fontSize: 20, textTransform: "capitalize" }}>
+              {item.type}
+            </span>
 
             <span style={{ fontSize: 52, fontWeight: 700, color: "white" }}>
               {item.name}
@@ -116,7 +101,7 @@ export default async function OGImage({ params }: { params: Promise<{ slug: stri
         {/* Bottom */}
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: "20px" }}>
           <span style={{ fontSize: 20, color: "#525252" }}>
-            Steam Community Market • S&box
+            Steam Community Market - S&box
           </span>
           <span style={{ fontSize: 20, color: "#525252" }}>
             Price Tracker & Market Data

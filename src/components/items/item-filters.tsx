@@ -29,14 +29,6 @@ const itemTypes = [
   { value: "tool", label: "Tool" },
 ];
 
-const rarities = [
-  { value: "", label: "All Rarities" },
-  { value: "common", label: "Common" },
-  { value: "uncommon", label: "Uncommon" },
-  { value: "rare", label: "Rare" },
-  { value: "legendary", label: "Legendary" },
-];
-
 const sortOptions = [
   { value: "name-asc", label: "Name A-Z" },
   { value: "name-desc", label: "Name Z-A" },
@@ -51,7 +43,7 @@ export function ItemFilters({ filters, onFilterChange, onReset, className }: Ite
     onFilterChange({ ...filters, [key]: value });
   };
 
-  const hasActiveFilters = filters.type || filters.rarity || filters.minPrice || filters.maxPrice;
+  const hasActiveFilters = filters.type || filters.minPrice || filters.maxPrice;
 
   return (
     <div className={className}>
@@ -86,18 +78,6 @@ export function ItemFilters({ filters, onFilterChange, onReset, className }: Ite
           <label className="text-xs text-neutral-500 mb-1.5 block">Type</label>
           <Select value={filters.type} onChange={(e) => update("type", e.target.value)}>
             {itemTypes.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        {/* Rarity */}
-        <div>
-          <label className="text-xs text-neutral-500 mb-1.5 block">Rarity</label>
-          <Select value={filters.rarity} onChange={(e) => update("rarity", e.target.value)}>
-            {rarities.map((opt) => (
               <option key={opt.value} value={opt.value}>
                 {opt.label}
               </option>

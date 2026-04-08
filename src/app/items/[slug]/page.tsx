@@ -48,7 +48,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const price = item.currentPrice != null ? formatPrice(item.currentPrice) : "N/A";
   const description = item.description
     ? `${item.description} Currently ${price} on the Steam Community Market.`
-    : `${item.name} - ${item.rarity ?? "common"} ${item.type}. Currently ${price} on the Steam Community Market. View price history and trends.`;
+    : `${item.name} - ${item.type} for S&box. Currently ${price} on the Steam Community Market. View price history and trends.`;
 
   return {
     title: `${item.name} - S&box Skins`,
@@ -96,7 +96,7 @@ export default async function ItemDetailPage({ params }: PageProps) {
     "@context": "https://schema.org",
     "@type": "Product",
     name: item.name,
-    description: item.description || `${item.name} - ${item.rarity ?? "common"} ${item.type} for S&box on the Steam Community Market.`,
+    description: item.description || `${item.name} - ${item.type} for S&box on the Steam Community Market.`,
     url: `https://sboxskins.gg/items/${item.slug}`,
     category: item.type,
     ...(item.imageUrl && !item.imageUrl.startsWith("/items/") ? { image: item.imageUrl } : {}),
@@ -108,7 +108,6 @@ export default async function ItemDetailPage({ params }: PageProps) {
       url: item.marketUrl || `https://sboxskins.gg/items/${item.slug}`,
     },
     additionalProperty: [
-      { "@type": "PropertyValue", name: "Rarity", value: item.rarity ?? "common" },
       { "@type": "PropertyValue", name: "Type", value: item.type },
       ...(item.volume ? [{ "@type": "PropertyValue", name: "Market Volume", value: item.volume.toString() }] : []),
     ],

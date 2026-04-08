@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { ItemImage } from "@/components/items/item-image";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
 
@@ -19,28 +18,13 @@ interface ItemCardProps {
   };
 }
 
-const rarityColors: Record<string, string> = {
-  common: "bg-neutral-500/20 text-neutral-300 border-neutral-500/30",
-  uncommon: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  rare: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  legendary: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-};
-
-const rarityGlow: Record<string, string> = {
-  common: "",
-  uncommon: "hover:shadow-emerald-500/10",
-  rare: "hover:shadow-blue-500/10",
-  legendary: "hover:shadow-purple-500/20",
-};
-
 export function ItemCard({ item }: ItemCardProps) {
   const change = item.priceChange24h ?? 0;
-  const rarity = item.rarity ?? "common";
 
   return (
     <Link href={`/items/${item.slug}`}>
       <div
-        className={`group relative rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900 hover:shadow-lg ${rarityGlow[rarity] || ""}`}
+        className="group relative rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900 hover:shadow-lg"
       >
         {item.isLimited && (
           <div className="absolute top-3 right-3 z-10">
@@ -53,7 +37,6 @@ export function ItemCard({ item }: ItemCardProps) {
           src={item.imageUrl}
           name={item.name}
           type={item.type}
-          rarity={item.rarity}
           size="sm"
           className="mx-auto mb-4 h-32 w-32 rounded-lg border border-neutral-700/50"
         />
@@ -66,12 +49,7 @@ export function ItemCard({ item }: ItemCardProps) {
             </h3>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Badge className={`text-[10px] px-1.5 py-0 border ${rarityColors[rarity] || rarityColors.common}`}>
-              {rarity}
-            </Badge>
-            <span className="text-[10px] text-neutral-500 capitalize">{item.type}</span>
-          </div>
+          <span className="text-[10px] text-neutral-500 capitalize">{item.type}</span>
 
           <div className="flex items-end justify-between pt-1">
             <span className="text-lg font-bold text-white">

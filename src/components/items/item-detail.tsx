@@ -45,16 +45,8 @@ export interface ItemDetailData {
   priceHistory: PricePoint[];
 }
 
-const rarityBadgeColors: Record<string, string> = {
-  common: "bg-neutral-500/20 text-neutral-300 border-neutral-500/30",
-  uncommon: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
-  rare: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-  legendary: "bg-purple-500/20 text-purple-400 border-purple-500/30",
-};
-
 export function ItemDetail({ item }: { item: ItemDetailData }) {
   const change = item.priceChange24h ?? 0;
-  const rarity = item.rarity ?? "common";
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8">
@@ -75,7 +67,6 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
             src={item.imageUrl}
             name={item.name}
             type={item.type}
-            rarity={item.rarity}
             size="lg"
             className="rounded-xl border border-neutral-700/50 h-80"
           />
@@ -90,12 +81,7 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
         {/* Info */}
         <div className="space-y-4">
           <div>
-            <div className="flex items-center gap-3 mb-2">
-              <Badge className={`border ${rarityBadgeColors[rarity] || rarityBadgeColors.common}`}>
-                {rarity}
-              </Badge>
-              <span className="text-sm text-neutral-500 capitalize">{item.type}</span>
-            </div>
+            <span className="text-sm text-neutral-500 capitalize mb-2 block">{item.type}</span>
             <h1 className="text-3xl font-bold text-white">{item.name}</h1>
           </div>
 

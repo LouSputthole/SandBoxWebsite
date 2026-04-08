@@ -2,7 +2,6 @@ import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/db";
 
 const TYPES = ["character", "clothing", "accessory", "weapon", "tool"];
-const RARITIES = ["common", "uncommon", "rare", "legendary"];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const items = await prisma.item.findMany({
@@ -21,13 +20,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const typePages: MetadataRoute.Sitemap = TYPES.map((type) => ({
     url: `https://sboxskins.gg/items/type/${type}`,
-    lastModified: latestUpdate,
-    changeFrequency: "daily",
-    priority: 0.8,
-  }));
-
-  const rarityPages: MetadataRoute.Sitemap = RARITIES.map((rarity) => ({
-    url: `https://sboxskins.gg/items/rarity/${rarity}`,
     lastModified: latestUpdate,
     changeFrequency: "daily",
     priority: 0.8,
@@ -53,7 +45,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.5,
     },
     ...typePages,
-    ...rarityPages,
     ...itemPages,
   ];
 }

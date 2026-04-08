@@ -30,11 +30,6 @@ const faqs = [
       "We sync prices from the Steam Community Market multiple times per day. During peak hours (11 AM - 11 PM EST), prices are updated every 15 minutes. During off-peak hours, prices are updated every 30 minutes.",
   },
   {
-    question: "What skin rarities exist in S&box?",
-    answer:
-      "S&box skins come in four rarity tiers: Common, Uncommon, Rare, and Legendary. Legendary skins are the rarest and most valuable, while Common skins are the most affordable and widely available.",
-  },
-  {
     question: "What types of skins are available in S&box?",
     answer:
       "S&box features several types of cosmetic items: Character skins (full player models), Clothing (wearable outfits and accessories), Weapons (weapon skins), Accessories (decorative add-ons), and Tools (tool reskins).",

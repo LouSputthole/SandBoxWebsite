@@ -5,7 +5,7 @@ export function Footer() {
   return (
     <footer className="border-t border-neutral-800 bg-[#0a0a0f] mt-auto">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 mb-8">
           <div>
             <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Browse</h3>
             <ul className="space-y-2 text-sm">
@@ -22,15 +22,6 @@ export function Footer() {
               <li><Link href="/items/type/weapon" className="text-neutral-500 hover:text-white transition-colors">Weapons</Link></li>
               <li><Link href="/items/type/accessory" className="text-neutral-500 hover:text-white transition-colors">Accessories</Link></li>
               <li><Link href="/items/type/tool" className="text-neutral-500 hover:text-white transition-colors">Tools</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">By Rarity</h3>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/items/rarity/legendary" className="text-purple-400 hover:text-purple-300 transition-colors">Legendary</Link></li>
-              <li><Link href="/items/rarity/rare" className="text-blue-400 hover:text-blue-300 transition-colors">Rare</Link></li>
-              <li><Link href="/items/rarity/uncommon" className="text-emerald-400 hover:text-emerald-300 transition-colors">Uncommon</Link></li>
-              <li><Link href="/items/rarity/common" className="text-neutral-500 hover:text-white transition-colors">Common</Link></li>
             </ul>
           </div>
           <div>
