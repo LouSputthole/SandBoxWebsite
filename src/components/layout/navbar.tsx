@@ -28,7 +28,7 @@ export function Navbar() {
           <Link href="/" className="flex items-center gap-2 shrink-0">
             <Gamepad2 className="h-7 w-7 text-purple-500" />
             <span className="text-lg font-bold text-white hidden sm:block">
-              S&box <span className="text-purple-400">Skins</span>
+              sbox<span className="text-purple-400">skins</span><span className="text-neutral-500">.gg</span>
             </span>
           </Link>
 

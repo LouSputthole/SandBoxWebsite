@@ -8,7 +8,7 @@ export function Footer() {
           <div className="flex items-center gap-2">
             <Gamepad2 className="h-5 w-5 text-purple-500" />
             <span className="text-sm font-semibold text-neutral-400">
-              S&box Skins
+              sboxskins.gg
             </span>
           </div>
           <p className="text-xs text-neutral-600 text-center">

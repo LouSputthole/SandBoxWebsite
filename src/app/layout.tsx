@@ -17,9 +17,17 @@ const geistMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "S&box Skins - Marketplace & Price Tracker",
+  title: {
+    default: "sboxskins.gg - S&box Marketplace & Price Tracker",
+    template: "%s | sboxskins.gg",
+  },
   description:
     "Browse, search, and track prices for S&box skins on the Steam Community Market. View price history, trends, and find the best deals.",
+  metadataBase: new URL("https://sboxskins.gg"),
+  openGraph: {
+    siteName: "sboxskins.gg",
+    type: "website",
+  },
 };
 
 export default function RootLayout({
