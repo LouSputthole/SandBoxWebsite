@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "src/app/api/sync/route.ts": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
       "path": "/api/sync",

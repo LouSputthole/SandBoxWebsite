@@ -32,8 +32,8 @@ class RateLimiter {
   }
 }
 
-// 3-second delay between requests to respect Steam rate limits
-const rateLimiter = new RateLimiter(3000);
+// 1.5-second delay between requests to respect Steam rate limits
+const rateLimiter = new RateLimiter(1500);
 
 /**
  * Fetch a URL from Steam with proper headers, rate limiting, and retry.
