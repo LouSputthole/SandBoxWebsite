@@ -74,17 +74,61 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * GET /api/sync — Check sync status (health check).
+ * GET /api/sync — Vercel Cron handler + health check.
+ *
+ * Vercel cron jobs send GET requests. When the cron secret matches,
+ * this runs a full auto sync (Steam API → fallback to demo).
+ * Without auth, returns status info.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const cronSecret = process.env.CRON_SECRET;
+  const authHeader = request.headers.get("authorization");
+
+  // If authorized (Vercel cron or manual), run the sync
+  if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
+    try {
+      // Auto mode: try Steam, fall back to demo
+      let result = await syncItems(true);
+      if (!result.success || result.itemsProcessed === 0) {
+        console.log("[cron] Steam API unavailable, falling back to demo mode");
+        result = await syncFromMockData();
+      }
+
+      // Invalidate cache
+      if (result.success && result.itemsProcessed > 0) {
+        const cleared = await invalidatePattern("items:*")
+          + await invalidatePattern("item:*")
+          + await invalidatePattern("prices:*");
+        console.log(`[cron] Invalidated ${cleared} cache keys`);
+      }
+
+      // Check price alerts
+      if (result.success && result.itemsProcessed > 0) {
+        const alertResult = await checkPriceAlerts();
+        if (alertResult.triggered > 0) {
+          console.log(`[cron] ${alertResult.triggered} price alerts triggered`);
+        }
+      }
+
+      return NextResponse.json(result);
+    } catch (error) {
+      console.error("[cron] Sync error:", error);
+      return NextResponse.json(
+        { error: "Sync failed", details: String(error) },
+        { status: 500 }
+      );
+    }
+  }
+
+  // No auth — just return status
   return NextResponse.json({
     status: "ready",
     endpoints: {
+      "GET /api/sync (with auth)": "Vercel cron — auto sync with prices",
       "POST /api/sync": "Auto sync (tries Steam API, falls back to demo)",
       "POST /api/sync?mode=items": "Full item sync from Steam Market",
       "POST /api/sync?mode=prices": "Sync prices for existing items (batched)",
       "POST /api/sync?mode=demo": "Sync from mock data (testing)",
-      "POST /api/sync?mode=items&fetchPrices=true": "Full sync with detailed prices",
     },
   });
 }

@@ -168,9 +168,10 @@ async function upsertItem(
       data: {
         ...data,
         priceChange24h: Math.round(priceChange * 100) / 100,
-        // Preserve existing description and rarity if already set
+        // Preserve existing data if already set
         description: existing.description || undefined,
         rarity: existing.rarity || rarity,
+        imageUrl: existing.imageUrl || iconUrl, // Never overwrite a saved image
       },
     });
     result.itemsUpdated++;
