@@ -24,6 +24,7 @@ export const metadata: Metadata = {
   description:
     "Browse, search, and track prices for S&box skins on the Steam Community Market. View price history, trends, and find the best deals.",
   metadataBase: new URL("https://sboxskins.gg"),
+  alternates: { canonical: "/" },
   openGraph: {
     siteName: "sboxskins.gg",
     type: "website",

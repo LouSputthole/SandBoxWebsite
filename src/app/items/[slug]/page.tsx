@@ -53,6 +53,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: `${item.name} - S&box Skins`,
     description,
+    alternates: { canonical: `/items/${item.slug}` },
     openGraph: {
       title: `${item.name} (${price}) - S&box Skins`,
       description,
@@ -80,6 +81,17 @@ export default async function ItemDetailPage({ params }: PageProps) {
 
   const relatedItems = await getRelatedItems(item);
 
+  const breadcrumbLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Home", item: "https://sboxskins.gg" },
+      { "@type": "ListItem", position: 2, name: "Items", item: "https://sboxskins.gg/items" },
+      { "@type": "ListItem", position: 3, name: item.type, item: `https://sboxskins.gg/items/type/${item.type}` },
+      { "@type": "ListItem", position: 4, name: item.name, item: `https://sboxskins.gg/items/${item.slug}` },
+    ],
+  };
+
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -104,6 +116,10 @@ export default async function ItemDetailPage({ params }: PageProps) {
 
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

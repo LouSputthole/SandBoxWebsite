@@ -4,6 +4,7 @@ export const metadata: Metadata = {
   title: "Browse Skins - S&box Skins",
   description:
     "Browse, search, and filter all S&box skins on the Steam Community Market. Sort by price, rarity, and popularity.",
+  alternates: { canonical: "/items" },
 };
 
 export default function ItemsLayout({ children }: { children: React.ReactNode }) {
