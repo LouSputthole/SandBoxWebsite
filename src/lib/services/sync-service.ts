@@ -118,6 +118,19 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
 }
 
 /**
+ * Generate a description for an item based on its name and type.
+ */
+function generateDescription(name: string, type: string, steamType: string): string {
+  const typeLabel = type === "character" ? "character skin" :
+    type === "clothing" ? "clothing item" :
+    type === "accessory" ? "accessory" :
+    type === "weapon" ? "weapon skin" :
+    type === "tool" ? "tool skin" : "item";
+
+  return `${name} is an S&box ${typeLabel} available on the Steam Community Market. Track its price history, current market value, and listing trends on sboxskins.gg.`;
+}
+
+/**
  * Upsert a single item from Steam search results into the database.
  * Uses steamMarketId (hash_name) as the unique key.
  */
@@ -138,6 +151,7 @@ async function upsertItem(
     slug,
     steamMarketId: hashName,
     type: itemType,
+    description: generateDescription(steamItem.name, itemType, steamItem.asset_description?.type || ""),
     imageUrl: iconUrl,
     marketUrl: getMarketUrl(hashName),
     currentPrice: priceInDollars,

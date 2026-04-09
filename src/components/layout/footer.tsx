@@ -10,8 +10,9 @@ export function Footer() {
             <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Browse</h3>
             <ul className="space-y-2 text-sm">
               <li><Link href="/items" className="text-neutral-500 hover:text-white transition-colors">All Skins</Link></li>
+              <li><Link href="/leaderboard" className="text-neutral-500 hover:text-white transition-colors">Leaderboard</Link></li>
+              <li><Link href="/inventory" className="text-neutral-500 hover:text-white transition-colors">Inventory Checker</Link></li>
               <li><Link href="/items?sort=change-desc" className="text-neutral-500 hover:text-white transition-colors">Trending</Link></li>
-              <li><Link href="/items?sort=price-desc" className="text-neutral-500 hover:text-white transition-colors">Most Valuable</Link></li>
             </ul>
           </div>
           <div>

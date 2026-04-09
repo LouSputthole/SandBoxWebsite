@@ -41,6 +41,12 @@ export function Navbar() {
               Browse
             </Link>
             <Link
+              href="/leaderboard"
+              className="text-sm text-neutral-400 hover:text-white transition-colors"
+            >
+              Leaderboard
+            </Link>
+            <Link
               href="/inventory"
               className="text-sm text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5"
             >
@@ -88,6 +94,13 @@ export function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               Browse
+            </Link>
+            <Link
+              href="/leaderboard"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Leaderboard
             </Link>
             <Link
               href="/inventory"
