@@ -21,6 +21,7 @@ model Item {
   lowestPrice    Float?
   medianPrice    Float?
   volume         Int?         @default(0)
+  totalSupply    Int?         // Total units in existence (from S&box metrics)
   priceChange24h Float?       @default(0)
   isLimited      Boolean      @default(false)
   createdAt      DateTime     @default(now())

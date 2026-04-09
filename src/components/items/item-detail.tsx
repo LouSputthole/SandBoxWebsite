@@ -11,6 +11,7 @@ import {
   BarChart3,
   DollarSign,
   Activity,
+  Package,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +43,7 @@ export interface ItemDetailData {
   lowestPrice: number | null;
   medianPrice: number | null;
   volume: number | null;
+  totalSupply: number | null;
   priceChange24h: number | null;
   isLimited: boolean;
   priceHistory: PricePoint[];
@@ -115,7 +117,7 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <Card className="bg-neutral-900/80">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -142,10 +144,21 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
                   <Activity className="h-3.5 w-3.5 text-neutral-500" />
-                  <span className="text-xs text-neutral-500">Volume</span>
+                  <span className="text-xs text-neutral-500">Listings</span>
                 </div>
                 <span className="text-sm font-semibold text-white">
                   {item.volume?.toLocaleString() ?? "N/A"}
+                </span>
+              </CardContent>
+            </Card>
+            <Card className="bg-neutral-900/80">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Package className="h-3.5 w-3.5 text-neutral-500" />
+                  <span className="text-xs text-neutral-500">Total Supply</span>
+                </div>
+                <span className="text-sm font-semibold text-white">
+                  {item.totalSupply?.toLocaleString() ?? "N/A"}
                 </span>
               </CardContent>
             </Card>
