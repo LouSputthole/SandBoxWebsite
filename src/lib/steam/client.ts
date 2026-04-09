@@ -11,9 +11,9 @@ const HEADERS = {
   Referer: `${STEAM_MARKET_BASE}/search?appid=${STEAM_APPID}`,
 };
 
-// Simple rate limiter: ensures minimum delay between requests
+// Simple rate limiter: ensures minimum delay between requests (serialized)
 class RateLimiter {
-  private lastRequest = 0;
+  private queue: Promise<void> = Promise.resolve();
   private minDelay: number;
 
   constructor(minDelayMs: number) {
@@ -21,14 +21,11 @@ class RateLimiter {
   }
 
   async wait(): Promise<void> {
-    const now = Date.now();
-    const elapsed = now - this.lastRequest;
-    if (elapsed < this.minDelay) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, this.minDelay - elapsed)
-      );
-    }
-    this.lastRequest = Date.now();
+    // Chain each wait onto the previous one to serialize access
+    this.queue = this.queue.then(
+      () => new Promise((resolve) => setTimeout(resolve, this.minDelay))
+    );
+    await this.queue;
   }
 }
 

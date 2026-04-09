@@ -17,8 +17,8 @@ export async function GET(request: NextRequest) {
   const key = cacheKey("items", { q, type, rarity, minPrice, maxPrice, sort, page, limit });
 
   const data = await cached(key, CACHE_TTL.ITEMS_LIST, async () => {
-    const pageNum = parseInt(page);
-    const limitNum = parseInt(limit);
+    const pageNum = Math.max(1, parseInt(page) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit) || 12));
 
     const where: Prisma.ItemWhereInput = {};
     if (q) {

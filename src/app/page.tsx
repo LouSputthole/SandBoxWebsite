@@ -86,7 +86,7 @@ export default function HomePage() {
           avgPrice: prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0,
           marketCap,
           totalListings: volumes.reduce((a, b) => a + b, 0),
-          totalVolume: items.filter((i) => (i.priceChange24h ?? 0) !== 0).length,
+          totalVolume: volumes.reduce((a, b) => a + b, 0),
         });
       }
 

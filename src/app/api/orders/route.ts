@@ -60,6 +60,12 @@ export async function GET(request: NextRequest) {
     ? parseInt(histogram.lowest_sell_order, 10) / 100
     : null;
 
+  // Steam sometimes returns HTML in count fields — strip tags and extract number
+  const parseCount = (val: string) => {
+    const stripped = val.replace(/<[^>]*>/g, "").replace(/[,\s]/g, "");
+    return parseInt(stripped, 10) || 0;
+  };
+
   // Take top 10 entries from each side of the order book
   const buyOrders = histogram.buy_order_graph.slice(0, 10).map(([price, qty]) => ({
     price,
@@ -74,8 +80,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     highestBuyOrder,
     lowestSellOrder,
-    buyOrderCount: parseInt(histogram.buy_order_count, 10) || 0,
-    sellOrderCount: parseInt(histogram.sell_order_count, 10) || 0,
+    buyOrderCount: parseCount(histogram.buy_order_count),
+    sellOrderCount: parseCount(histogram.sell_order_count),
     buyOrders,
     sellOrders,
   });
