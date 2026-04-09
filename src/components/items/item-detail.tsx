@@ -18,6 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { ItemImage } from "@/components/items/item-image";
 import { PriceChart } from "@/components/charts/price-chart";
 import { PriceAlertForm } from "@/components/alerts/price-alert-form";
+import { OrderBook } from "@/components/items/order-book";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
 
 interface PricePoint {
@@ -36,6 +37,7 @@ export interface ItemDetailData {
   rarity: string | null;
   imageUrl: string | null;
   marketUrl: string | null;
+  steamMarketId: string | null;
   currentPrice: number | null;
   lowestPrice: number | null;
   medianPrice: number | null;
@@ -159,11 +161,22 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 className="inline-flex"
               >
                 <Button variant="outline" className="gap-2">
-                  View on Steam Market
+                  Steam Market
                   <ExternalLink className="h-4 w-4" />
                 </Button>
               </a>
             )}
+            <a
+              href="https://sbox.game/metrics/skins"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex"
+            >
+              <Button variant="outline" className="gap-2">
+                S&box Metrics
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </a>
             <PriceAlertForm
               itemId={item.id}
               itemName={item.name}
@@ -177,6 +190,14 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
       <Card className="bg-neutral-900/80">
         <CardContent className="p-6">
           <PriceChart data={item.priceHistory} itemId={item.id} />
+        </CardContent>
+      </Card>
+
+      {/* Order Book */}
+      <Card className="bg-neutral-900/80 mt-6">
+        <CardContent className="p-6">
+          <h3 className="text-sm font-medium text-neutral-300 mb-4">Buy & Sell Orders</h3>
+          <OrderBook slug={item.slug} />
         </CardContent>
       </Card>
     </div>

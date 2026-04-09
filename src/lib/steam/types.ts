@@ -131,3 +131,24 @@ export interface SteamVanityResponse {
     message?: string;
   };
 }
+
+// ---- Steam Market Order Histogram types ----
+
+export interface SteamOrderHistogram {
+  success: number;
+  sell_order_count: string;
+  sell_order_price: string;
+  sell_order_table: string;
+  buy_order_count: string;
+  buy_order_price: string;
+  buy_order_table: string;
+  highest_buy_order: string; // price in cents
+  lowest_sell_order: string; // price in cents
+  buy_order_graph: [number, number, string][]; // [price, cumulative_qty, description]
+  sell_order_graph: [number, number, string][]; // [price, cumulative_qty, description]
+  graph_max_y: number;
+  graph_min_x: number;
+  graph_max_x: number;
+  price_prefix: string;
+  price_suffix: string;
+}

@@ -1,4 +1,4 @@
-import type { SteamSearchResponse, SteamPriceOverview, SteamInventoryResponse, SteamVanityResponse } from "./types";
+import type { SteamSearchResponse, SteamPriceOverview, SteamInventoryResponse, SteamVanityResponse, SteamOrderHistogram } from "./types";
 
 const STEAM_APPID = 590830;
 const STEAM_MARKET_BASE = "https://steamcommunity.com/market";
@@ -315,4 +315,61 @@ export async function fetchInventory(steamid64: string): Promise<SteamInventoryR
     console.error(`[steam] Inventory fetch error for ${steamid64}:`, error);
     return null;
   }
+}
+
+// ---- Steam Market Order Book ----
+
+/**
+ * Scrape the item_nameid from a Steam Market listing page.
+ * This numeric ID is required for the order histogram endpoint.
+ * The listing page HTML contains: Market_LoadOrderSpread( NAMEID );
+ */
+export async function fetchItemNameId(marketHashName: string): Promise<string | null> {
+  const url = `${STEAM_MARKET_BASE}/listings/${STEAM_APPID}/${encodeURIComponent(marketHashName)}`;
+
+  try {
+    await rateLimiter.wait();
+    const response = await fetch(url, {
+      headers: {
+        ...HEADERS,
+        Accept: "text/html,application/xhtml+xml",
+      },
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (!response.ok) {
+      console.error(`[steam] Listing page fetch failed: ${response.status} for ${marketHashName}`);
+      return null;
+    }
+
+    const html = await response.text();
+    const match = html.match(/Market_LoadOrderSpread\(\s*(\d+)\s*\)/);
+    if (match) {
+      return match[1];
+    }
+
+    console.warn(`[steam] Could not find item_nameid in listing page for ${marketHashName}`);
+    return null;
+  } catch (error) {
+    console.error(`[steam] Failed to fetch listing page for ${marketHashName}:`, error);
+    return null;
+  }
+}
+
+/**
+ * Fetch the buy/sell order histogram for a market item.
+ * Requires the numeric item_nameid (obtained from fetchItemNameId).
+ */
+export async function fetchOrderHistogram(itemNameId: string): Promise<SteamOrderHistogram | null> {
+  const params = new URLSearchParams({
+    country: "US",
+    language: "english",
+    currency: "1",
+    item_nameid: itemNameId,
+    two_factor: "0",
+  });
+
+  return steamFetch<SteamOrderHistogram>(
+    `${STEAM_MARKET_BASE}/itemordershistogram?${params}`
+  );
 }
