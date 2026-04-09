@@ -22,27 +22,26 @@ export function OrderBook({ slug }: { slug: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const fetchOrders = () => {
+    setLoading(true);
+    setError(null);
 
-    async function fetchOrders() {
-      try {
-        const res = await fetch(`/api/orders?slug=${encodeURIComponent(slug)}`);
+    fetch(`/api/orders?slug=${encodeURIComponent(slug)}`)
+      .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
           throw new Error(body.error || "Failed to fetch orders");
         }
-        const json = await res.json();
-        if (!cancelled) setData(json);
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
+        return res.json();
+      })
+      .then((json) => setData(json))
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
+      .finally(() => setLoading(false));
+  };
 
+  useEffect(() => {
     fetchOrders();
-    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   if (loading) {
@@ -56,8 +55,16 @@ export function OrderBook({ slug }: { slug: string }) {
 
   if (error || !data) {
     return (
-      <div className="text-center py-6 text-neutral-600 text-sm">
-        Order data unavailable
+      <div className="text-center py-6 space-y-2">
+        <p className="text-neutral-600 text-sm">
+          {error || "Order data unavailable"}
+        </p>
+        <button
+          onClick={fetchOrders}
+          className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+        >
+          Try again
+        </button>
       </div>
     );
   }

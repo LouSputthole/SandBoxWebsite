@@ -11,9 +11,11 @@ const HEADERS = {
   Referer: `${STEAM_MARKET_BASE}/search?appid=${STEAM_APPID}`,
 };
 
-// Simple rate limiter: ensures minimum delay between requests (serialized)
+// Rate limiter: serializes requests with minimum delay between them.
+// First request goes through immediately; subsequent ones wait.
 class RateLimiter {
-  private queue: Promise<void> = Promise.resolve();
+  private lastRequest = 0;
+  private pending: Promise<void> = Promise.resolve();
   private minDelay: number;
 
   constructor(minDelayMs: number) {
@@ -21,11 +23,17 @@ class RateLimiter {
   }
 
   async wait(): Promise<void> {
-    // Chain each wait onto the previous one to serialize access
-    this.queue = this.queue.then(
-      () => new Promise((resolve) => setTimeout(resolve, this.minDelay))
-    );
-    await this.queue;
+    // Serialize: each caller chains onto the previous one
+    const ticket = this.pending.then(async () => {
+      const now = Date.now();
+      const elapsed = now - this.lastRequest;
+      if (this.lastRequest > 0 && elapsed < this.minDelay) {
+        await new Promise((r) => setTimeout(r, this.minDelay - elapsed));
+      }
+      this.lastRequest = Date.now();
+    });
+    this.pending = ticket;
+    await ticket;
   }
 }
 
@@ -324,8 +332,8 @@ export async function fetchInventory(steamid64: string): Promise<SteamInventoryR
 export async function fetchItemNameId(marketHashName: string): Promise<string | null> {
   const url = `${STEAM_MARKET_BASE}/listings/${STEAM_APPID}/${encodeURIComponent(marketHashName)}`;
 
+  // Don't use rateLimiter — this is a one-time HTML page fetch, not a market API call
   try {
-    await rateLimiter.wait();
     const response = await fetch(url, {
       headers: {
         ...HEADERS,
