@@ -17,6 +17,7 @@ model Item {
   rarity         String?      // "common", "uncommon", "rare", "legendary"
   imageUrl       String?
   marketUrl      String?
+  steamItemNameId String?      // Steam numeric ID for order histogram (scraped locally)
   currentPrice   Float?
   lowestPrice    Float?
   medianPrice    Float?

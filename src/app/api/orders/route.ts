@@ -17,23 +17,27 @@ export async function GET(request: NextRequest) {
 
   const item = await prisma.item.findUnique({
     where: { slug },
-    select: { steamMarketId: true, name: true },
+    select: { steamMarketId: true, steamItemNameId: true, name: true },
   });
 
   if (!item || !item.steamMarketId) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }
 
-  // Get item_nameid (cached for 30 days since it never changes)
-  const itemNameId = await cached<string | null>(
-    `steam:nameid:${item.steamMarketId}`,
-    60 * 60 * 24 * 30,
-    () => fetchItemNameId(item.steamMarketId!)
-  );
+  // Get item_nameid: prefer DB value, then Redis cache, then live scrape as last resort
+  let itemNameId = item.steamItemNameId;
+
+  if (!itemNameId) {
+    itemNameId = await cached<string | null>(
+      `steam:nameid:${item.steamMarketId}`,
+      60 * 60 * 24 * 30,
+      () => fetchItemNameId(item.steamMarketId!)
+    );
+  }
 
   if (!itemNameId) {
     return NextResponse.json(
-      { error: "Could not resolve Steam item ID. Try again later." },
+      { error: "Order data not available yet. Item needs local setup — see docs." },
       { status: 502 }
     );
   }

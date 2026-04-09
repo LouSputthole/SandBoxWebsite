@@ -12,6 +12,7 @@
     "db:seed": "npx tsx prisma/seed.ts",
     "db:studio": "npx prisma studio",
     "scrape:supply": "npx tsx scripts/scrape-supply.ts",
+    "scrape:nameids": "npx tsx scripts/scrape-nameids.ts",
     "postinstall": "npx prisma generate"
   },
   "prisma": {
