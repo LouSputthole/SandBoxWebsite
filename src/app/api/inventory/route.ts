@@ -45,10 +45,20 @@ export async function GET(request: NextRequest) {
   }
 
   // 3. Fetch inventory
-  const inventory = await fetchInventory(steamid64);
-  if (!inventory || inventory.success !== 1) {
+  let inventory;
+  try {
+    inventory = await fetchInventory(steamid64);
+  } catch (error) {
+    console.error("[inventory] Fetch error:", error);
     return NextResponse.json(
-      { error: "Could not load inventory. Make sure the profile and game details are set to public." },
+      { error: "Failed to connect to Steam. Please try again in a moment." },
+      { status: 502 }
+    );
+  }
+
+  if (!inventory) {
+    return NextResponse.json(
+      { error: "Could not load inventory. Make sure the Steam profile and game details are set to public in Privacy Settings." },
       { status: 403 }
     );
   }

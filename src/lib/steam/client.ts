@@ -281,5 +281,38 @@ export async function resolveVanityUrl(vanityName: string): Promise<string | nul
  */
 export async function fetchInventory(steamid64: string): Promise<SteamInventoryResponse | null> {
   const url = `https://steamcommunity.com/inventory/${steamid64}/${STEAM_APPID}/2?l=english&count=5000`;
-  return steamFetch<SteamInventoryResponse>(url, 2);
+
+  // Don't use steamFetch here — inventory endpoint doesn't need the market rate limiter
+  // and we want more specific error handling
+  try {
+    const response = await fetch(url, {
+      headers: HEADERS,
+      signal: AbortSignal.timeout(15000),
+    });
+
+    if (response.status === 403) {
+      console.error(`[steam] Inventory is private or blocked for ${steamid64}`);
+      return null;
+    }
+
+    if (!response.ok) {
+      console.error(`[steam] Inventory fetch failed: ${response.status} ${response.statusText}`);
+      return null;
+    }
+
+    const data = await response.json();
+    console.log(`[steam] Inventory response for ${steamid64}: success=${data.success}, assets=${data.assets?.length ?? 0}, total=${data.total_inventory_count ?? 0}`);
+
+    // Steam returns success as either 1 (number) or true (boolean)
+    if (!data.success && data.success !== 1) {
+      console.error(`[steam] Inventory response not successful:`, JSON.stringify(data).slice(0, 200));
+      return null;
+    }
+
+    // Normalize success to number for our type
+    return { ...data, success: 1 } as SteamInventoryResponse;
+  } catch (error) {
+    console.error(`[steam] Inventory fetch error for ${steamid64}:`, error);
+    return null;
+  }
 }
