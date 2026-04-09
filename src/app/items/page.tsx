@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useState, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Search, LayoutGrid, List } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -80,6 +80,16 @@ function BrowsePageContent() {
   const [view, setView] = useState<"grid" | "table">(
     (searchParams.get("view") as "grid" | "table") || "table"
   );
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect small screens and auto-switch to grid
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
   const [filters, setFilters] = useState<FilterState>({
     type: searchParams.get("type") || "",
     rarity: searchParams.get("rarity") || "",
@@ -88,7 +98,8 @@ function BrowsePageContent() {
     sort: searchParams.get("sort") || "name-asc",
   });
 
-  const limit = view === "table" ? 25 : 12;
+  const effectiveView = isMobile ? "grid" : view;
+  const limit = effectiveView === "table" ? 25 : 12;
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -129,11 +140,11 @@ function BrowsePageContent() {
     if (filters.maxPrice) params.set("maxPrice", filters.maxPrice);
     if (filters.sort !== "name-asc") params.set("sort", filters.sort);
     if (page > 1) params.set("page", page.toString());
-    if (view !== "table") params.set("view", view);
+    if (view !== "table") params.set("view", effectiveView);
 
     const qs = params.toString();
     router.replace(`/items${qs ? `?${qs}` : ""}`, { scroll: false });
-  }, [search, filters, page, view, router]);
+  }, [search, filters, page, view, effectiveView, router]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,13 +165,13 @@ function BrowsePageContent() {
             Explore all S&box skins available on the Steam Community Market
           </p>
         </div>
-        {/* View toggle */}
-        <div className="flex items-center gap-1 bg-neutral-900 rounded-lg border border-neutral-800 p-1">
+        {/* View toggle — hidden on mobile (always grid there) */}
+        <div className="hidden md:flex items-center gap-1 bg-neutral-900 rounded-lg border border-neutral-800 p-1">
           <Button
             variant="ghost"
             size="sm"
             onClick={() => { setView("table"); setPage(1); }}
-            className={`px-2 ${view === "table" ? "bg-neutral-800 text-white" : "text-neutral-500"}`}
+            className={`px-2 ${effectiveView === "table" ? "bg-neutral-800 text-white" : "text-neutral-500"}`}
           >
             <List className="h-4 w-4" />
           </Button>
@@ -168,7 +179,7 @@ function BrowsePageContent() {
             variant="ghost"
             size="sm"
             onClick={() => { setView("grid"); setPage(1); }}
-            className={`px-2 ${view === "grid" ? "bg-neutral-800 text-white" : "text-neutral-500"}`}
+            className={`px-2 ${effectiveView === "grid" ? "bg-neutral-800 text-white" : "text-neutral-500"}`}
           >
             <LayoutGrid className="h-4 w-4" />
           </Button>
@@ -210,7 +221,7 @@ function BrowsePageContent() {
         {/* Main Content */}
         <div className="flex-1 min-w-0">
           {loading ? (
-            view === "table" ? (
+            effectiveView === "table" ? (
               <div>
                 <Skeleton className="h-5 w-32 mb-4" />
                 <div className="rounded-xl border border-neutral-800 overflow-hidden">
@@ -243,7 +254,7 @@ function BrowsePageContent() {
                 </div>
               </div>
             )
-          ) : view === "table" ? (
+          ) : effectiveView === "table" ? (
             <ItemTable
               items={items}
               page={page}

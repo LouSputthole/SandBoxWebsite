@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Search, Menu, X, Gamepad2 } from "lucide-react";
+import { Search, Menu, X, Gamepad2, Backpack } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -33,18 +33,25 @@ export function Navbar() {
           </Link>
 
           {/* Desktop Nav */}
-          <div className="hidden md:flex items-center gap-6">
-            <Link
-              href="/"
-              className="text-sm text-neutral-400 hover:text-white transition-colors"
-            >
-              Home
-            </Link>
+          <div className="hidden md:flex items-center gap-5">
             <Link
               href="/items"
               className="text-sm text-neutral-400 hover:text-white transition-colors"
             >
               Browse
+            </Link>
+            <Link
+              href="/inventory"
+              className="text-sm text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <Backpack className="h-3.5 w-3.5" />
+              Inventory
+            </Link>
+            <Link
+              href="/faq"
+              className="text-sm text-neutral-400 hover:text-white transition-colors"
+            >
+              FAQ
             </Link>
           </div>
 
@@ -76,19 +83,39 @@ export function Navbar() {
         {mobileMenuOpen && (
           <div className="md:hidden border-t border-neutral-800 py-4 space-y-2">
             <Link
-              href="/"
-              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
-              onClick={() => setMobileMenuOpen(false)}
-            >
-              Home
-            </Link>
-            <Link
               href="/items"
               className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
               onClick={() => setMobileMenuOpen(false)}
             >
               Browse
             </Link>
+            <Link
+              href="/inventory"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Inventory Checker
+            </Link>
+            <Link
+              href="/faq"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              FAQ
+            </Link>
+            <div className="px-3 pt-2 border-t border-neutral-800 mt-2">
+              <p className="text-[10px] text-neutral-600 uppercase tracking-wider mb-2">Browse by Type</p>
+              {["character", "clothing", "accessory", "weapon", "tool"].map((t) => (
+                <Link
+                  key={t}
+                  href={`/items/type/${t}`}
+                  className="block px-2 py-1.5 text-sm text-neutral-500 hover:text-white transition-colors capitalize"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  {t}
+                </Link>
+              ))}
+            </div>
           </div>
         )}
       </div>

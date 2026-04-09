@@ -1,4 +1,4 @@
-import type { SteamSearchResponse, SteamPriceOverview } from "./types";
+import type { SteamSearchResponse, SteamPriceOverview, SteamInventoryResponse, SteamVanityResponse } from "./types";
 
 const STEAM_APPID = 590830;
 const STEAM_MARKET_BASE = "https://steamcommunity.com/market";
@@ -201,4 +201,85 @@ export function parseSteamPrice(priceStr: string | undefined): number | null {
   const cleaned = priceStr.replace(/[^0-9.,]/g, "").replace(",", ".");
   const value = parseFloat(cleaned);
   return isNaN(value) ? null : value;
+}
+
+// ---- Steam Inventory API ----
+
+/**
+ * Parse a Steam profile URL into a SteamID64 or vanity name.
+ * Handles:
+ *   https://steamcommunity.com/profiles/76561198xxxxx
+ *   https://steamcommunity.com/id/customname
+ *   76561198xxxxx (raw steamid64)
+ */
+export function parseSteamProfileUrl(input: string): { steamid64?: string; vanityName?: string } | null {
+  const trimmed = input.trim();
+
+  // Raw SteamID64 (17 digits starting with 7656)
+  if (/^7656\d{13}$/.test(trimmed)) {
+    return { steamid64: trimmed };
+  }
+
+  try {
+    const url = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+    const path = url.pathname.replace(/\/+$/, ""); // trim trailing slashes
+
+    // /profiles/76561198xxxxx
+    const profileMatch = path.match(/\/profiles\/(7656\d{13})/);
+    if (profileMatch) {
+      return { steamid64: profileMatch[1] };
+    }
+
+    // /id/customname
+    const idMatch = path.match(/\/id\/([^/]+)/);
+    if (idMatch) {
+      return { vanityName: idMatch[1] };
+    }
+  } catch {
+    // Not a valid URL
+  }
+
+  return null;
+}
+
+/**
+ * Resolve a Steam vanity URL name to a SteamID64.
+ * Requires STEAM_API_KEY env var.
+ */
+export async function resolveVanityUrl(vanityName: string): Promise<string | null> {
+  const apiKey = process.env.STEAM_API_KEY;
+  if (!apiKey) {
+    console.error("[steam] STEAM_API_KEY not set — cannot resolve vanity URLs");
+    return null;
+  }
+
+  const params = new URLSearchParams({
+    key: apiKey,
+    vanityurl: vanityName,
+  });
+
+  try {
+    const res = await fetch(
+      `https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/?${params}`,
+      { signal: AbortSignal.timeout(10000) }
+    );
+    if (!res.ok) return null;
+    const data = (await res.json()) as SteamVanityResponse;
+    if (data.response.success === 1 && data.response.steamid) {
+      return data.response.steamid;
+    }
+    return null;
+  } catch (error) {
+    console.error("[steam] Vanity URL resolution failed:", error);
+    return null;
+  }
+}
+
+/**
+ * Fetch a user's S&box inventory. Inventory must be public.
+ * Returns all items with their descriptions.
+ */
+export async function fetchInventory(steamid64: string): Promise<SteamInventoryResponse | null> {
+  const url = `https://steamcommunity.com/inventory/${steamid64}/${STEAM_APPID}/2?l=english&count=5000`;
+  return steamFetch<SteamInventoryResponse>(url, 2);
 }

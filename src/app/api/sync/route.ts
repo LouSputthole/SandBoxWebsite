@@ -81,7 +81,20 @@ export async function GET(request: NextRequest) {
   // If authorized (Vercel cron or manual), run the sync
   if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
     try {
-      const result = await syncItems(true);
+      // Step 1: Sync items from Steam search (gets current sell prices)
+      const itemResult = await syncItems(false);
+
+      // Step 2: Sync detailed prices for a batch of items (lowest/median)
+      // Process 40 at a time — the cron runs frequently enough to cycle through all items
+      const priceResult = await syncPriceBatch(40);
+
+      const result = {
+        ...itemResult,
+        pricePointsCreated: itemResult.pricePointsCreated + priceResult.pricePointsCreated,
+        priceBatchProcessed: priceResult.itemsProcessed,
+        errors: [...itemResult.errors, ...priceResult.errors],
+        duration: itemResult.duration + priceResult.duration,
+      };
 
       // Invalidate cache
       if (result.success && result.itemsProcessed > 0) {
