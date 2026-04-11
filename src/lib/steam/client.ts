@@ -249,12 +249,38 @@ export function parseSteamProfileUrl(input: string): { steamid64?: string; vanit
 
 /**
  * Resolve a Steam vanity URL name to a SteamID64.
- * Requires STEAM_API_KEY env var.
+ *
+ * Uses the public profile XML endpoint first (no API key required), and
+ * falls back to the Steam Web API if STEAM_API_KEY is configured.
  */
 export async function resolveVanityUrl(vanityName: string): Promise<string | null> {
+  // Method 1: Fetch the public profile XML — no API key needed
+  try {
+    const xmlRes = await fetch(
+      `https://steamcommunity.com/id/${encodeURIComponent(vanityName)}?xml=1`,
+      {
+        headers: HEADERS,
+        signal: AbortSignal.timeout(10000),
+      }
+    );
+    if (xmlRes.ok) {
+      const xml = await xmlRes.text();
+      const match = xml.match(/<steamID64>(\d{17})<\/steamID64>/);
+      if (match) {
+        console.log(`[steam] Resolved vanity "${vanityName}" via XML → ${match[1]}`);
+        return match[1];
+      }
+      console.warn(`[steam] XML endpoint returned 200 but no steamID64 for "${vanityName}"`);
+    } else {
+      console.warn(`[steam] XML endpoint returned ${xmlRes.status} for "${vanityName}"`);
+    }
+  } catch (error) {
+    console.error("[steam] XML vanity resolution failed:", error);
+  }
+
+  // Method 2: Fall back to Steam Web API if the key is available
   const apiKey = process.env.STEAM_API_KEY;
   if (!apiKey) {
-    console.error("[steam] STEAM_API_KEY not set — cannot resolve vanity URLs");
     return null;
   }
 
@@ -271,11 +297,12 @@ export async function resolveVanityUrl(vanityName: string): Promise<string | nul
     if (!res.ok) return null;
     const data = (await res.json()) as SteamVanityResponse;
     if (data.response.success === 1 && data.response.steamid) {
+      console.log(`[steam] Resolved vanity "${vanityName}" via Web API → ${data.response.steamid}`);
       return data.response.steamid;
     }
     return null;
   } catch (error) {
-    console.error("[steam] Vanity URL resolution failed:", error);
+    console.error("[steam] Steam API vanity resolution failed:", error);
     return null;
   }
 }

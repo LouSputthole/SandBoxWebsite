@@ -51,20 +51,26 @@ export default function InventoryPage() {
 
     try {
       // 1. Resolve Steam profile URL → SteamID64 (server handles vanity lookup)
+      console.log("[inventory] Resolving profile URL:", url.trim());
       const resolveRes = await fetch(
         `/api/inventory/resolve?url=${encodeURIComponent(url.trim())}`
       );
       const resolveData = await resolveRes.json();
+      console.log("[inventory] Resolve response:", resolveRes.status, resolveData);
       if (!resolveRes.ok) {
-        setError(resolveData.error || "Could not resolve Steam profile");
+        setError(
+          resolveData.error ||
+            `Could not resolve Steam profile (status ${resolveRes.status}). Check that the URL is correct — use https://steamcommunity.com/id/YOURNAME or https://steamcommunity.com/profiles/76561...`
+        );
         return;
       }
       const { steamid64 } = resolveData;
+      console.log("[inventory] Resolved to SteamID64:", steamid64);
 
       // 2. Fetch inventory directly from Steam client-side.
       // Browser fetches use the user's IP, bypassing data-center IP blocks.
-      // Steam's inventory endpoint sends Access-Control-Allow-Origin: *
       const invUrl = `https://steamcommunity.com/inventory/${steamid64}/590830/2?l=english&count=5000`;
+      console.log("[inventory] Fetching inventory from Steam:", invUrl);
       let inv: {
         assets?: Array<{ classid: string; instanceid: string; amount: string }>;
         descriptions?: Array<{
@@ -79,19 +85,24 @@ export default function InventoryPage() {
       };
       try {
         const invRes = await fetch(invUrl);
+        console.log("[inventory] Steam response status:", invRes.status);
         if (invRes.status === 403) {
           setError(
-            "This inventory is private. Set your Steam profile, game details, and inventory to public in Steam Privacy Settings."
+            "This inventory is private. On Steam, go to your profile → Edit Profile → Privacy Settings and set Profile, Game Details, AND Inventory all to Public."
           );
           return;
         }
         if (!invRes.ok) {
-          setError(`Steam returned ${invRes.status}. Try again in a moment.`);
+          setError(`Steam returned HTTP ${invRes.status}. Try again in a minute.`);
           return;
         }
         inv = await invRes.json();
-      } catch {
-        setError("Could not reach Steam. Check your network and try again.");
+      } catch (err) {
+        // CORS errors and network failures both land here
+        console.error("[inventory] Steam fetch error:", err);
+        setError(
+          "Could not reach Steam from your browser. This may be a CORS or network issue — try opening your browser's developer console for details."
+        );
         return;
       }
 
