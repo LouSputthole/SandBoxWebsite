@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
         orderBy.name = "asc";
     }
 
-    const [items, total] = await Promise.all([
+    const [items, total, lastUpdatedItem] = await Promise.all([
       prisma.item.findMany({
         where,
         orderBy,
@@ -74,6 +74,10 @@ export async function GET(request: NextRequest) {
         take: limitNum,
       }),
       prisma.item.count({ where }),
+      prisma.item.findFirst({
+        orderBy: { updatedAt: "desc" },
+        select: { updatedAt: true },
+      }),
     ]);
 
     return {
@@ -82,6 +86,7 @@ export async function GET(request: NextRequest) {
       page: pageNum,
       limit: limitNum,
       totalPages: Math.ceil(total / limitNum),
+      lastUpdated: lastUpdatedItem?.updatedAt ?? null,
     };
   });
 

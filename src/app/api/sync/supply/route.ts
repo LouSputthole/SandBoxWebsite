@@ -10,6 +10,15 @@ import { prisma } from "@/lib/db";
  * Body: { items: [{ name: string, supply: number }] }
  */
 export async function POST(request: NextRequest) {
+  // Verify authorization (same CRON_SECRET used by other sync endpoints)
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const authHeader = request.headers.get("authorization");
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
+
   let body: { items?: { name: string; supply: number }[] };
   try {
     body = await request.json();

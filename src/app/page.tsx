@@ -13,11 +13,12 @@ import {
   Gamepad2,
   BarChart3,
   ShoppingCart,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ItemCard } from "@/components/items/item-card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatPrice } from "@/lib/utils";
+import { formatPrice, formatRelativeTime } from "@/lib/utils";
 
 interface Item {
   id: string;
@@ -38,6 +39,7 @@ interface Stats {
   marketCap: number;
   totalListings: number;
   totalVolume: number;
+  lastUpdated: string | null;
 }
 
 async function safeFetch(url: string) {
@@ -87,6 +89,7 @@ export default function HomePage() {
           marketCap,
           totalListings: volumes.reduce((a, b) => a + b, 0),
           totalVolume: volumes.reduce((a, b) => a + b, 0),
+          lastUpdated: allData.lastUpdated ?? null,
         });
       }
 
@@ -163,6 +166,7 @@ export default function HomePage() {
               ))}
             </div>
           ) : stats ? (
+            <>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 rounded-lg bg-purple-500/10">
@@ -201,6 +205,13 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
+            {stats.lastUpdated && (
+              <div className="flex items-center justify-center gap-1.5 mt-4 text-[11px] text-neutral-500">
+                <Clock className="h-3 w-3" />
+                <span>Data last updated {formatRelativeTime(stats.lastUpdated)}</span>
+              </div>
+            )}
+            </>
           ) : null}
         </div>
       </section>

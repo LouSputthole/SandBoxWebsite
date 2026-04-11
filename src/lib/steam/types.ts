@@ -90,39 +90,7 @@ export interface SyncResult {
   duration: number;
 }
 
-// ---- Steam Inventory API response types ----
-
-export interface SteamInventoryResponse {
-  assets?: SteamInventoryAsset[];
-  descriptions?: SteamInventoryDescription[];
-  total_inventory_count: number;
-  success: number;
-  more_items?: number;
-  last_assetid?: string;
-}
-
-export interface SteamInventoryAsset {
-  appid: number;
-  contextid: string;
-  assetid: string;
-  classid: string;
-  instanceid: string;
-  amount: string;
-}
-
-export interface SteamInventoryDescription {
-  appid: number;
-  classid: string;
-  instanceid: string;
-  name: string;
-  market_hash_name: string;
-  market_name: string;
-  type: string;
-  icon_url: string;
-  tradable: number;
-  marketable: number;
-  tags?: { category: string; internal_name: string; localized_tag_name: string }[];
-}
+// ---- Steam Web API ----
 
 export interface SteamVanityResponse {
   response: {

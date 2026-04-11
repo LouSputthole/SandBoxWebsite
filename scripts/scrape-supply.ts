@@ -106,9 +106,14 @@ async function scrapeSkinSupply(): Promise<SkinRow[]> {
 async function postSupplyData(items: SkinRow[]) {
   console.log(`[scraper] POSTing supply data to ${API_URL}...`);
 
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.CRON_SECRET) {
+    headers["Authorization"] = `Bearer ${process.env.CRON_SECRET}`;
+  }
+
   const res = await fetch(API_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ items }),
   });
 

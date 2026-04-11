@@ -1,0 +1,50 @@
+name: Scrape S&box Supply Data
+
+# sbox.game/metrics/skins is a Blazor Server app that requires JavaScript
+# rendering. We use Playwright headless Chromium from GitHub Actions and
+# POST the scraped supply data to the deployed app's sync endpoint.
+
+on:
+  # Daily at 08:00 UTC
+  schedule:
+    - cron: "0 8 * * *"
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Print scraped data without posting to API"
+        type: boolean
+        default: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright + Chromium
+        run: |
+          npm install -D playwright
+          npx playwright install --with-deps chromium
+
+      - name: Scrape supply data
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          API_URL="${{ secrets.DEPLOYED_URL }}/api/sync/supply"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            npx tsx scripts/scrape-supply.ts --api-url="$API_URL" --dry-run
+          else
+            npx tsx scripts/scrape-supply.ts --api-url="$API_URL"
+          fi

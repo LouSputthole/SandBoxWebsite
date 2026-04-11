@@ -50,17 +50,109 @@ export default function InventoryPage() {
     setResult(null);
 
     try {
-      const res = await fetch(`/api/inventory?url=${encodeURIComponent(url.trim())}`);
-      const data = await res.json();
+      // 1. Resolve Steam profile URL → SteamID64 (server handles vanity lookup)
+      const resolveRes = await fetch(
+        `/api/inventory/resolve?url=${encodeURIComponent(url.trim())}`
+      );
+      const resolveData = await resolveRes.json();
+      if (!resolveRes.ok) {
+        setError(resolveData.error || "Could not resolve Steam profile");
+        return;
+      }
+      const { steamid64 } = resolveData;
 
-      if (!res.ok) {
-        setError(data.error || "Failed to load inventory");
+      // 2. Fetch inventory directly from Steam client-side.
+      // Browser fetches use the user's IP, bypassing data-center IP blocks.
+      // Steam's inventory endpoint sends Access-Control-Allow-Origin: *
+      const invUrl = `https://steamcommunity.com/inventory/${steamid64}/590830/2?l=english&count=5000`;
+      let inv: {
+        assets?: Array<{ classid: string; instanceid: string; amount: string }>;
+        descriptions?: Array<{
+          classid: string;
+          instanceid: string;
+          name: string;
+          market_hash_name: string;
+          type: string;
+          icon_url: string;
+          marketable: number;
+        }>;
+      };
+      try {
+        const invRes = await fetch(invUrl);
+        if (invRes.status === 403) {
+          setError(
+            "This inventory is private. Set your Steam profile, game details, and inventory to public in Steam Privacy Settings."
+          );
+          return;
+        }
+        if (!invRes.ok) {
+          setError(`Steam returned ${invRes.status}. Try again in a moment.`);
+          return;
+        }
+        inv = await invRes.json();
+      } catch {
+        setError("Could not reach Steam. Check your network and try again.");
         return;
       }
 
-      setResult(data);
+      if (!inv.assets || inv.assets.length === 0) {
+        setResult({
+          steamid64,
+          totalItems: 0,
+          uniqueItems: 0,
+          totalValue: 0,
+          items: [],
+        });
+        return;
+      }
+
+      // 3. Build description lookup and aggregate by market_hash_name
+      type InvDesc = NonNullable<typeof inv.descriptions>[number];
+      const descMap = new Map<string, InvDesc>();
+      if (inv.descriptions) {
+        for (const d of inv.descriptions) {
+          descMap.set(`${d.classid}_${d.instanceid}`, d);
+        }
+      }
+
+      const counts = new Map<
+        string,
+        { hashName: string; quantity: number; name: string; type: string; iconUrl?: string; marketable: number }
+      >();
+      for (const asset of inv.assets) {
+        const desc = descMap.get(`${asset.classid}_${asset.instanceid}`);
+        if (!desc) continue;
+        const qty = parseInt(asset.amount, 10) || 1;
+        const existing = counts.get(desc.market_hash_name);
+        if (existing) {
+          existing.quantity += qty;
+        } else {
+          counts.set(desc.market_hash_name, {
+            hashName: desc.market_hash_name,
+            quantity: qty,
+            name: desc.name,
+            type: desc.type ?? "unknown",
+            iconUrl: desc.icon_url,
+            marketable: desc.marketable,
+          });
+        }
+      }
+
+      // 4. Send parsed list to our server for DB-based price enrichment
+      const matchRes = await fetch("/api/inventory/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: Array.from(counts.values()) }),
+      });
+      const matchData = await matchRes.json();
+      if (!matchRes.ok) {
+        setError(matchData.error || "Failed to match items against database");
+        return;
+      }
+
+      setResult({ steamid64, ...matchData });
     } catch {
-      setError("Network error — please try again");
+      setError("Unexpected error — please try again");
     } finally {
       setLoading(false);
     }

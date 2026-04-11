@@ -1,0 +1,47 @@
+name: Scrape Steam Item Name IDs
+
+# Steam Market listing pages are blocked from Vercel's data center IPs, so
+# we scrape item_nameid values from GitHub Actions runners (which Steam
+# currently allows) and write them directly to the database.
+
+on:
+  # Weekly — nameids rarely change, only new items need scraping.
+  schedule:
+    - cron: "0 6 * * 1" # Mondays at 06:00 UTC
+  # Manual trigger for immediate runs
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Re-scrape items that already have a nameid"
+        type: boolean
+        default: false
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Scrape item name IDs
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ "${{ inputs.force }}" = "true" ]; then
+            npm run scrape:nameids -- --force
+          else
+            npm run scrape:nameids
+          fi
