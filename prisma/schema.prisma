@@ -55,6 +55,8 @@ model PriceAlert {
   email       String
   itemId      String
   item        Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   targetPrice Float
   direction   String   // "below" or "above"
   active      Boolean  @default(true)
@@ -64,6 +66,7 @@ model PriceAlert {
 
   @@index([itemId, active])
   @@index([email])
+  @@index([userId])
 }
 
 model MarketSnapshot {
@@ -79,4 +82,41 @@ model MarketSnapshot {
   ceiling     Float?   // most expensive item price
 
   @@index([timestamp])
+}
+
+model User {
+  id        String   @id @default(cuid())
+  steamId   String   @unique
+  username  String?
+  avatarUrl String?
+  profileUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions       Session[]
+  watchlistItems WatchlistItem[]
+  priceAlerts    PriceAlert[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemSlug  String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, itemSlug])
+  @@index([userId])
 }
