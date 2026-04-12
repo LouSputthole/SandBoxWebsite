@@ -50,22 +50,71 @@ export default function InventoryPage() {
     setResult(null);
 
     try {
-      // 1. Resolve Steam profile URL → SteamID64 (server handles vanity lookup)
-      console.log("[inventory] Resolving profile URL:", url.trim());
-      const resolveRes = await fetch(
-        `/api/inventory/resolve?url=${encodeURIComponent(url.trim())}`
-      );
-      const resolveData = await resolveRes.json();
-      console.log("[inventory] Resolve response:", resolveRes.status, resolveData);
-      if (!resolveRes.ok) {
+      // 1. Resolve Steam profile URL → SteamID64
+      // Parse the URL client-side first to avoid Vercel IP blocks on Steam
+      const trimmedUrl = url.trim();
+      let steamid64: string | undefined;
+
+      // Try parsing the URL locally
+      const profilesMatch = trimmedUrl.match(/\/profiles\/(7656\d{13})/);
+      const rawMatch = trimmedUrl.match(/^(7656\d{13})$/);
+      if (profilesMatch) {
+        steamid64 = profilesMatch[1];
+      } else if (rawMatch) {
+        steamid64 = rawMatch[1];
+      }
+
+      // For vanity URLs (/id/NAME), try client-side XML resolution first
+      if (!steamid64) {
+        const idMatch = trimmedUrl.match(/\/id\/([^/?#]+)/);
+        const vanityName = idMatch?.[1];
+
+        if (vanityName) {
+          console.log("[inventory] Resolving vanity name client-side:", vanityName);
+          try {
+            const xmlRes = await fetch(
+              `https://steamcommunity.com/id/${encodeURIComponent(vanityName)}?xml=1`
+            );
+            if (xmlRes.ok) {
+              const xml = await xmlRes.text();
+              const xmlMatch = xml.match(/<steamID64>(\d{17})<\/steamID64>/);
+              if (xmlMatch) {
+                steamid64 = xmlMatch[1];
+                console.log("[inventory] Resolved via client XML:", steamid64);
+              }
+            }
+          } catch (xmlErr) {
+            console.warn("[inventory] Client-side XML resolution failed (CORS):", xmlErr);
+          }
+        }
+
+        // Fall back to server-side resolution
+        if (!steamid64) {
+          console.log("[inventory] Falling back to server-side resolve");
+          const resolveRes = await fetch(
+            `/api/inventory/resolve?url=${encodeURIComponent(trimmedUrl)}`
+          );
+          const resolveData = await resolveRes.json();
+          console.log("[inventory] Server resolve response:", resolveRes.status, resolveData);
+          if (!resolveRes.ok) {
+            setError(
+              resolveData.error ||
+                "Could not find this Steam profile. Make sure the URL is correct."
+            );
+            return;
+          }
+          steamid64 = resolveData.steamid64;
+        }
+      }
+
+      if (!steamid64) {
         setError(
-          resolveData.error ||
-            `Could not resolve Steam profile (status ${resolveRes.status}). Check that the URL is correct — use https://steamcommunity.com/id/YOURNAME or https://steamcommunity.com/profiles/76561...`
+          "Could not parse Steam profile URL. Use the format: https://steamcommunity.com/id/YOURNAME or https://steamcommunity.com/profiles/76561..."
         );
         return;
       }
-      const { steamid64 } = resolveData;
-      console.log("[inventory] Resolved to SteamID64:", steamid64);
+
+      console.log("[inventory] Using SteamID64:", steamid64);
 
       // 2. Fetch inventory directly from Steam client-side.
       // Browser fetches use the user's IP, bypassing data-center IP blocks.
@@ -82,13 +131,15 @@ export default function InventoryPage() {
           icon_url: string;
           marketable: number;
         }>;
+        success?: number | boolean;
+        error?: string;
       };
       try {
         const invRes = await fetch(invUrl);
         console.log("[inventory] Steam response status:", invRes.status);
         if (invRes.status === 403) {
           setError(
-            "This inventory is private. On Steam, go to your profile → Edit Profile → Privacy Settings and set Profile, Game Details, AND Inventory all to Public."
+            "Steam returned 403 (Forbidden). Please verify ALL three privacy settings are PUBLIC on Steam: 1) My Profile, 2) Game Details, 3) Inventory. Go to Edit Profile → Privacy Settings."
           );
           return;
         }
@@ -97,11 +148,24 @@ export default function InventoryPage() {
           return;
         }
         inv = await invRes.json();
+        console.log("[inventory] Steam inventory response:", {
+          success: inv.success,
+          assets: inv.assets?.length ?? 0,
+          error: inv.error,
+        });
       } catch (err) {
         // CORS errors and network failures both land here
         console.error("[inventory] Steam fetch error:", err);
         setError(
-          "Could not reach Steam from your browser. This may be a CORS or network issue — try opening your browser's developer console for details."
+          "Could not load inventory from Steam. This is likely a browser CORS restriction. Try using a direct /profiles/ URL instead, or check the developer console (F12) for details."
+        );
+        return;
+      }
+
+      // Check for Steam error response (e.g., {"success": false, "error": "..."})
+      if (inv.success === false || inv.success === 0) {
+        setError(
+          inv.error || "Steam returned an error. The inventory may be private or this account may not own S&box."
         );
         return;
       }
