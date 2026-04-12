@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Search, Menu, X, Gamepad2, Backpack } from "lucide-react";
+import { Search, Menu, X, Gamepad2, Backpack, BarChart3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -39,6 +39,13 @@ export function Navbar() {
               className="text-sm text-neutral-400 hover:text-white transition-colors"
             >
               Browse
+            </Link>
+            <Link
+              href="/trends"
+              className="text-sm text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+              Trends
             </Link>
             <Link
               href="/leaderboard"
@@ -94,6 +101,13 @@ export function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               Browse
+            </Link>
+            <Link
+              href="/trends"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Market Trends
             </Link>
             <Link
               href="/leaderboard"

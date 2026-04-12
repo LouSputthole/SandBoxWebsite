@@ -73,6 +73,7 @@ export default async function ItemDetailPage({ params }: PageProps) {
   // Serialize dates for the client component
   const serialized = {
     ...item,
+    delistedAt: item.delistedAt?.toISOString() ?? null,
     priceHistory: item.priceHistory.map((p) => ({
       ...p,
       timestamp: p.timestamp.toISOString(),

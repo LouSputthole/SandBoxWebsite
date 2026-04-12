@@ -46,6 +46,9 @@ export interface ItemDetailData {
   totalSupply: number | null;
   priceChange24h: number | null;
   isLimited: boolean;
+  storeStatus: string;
+  delistedAt: string | null;
+  storePrice: number | null;
   priceHistory: PricePoint[];
 }
 
@@ -74,12 +77,24 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
             size="lg"
             className="rounded-xl border border-neutral-700/50 h-80"
           />
-          {item.isLimited && (
-            <div className="absolute top-4 right-4 flex items-center gap-1.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-3 py-1 text-xs font-medium">
-              <Star className="h-3 w-3 fill-amber-400" />
-              Limited
-            </div>
-          )}
+          <div className="absolute top-4 right-4 flex flex-col gap-2 items-end">
+            {item.isLimited && (
+              <div className="flex items-center gap-1.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-full px-3 py-1 text-xs font-medium">
+                <Star className="h-3 w-3 fill-amber-400" />
+                Limited
+              </div>
+            )}
+            {item.storeStatus === "delisted" && (
+              <div className="flex items-center gap-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-full px-3 py-1 text-xs font-medium">
+                Delisted
+              </div>
+            )}
+            {item.storeStatus === "available" && (
+              <div className="flex items-center gap-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full px-3 py-1 text-xs font-medium">
+                In Store
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Info */}

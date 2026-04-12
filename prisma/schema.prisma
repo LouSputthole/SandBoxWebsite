@@ -18,6 +18,9 @@ model Item {
   imageUrl       String?
   marketUrl      String?
   steamItemNameId String?      // Steam numeric ID for order histogram (scraped locally)
+  storeStatus    String       @default("unknown") // "available", "delisted", "unknown"
+  delistedAt     DateTime?    // When the item was removed from the S&box store
+  storePrice     Float?       // Original store price (if known)
   currentPrice   Float?
   lowestPrice    Float?
   medianPrice    Float?
@@ -33,6 +36,7 @@ model Item {
   @@index([type])
   @@index([rarity])
   @@index([currentPrice])
+  @@index([storeStatus])
 }
 
 model PricePoint {
@@ -60,4 +64,19 @@ model PriceAlert {
 
   @@index([itemId, active])
   @@index([email])
+}
+
+model MarketSnapshot {
+  id          String   @id @default(cuid())
+  timestamp   DateTime @default(now())
+  totalItems  Int
+  marketCap   Float    // sum(currentPrice * volume) across all items
+  avgPrice    Float    // mean of currentPrice
+  medianPrice Float?   // median of currentPrice
+  totalVolume Int      // sum of all volumes (listings)
+  totalSupply Int?     // sum of totalSupply across all items
+  floor       Float?   // cheapest item price
+  ceiling     Float?   // most expensive item price
+
+  @@index([timestamp])
 }

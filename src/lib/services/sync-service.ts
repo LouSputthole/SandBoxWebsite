@@ -349,3 +349,36 @@ export async function cleanupNonSteamItems(): Promise<SyncResult> {
   result.duration = Date.now() - startTime;
   return result;
 }
+
+/**
+ * Capture a snapshot of current market-wide metrics.
+ * Called after each successful sync to build historical trend data.
+ */
+export async function captureMarketSnapshot(): Promise<void> {
+  const items = await prisma.item.findMany({
+    select: { currentPrice: true, volume: true, totalSupply: true },
+  });
+
+  if (items.length === 0) return;
+
+  const prices = items.map((i) => i.currentPrice ?? 0).filter((p) => p > 0);
+  const sortedPrices = [...prices].sort((a, b) => a - b);
+  const median = sortedPrices.length > 0
+    ? sortedPrices[Math.floor(sortedPrices.length / 2)]
+    : null;
+
+  await prisma.marketSnapshot.create({
+    data: {
+      totalItems: items.length,
+      marketCap: items.reduce((sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0), 0),
+      avgPrice: prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0,
+      medianPrice: median,
+      totalVolume: items.reduce((sum, i) => sum + (i.volume ?? 0), 0),
+      totalSupply: items.reduce((sum, i) => sum + (i.totalSupply ?? 0), 0) || null,
+      floor: sortedPrices.length > 0 ? sortedPrices[0] : null,
+      ceiling: sortedPrices.length > 0 ? sortedPrices[sortedPrices.length - 1] : null,
+    },
+  });
+
+  console.log(`[sync] Market snapshot captured: ${items.length} items, market cap $${items.reduce((sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0), 0).toFixed(2)}`);
+}

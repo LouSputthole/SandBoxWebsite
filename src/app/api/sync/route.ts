@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncItems, syncPriceBatch, cleanupNonSteamItems } from "@/lib/services/sync-service";
+import { syncItems, syncPriceBatch, cleanupNonSteamItems, captureMarketSnapshot } from "@/lib/services/sync-service";
 import { checkPriceAlerts } from "@/lib/services/alert-service";
 import { invalidatePattern } from "@/lib/redis/cache";
 
@@ -57,6 +57,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Capture market snapshot for trends
+    if (result.success && result.itemsProcessed > 0) {
+      await captureMarketSnapshot();
+    }
+
     return NextResponse.json(result);
   } catch (error) {
     console.error("[sync] Route error:", error);
@@ -110,6 +115,11 @@ export async function GET(request: NextRequest) {
         if (alertResult.triggered > 0) {
           console.log(`[cron] ${alertResult.triggered} price alerts triggered`);
         }
+      }
+
+      // Capture market snapshot for trends
+      if (result.success && result.itemsProcessed > 0) {
+        await captureMarketSnapshot();
       }
 
       return NextResponse.json(result);
