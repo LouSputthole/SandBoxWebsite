@@ -20,6 +20,9 @@ import { ItemImage } from "@/components/items/item-image";
 import { PriceChart } from "@/components/charts/price-chart";
 import { PriceAlertForm } from "@/components/alerts/price-alert-form";
 import { OrderBook } from "@/components/items/order-book";
+import { SpreadAnalysis } from "@/components/items/spread-analysis";
+import { PriceSignals } from "@/components/items/price-signals";
+import { WatchlistButton } from "@/components/items/watchlist-button";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
 
 interface PricePoint {
@@ -180,7 +183,8 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
           </div>
 
           {/* Actions */}
-          <div className="flex flex-wrap items-start gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <WatchlistButton slug={item.slug} size="md" />
             {item.marketUrl && (
               <a
                 href={item.marketUrl}
@@ -218,6 +222,20 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
       <Card className="bg-neutral-900/80">
         <CardContent className="p-6">
           <PriceChart data={item.priceHistory} itemId={item.id} />
+        </CardContent>
+      </Card>
+
+      {/* Price Signals */}
+      <Card className="bg-neutral-900/80 mt-6">
+        <CardContent className="p-6">
+          <PriceSignals item={item} />
+        </CardContent>
+      </Card>
+
+      {/* Spread Analysis */}
+      <Card className="bg-neutral-900/80 mt-6">
+        <CardContent className="p-6">
+          <SpreadAnalysis slug={item.slug} />
         </CardContent>
       </Card>
 

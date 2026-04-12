@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Search, Menu, X, Gamepad2, Backpack, BarChart3 } from "lucide-react";
+import { Search, Menu, X, Gamepad2, Backpack, BarChart3, Heart } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
@@ -59,6 +59,13 @@ export function Navbar() {
             >
               <Backpack className="h-3.5 w-3.5" />
               Inventory
+            </Link>
+            <Link
+              href="/portfolio"
+              className="text-sm text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <Heart className="h-3.5 w-3.5" />
+              Watchlist
             </Link>
             <Link
               href="/faq"
@@ -122,6 +129,13 @@ export function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               Inventory Checker
+            </Link>
+            <Link
+              href="/portfolio"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Watchlist
             </Link>
             <Link
               href="/faq"

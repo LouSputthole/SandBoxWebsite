@@ -1,0 +1,42 @@
+name: Scrape S&box Store Availability
+
+on:
+  schedule:
+    # Run daily at 10:00 UTC (after supply scrape at 08:00)
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (don't update database)"
+        required: false
+        default: "false"
+        type: boolean
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run store scraper
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          DEPLOYED_URL: ${{ secrets.DEPLOYED_URL }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS="--dry-run"
+          fi
+          npx tsx scripts/scrape-store.ts $ARGS

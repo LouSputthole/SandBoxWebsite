@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
 import { ItemImage } from "@/components/items/item-image";
+import { WatchlistButton } from "@/components/items/watchlist-button";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
 
 interface ItemCardProps {
@@ -26,6 +27,9 @@ export function ItemCard({ item }: ItemCardProps) {
       <div
         className="group relative rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900 hover:shadow-lg"
       >
+        <div className="absolute top-3 left-3 z-10">
+          <WatchlistButton slug={item.slug} size="sm" />
+        </div>
         {item.isLimited && (
           <div className="absolute top-3 right-3 z-10">
             <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
