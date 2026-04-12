@@ -17,6 +17,8 @@
  */
 
 import "dotenv/config";
+import { PrismaClient } from "../src/generated/prisma/client.js";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 const STEAM_APPID = 590830;
 const HEADERS = {
@@ -58,9 +60,13 @@ async function scrapeItemNameId(marketHashName: string): Promise<string | null> 
 }
 
 async function main() {
-  // Dynamic import to handle prisma connection
-  const { PrismaClient } = await import("../src/generated/prisma/client.js");
-  const prisma = new PrismaClient();
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL environment variable is required");
+  }
+
+  const adapter = new PrismaPg({ connectionString });
+  const prisma = new PrismaClient({ adapter });
 
   try {
     const where = FORCE
