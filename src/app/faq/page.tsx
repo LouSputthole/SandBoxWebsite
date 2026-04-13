@@ -54,6 +54,16 @@ const faqs = [
     answer:
       "To sell S&box skins, go to your Steam Inventory, select the item you want to sell, and list it on the Steam Community Market. You can check current market prices on sboxskins.gg to price your item competitively.",
   },
+  {
+    question: "Is signing in with Steam safe?",
+    answer:
+      "Yes. We use Steam's official OpenID 2.0 protocol — the same used by trusted community sites like SteamDB, backpack.tf, and CSGOStash. When you click \"Sign in with Steam\", you are redirected to Steam's website to log in. We never see your password and we never receive any access to your Steam account. We cannot view your inventory, send trade offers, make purchases, or do anything to your account. The only information we receive is your public Steam ID (a number anyone can look up). Signing in is completely optional — it just lets you sync your watchlist across devices.",
+  },
+  {
+    question: "What data do you store when I sign in?",
+    answer:
+      "When you sign in with Steam, we store your public Steam ID, display name, and profile avatar — all of which are publicly visible on your Steam profile already. We also store your watchlist items server-side so they sync across devices. We do not store your password, email, or any private account information. You can sign out at any time, and your account data can be deleted on request.",
+  },
 ];
 
 export default function FAQPage() {
