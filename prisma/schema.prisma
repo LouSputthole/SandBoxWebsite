@@ -120,3 +120,33 @@ model WatchlistItem {
   @@unique([userId, itemSlug])
   @@index([userId])
 }
+
+model PageView {
+  id        String   @id @default(cuid())
+  path      String
+  referrer  String?
+  userAgent String?
+  country   String?
+  city      String?
+  device    String?  // "desktop", "mobile", "tablet"
+  browser   String?
+  os        String?
+  sessionId String?  // anonymous session fingerprint (hashed IP + UA)
+  timestamp DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([path])
+  @@index([sessionId])
+}
+
+model DailyStats {
+  id          String   @id @default(cuid())
+  date        DateTime @unique // one row per day
+  views       Int      @default(0)
+  visitors    Int      @default(0) // unique sessionIds
+  topPages    Json?    // [{ path, count }]
+  topReferrers Json?   // [{ referrer, count }]
+  topCountries Json?   // [{ country, count }]
+
+  @@index([date])
+}

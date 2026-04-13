@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
+import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { Providers } from "@/components/providers";
+import { PageTracker } from "@/components/analytics/page-tracker";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -55,6 +59,11 @@ export default function RootLayout({
           <main className="flex-1">{children}</main>
           <Footer />
         </Providers>
+        <Suspense fallback={null}>
+          <PageTracker />
+        </Suspense>
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
