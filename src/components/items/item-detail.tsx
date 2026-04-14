@@ -38,7 +38,6 @@ export interface ItemDetailData {
   slug: string;
   description: string | null;
   type: string;
-  rarity: string | null;
   imageUrl: string | null;
   marketUrl: string | null;
   steamMarketId: string | null;

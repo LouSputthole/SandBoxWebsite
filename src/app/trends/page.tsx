@@ -46,7 +46,6 @@ interface MoverItem {
   slug: string;
   imageUrl: string | null;
   type: string;
-  rarity: string | null;
   currentPrice: number | null;
   priceChange24h: number | null;
   volume: number | null;
@@ -69,7 +68,6 @@ interface TrendsData {
   };
   snapshots: Snapshot[];
   typeBreakdown: Breakdown;
-  rarityBreakdown: Breakdown;
   storeStatusCounts: { available: number; delisted: number; unknown: number };
   topGainers: MoverItem[];
   topLosers: MoverItem[];
@@ -81,14 +79,6 @@ const periods = [
   { label: "90D", value: "90d" },
   { label: "All", value: "all" },
 ];
-
-const RARITY_COLORS: Record<string, string> = {
-  common: "#a3a3a3",
-  uncommon: "#22c55e",
-  rare: "#3b82f6",
-  legendary: "#f59e0b",
-  unknown: "#525252",
-};
 
 const TYPE_COLORS: Record<string, string> = {
   character: "#8b5cf6",
@@ -164,13 +154,6 @@ export default function TrendsPage() {
     return Object.entries(data.typeBreakdown)
       .map(([name, v]) => ({ name, value: v.count, totalValue: v.totalValue }))
       .sort((a, b) => b.value - a.value);
-  }, [data]);
-
-  const rarityChartData = useMemo(() => {
-    if (!data?.rarityBreakdown) return [];
-    return Object.entries(data.rarityBreakdown)
-      .map(([name, v]) => ({ name, value: v.count, totalValue: v.totalValue }))
-      .sort((a, b) => b.totalValue - a.totalValue);
   }, [data]);
 
   const metricConfig = {
@@ -376,46 +359,6 @@ export default function TrendsPage() {
 
         {/* Breakdowns */}
         <div className="space-y-6">
-          {/* By Rarity */}
-          <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
-            <h2 className="text-sm font-medium text-white mb-4">By Rarity</h2>
-            <div className="flex items-center gap-4">
-              <div className="w-24 h-24">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={rarityChartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={25}
-                      outerRadius={40}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {rarityChartData.map((entry) => (
-                        <Cell key={entry.name} fill={RARITY_COLORS[entry.name] || "#525252"} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="flex-1 space-y-1.5">
-                {rarityChartData.map((entry) => (
-                  <div key={entry.name} className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="h-2.5 w-2.5 rounded-full"
-                        style={{ backgroundColor: RARITY_COLORS[entry.name] || "#525252" }}
-                      />
-                      <span className="text-neutral-300 capitalize">{entry.name}</span>
-                    </div>
-                    <span className="text-neutral-500">{entry.value} items</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
           {/* By Type */}
           <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
             <h2 className="text-sm font-medium text-white mb-4">By Type</h2>

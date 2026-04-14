@@ -14,7 +14,6 @@ model Item {
   slug           String       @unique
   description    String?
   type           String       // "character", "clothing", "accessory", "weapon", "tool"
-  rarity         String?      // "common", "uncommon", "rare", "legendary"
   imageUrl       String?
   marketUrl      String?
   steamItemNameId String?      // Steam numeric ID for order histogram (scraped locally)
@@ -34,7 +33,6 @@ model Item {
   priceAlerts    PriceAlert[]
 
   @@index([type])
-  @@index([rarity])
   @@index([currentPrice])
   @@index([storeStatus])
 }

@@ -7,7 +7,7 @@ import { cached, CACHE_TTL } from "@/lib/redis/cache";
  *
  * Returns market-wide analytics:
  * - Market snapshots over time (for charts)
- * - Current breakdown by type and rarity
+ * - Current breakdown by type
  * - Top movers (gainers/losers)
  * - Store status summary
  */
@@ -41,7 +41,6 @@ export async function GET(request: NextRequest) {
       prisma.item.findMany({
         select: {
           type: true,
-          rarity: true,
           currentPrice: true,
           volume: true,
           totalSupply: true,
@@ -60,7 +59,6 @@ export async function GET(request: NextRequest) {
           slug: true,
           imageUrl: true,
           type: true,
-          rarity: true,
           currentPrice: true,
           priceChange24h: true,
           volume: true,
@@ -77,7 +75,6 @@ export async function GET(request: NextRequest) {
           slug: true,
           imageUrl: true,
           type: true,
-          rarity: true,
           currentPrice: true,
           priceChange24h: true,
           volume: true,
@@ -87,28 +84,17 @@ export async function GET(request: NextRequest) {
 
     // Compute type breakdown
     const typeBreakdown: Record<string, { count: number; totalValue: number; avgPrice: number }> = {};
-    const rarityBreakdown: Record<string, { count: number; totalValue: number; avgPrice: number }> = {};
 
     for (const item of items) {
-      // Type
       const t = item.type || "unknown";
       if (!typeBreakdown[t]) typeBreakdown[t] = { count: 0, totalValue: 0, avgPrice: 0 };
       typeBreakdown[t].count++;
       typeBreakdown[t].totalValue += (item.currentPrice ?? 0) * (item.volume ?? 0);
-
-      // Rarity
-      const r = item.rarity || "unknown";
-      if (!rarityBreakdown[r]) rarityBreakdown[r] = { count: 0, totalValue: 0, avgPrice: 0 };
-      rarityBreakdown[r].count++;
-      rarityBreakdown[r].totalValue += (item.currentPrice ?? 0) * (item.volume ?? 0);
     }
 
     // Compute avg prices
     for (const t of Object.values(typeBreakdown)) {
       t.avgPrice = t.count > 0 ? t.totalValue / t.count : 0;
-    }
-    for (const r of Object.values(rarityBreakdown)) {
-      r.avgPrice = r.count > 0 ? r.totalValue / r.count : 0;
     }
 
     // Store status summary
@@ -145,7 +131,6 @@ export async function GET(request: NextRequest) {
       currentStats,
       snapshots,
       typeBreakdown,
-      rarityBreakdown,
       storeStatusCounts,
       topGainers,
       topLosers,

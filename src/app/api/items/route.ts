@@ -7,14 +7,13 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const q = searchParams.get("q") || "";
   const type = searchParams.get("type") || "";
-  const rarity = searchParams.get("rarity") || "";
   const minPrice = searchParams.get("minPrice") || "";
   const maxPrice = searchParams.get("maxPrice") || "";
   const sort = searchParams.get("sort") || "name-asc";
   const page = searchParams.get("page") || "1";
   const limit = searchParams.get("limit") || "12";
 
-  const key = cacheKey("items", { q, type, rarity, minPrice, maxPrice, sort, page, limit });
+  const key = cacheKey("items", { q, type, minPrice, maxPrice, sort, page, limit });
 
   const data = await cached(key, CACHE_TTL.ITEMS_LIST, async () => {
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -26,9 +25,6 @@ export async function GET(request: NextRequest) {
     }
     if (type) {
       where.type = type;
-    }
-    if (rarity) {
-      where.rarity = rarity;
     }
     if (minPrice || maxPrice) {
       where.currentPrice = {};

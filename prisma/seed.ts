@@ -45,7 +45,6 @@ async function main() {
         slug: item.slug,
         description: item.description,
         type: item.type,
-        rarity: item.rarity,
         imageUrl: item.imageUrl,
         marketUrl: item.marketUrl,
         currentPrice: item.currentPrice,

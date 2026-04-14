@@ -11,7 +11,6 @@ interface Item {
   name: string;
   slug: string;
   type: string;
-  rarity: string | null;
   imageUrl: string | null;
   currentPrice: number | null;
   lowestPrice: number | null;

@@ -7,7 +7,6 @@ import { X, SlidersHorizontal } from "lucide-react";
 
 interface FilterState {
   type: string;
-  rarity: string;
   minPrice: string;
   maxPrice: string;
   sort: string;

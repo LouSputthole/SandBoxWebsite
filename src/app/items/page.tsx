@@ -15,7 +15,6 @@ interface Item {
   name: string;
   slug: string;
   type: string;
-  rarity: string | null;
   imageUrl: string | null;
   currentPrice: number | null;
   lowestPrice: number | null;
@@ -27,7 +26,6 @@ interface Item {
 
 interface FilterState {
   type: string;
-  rarity: string;
   minPrice: string;
   maxPrice: string;
   sort: string;
@@ -35,7 +33,6 @@ interface FilterState {
 
 const defaultFilters: FilterState = {
   type: "",
-  rarity: "",
   minPrice: "",
   maxPrice: "",
   sort: "name-asc",
@@ -92,7 +89,6 @@ function BrowsePageContent() {
   }, []);
   const [filters, setFilters] = useState<FilterState>({
     type: searchParams.get("type") || "",
-    rarity: searchParams.get("rarity") || "",
     minPrice: searchParams.get("minPrice") || "",
     maxPrice: searchParams.get("maxPrice") || "",
     sort: searchParams.get("sort") || "name-asc",
@@ -106,7 +102,6 @@ function BrowsePageContent() {
     const params = new URLSearchParams();
     if (search) params.set("q", search);
     if (filters.type) params.set("type", filters.type);
-    if (filters.rarity) params.set("rarity", filters.rarity);
     if (filters.minPrice) params.set("minPrice", filters.minPrice);
     if (filters.maxPrice) params.set("maxPrice", filters.maxPrice);
     params.set("sort", filters.sort);
@@ -135,7 +130,6 @@ function BrowsePageContent() {
     const params = new URLSearchParams();
     if (search) params.set("q", search);
     if (filters.type) params.set("type", filters.type);
-    if (filters.rarity) params.set("rarity", filters.rarity);
     if (filters.minPrice) params.set("minPrice", filters.minPrice);
     if (filters.maxPrice) params.set("maxPrice", filters.maxPrice);
     if (filters.sort !== "name-asc") params.set("sort", filters.sort);

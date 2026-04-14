@@ -23,14 +23,11 @@ async function getItem(slug: string) {
   });
 }
 
-async function getRelatedItems(item: { id: string; type: string; rarity: string | null }) {
+async function getRelatedItems(item: { id: string; type: string }) {
   return prisma.item.findMany({
     where: {
       id: { not: item.id },
-      OR: [
-        { type: item.type },
-        { rarity: item.rarity },
-      ],
+      type: item.type,
     },
     take: 6,
     orderBy: { volume: "desc" },

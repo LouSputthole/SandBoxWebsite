@@ -19,7 +19,6 @@ export async function POST(request: NextRequest) {
         name: true,
         slug: true,
         type: true,
-        rarity: true,
         imageUrl: true,
         currentPrice: true,
         lowestPrice: true,

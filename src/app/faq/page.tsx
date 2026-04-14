@@ -22,7 +22,7 @@ const faqs = [
   {
     question: "How do S&box skin prices work?",
     answer:
-      "S&box skins are traded on the Steam Community Market. Prices are determined by supply and demand — rarer items and limited-edition skins tend to be more expensive. Prices fluctuate throughout the day based on market activity.",
+      "S&box skins are traded on the Steam Community Market. Prices are determined by supply and demand — limited-edition and popular skins tend to be more expensive. Prices fluctuate throughout the day based on market activity.",
   },
   {
     question: "How often are prices updated?",
@@ -47,7 +47,7 @@ const faqs = [
   {
     question: "Are S&box skins a good investment?",
     answer:
-      "Skin prices depend on market demand, rarity, and game popularity. Limited-edition and legendary skins have historically held or increased in value, but past performance doesn't guarantee future results. Use our price history charts to make informed decisions.",
+      "Skin prices depend on market demand and game popularity. Limited-edition skins have historically held or increased in value, but past performance doesn't guarantee future results. Use our price history charts to make informed decisions.",
   },
   {
     question: "How do I sell S&box skins?",

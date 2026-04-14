@@ -4,7 +4,6 @@ export interface SteamMarketItem {
   slug: string;
   description: string;
   type: ItemType;
-  rarity: ItemRarity;
   imageUrl: string;
   marketUrl: string;
   currentPrice: number;
@@ -16,7 +15,6 @@ export interface SteamMarketItem {
 }
 
 export type ItemType = "character" | "clothing" | "accessory" | "weapon" | "tool";
-export type ItemRarity = "common" | "uncommon" | "rare" | "legendary";
 
 export interface PriceHistoryPoint {
   price: number;
@@ -27,7 +25,6 @@ export interface PriceHistoryPoint {
 export interface ItemsQueryParams {
   q?: string;
   type?: string;
-  rarity?: string;
   minPrice?: string;
   maxPrice?: string;
   sort?: string;

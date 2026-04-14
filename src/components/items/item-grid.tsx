@@ -9,7 +9,6 @@ interface Item {
   name: string;
   slug: string;
   type: string;
-  rarity: string | null;
   imageUrl: string | null;
   currentPrice: number | null;
   priceChange24h: number | null;
