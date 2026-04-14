@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { fetchItemNameId, fetchOrderHistogram } from "@/lib/steam/client";
+import { fetchOrderHistogram } from "@/lib/steam/client";
 import { cached } from "@/lib/redis/cache";
 
 /**
  * GET /api/orders?slug=<item_slug>
  *
  * Fetches buy/sell order data from Steam's order histogram for an item.
- * Caches item_nameid (permanent) and order data (5 minutes).
+ * Requires the item to have a steamItemNameId (populated by the nameids scraper).
+ * The histogram JSON endpoint works from Vercel, but scraping the nameid does not.
  */
 export async function GET(request: NextRequest) {
   const slug = request.nextUrl.searchParams.get("slug");
@@ -24,35 +25,29 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }
 
-  // Get item_nameid: prefer DB value, then Redis cache, then live scrape as last resort
-  let itemNameId = item.steamItemNameId;
-
-  if (!itemNameId) {
-    itemNameId = await cached<string | null>(
-      `steam:nameid:${item.steamMarketId}`,
-      60 * 60 * 24 * 30,
-      () => fetchItemNameId(item.steamMarketId!)
-    );
-  }
-
-  if (!itemNameId) {
+  // The steamItemNameId must be pre-populated by the GitHub Actions scraper.
+  // We can't scrape it from Vercel because Steam blocks listing page HTML from data center IPs.
+  if (!item.steamItemNameId) {
     return NextResponse.json(
-      { error: "Order data not available yet. Item needs local setup — see docs." },
-      { status: 502 }
+      {
+        error: "Order data pending — item name ID not yet scraped. Run the nameids GitHub Action.",
+        needsScrape: true,
+      },
+      { status: 503 },
     );
   }
 
   // Get order histogram (cached for 5 minutes)
   const histogram = await cached(
-    `orders:${itemNameId}`,
+    `orders:${item.steamItemNameId}`,
     60 * 5,
-    () => fetchOrderHistogram(itemNameId)
+    () => fetchOrderHistogram(item.steamItemNameId!),
   );
 
   if (!histogram || histogram.success !== 1) {
     return NextResponse.json(
       { error: "Could not fetch order data from Steam." },
-      { status: 502 }
+      { status: 502 },
     );
   }
 

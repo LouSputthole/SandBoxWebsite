@@ -54,17 +54,22 @@ export function OrderBook({ slug }: { slug: string }) {
   }
 
   if (error || !data) {
+    const isPending = error?.includes("pending") || error?.includes("not yet");
     return (
       <div className="text-center py-6 space-y-2">
         <p className="text-neutral-600 text-sm">
-          {error || "Order data unavailable"}
+          {isPending
+            ? "Order data is being set up — check back soon."
+            : error || "Order data unavailable"}
         </p>
-        <button
-          onClick={fetchOrders}
-          className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
-        >
-          Try again
-        </button>
+        {!isPending && (
+          <button
+            onClick={fetchOrders}
+            className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+          >
+            Try again
+          </button>
+        )}
       </div>
     );
   }
