@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ArrowDownToLine, ArrowUpFromLine, Loader2 } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface OrderEntry {
   price: number;
@@ -85,24 +86,50 @@ export function OrderBook({ slug }: { slug: string }) {
           <div className="flex items-center gap-2 mb-1">
             <ArrowUpFromLine className="h-3.5 w-3.5 text-emerald-400" />
             <span className="text-xs text-neutral-400">Highest Buy Order</span>
+            <Tooltip
+              asIcon
+              content="The most anyone is currently offering to pay for this item. If you list at or below this price, you'll sell instantly to this buyer."
+            />
           </div>
           <div className="text-lg font-bold text-emerald-400">
             {data.highestBuyOrder != null ? `$${data.highestBuyOrder.toFixed(2)}` : "—"}
           </div>
-          <div className="text-[10px] text-neutral-500 mt-0.5">
-            {data.buyOrderCount.toLocaleString()} total buy order{data.buyOrderCount !== 1 ? "s" : ""}
+          <div className="flex items-center gap-1 text-[10px] text-neutral-500 mt-0.5">
+            <span>{data.buyOrderCount.toLocaleString()} total buy order{data.buyOrderCount !== 1 ? "s" : ""}</span>
+            <Tooltip
+              asIcon
+              content={
+                <>
+                  <span className="block mb-1 font-medium text-white">Buy Depth</span>
+                  Total number of people waiting to buy this item at various prices. High buy depth = strong demand — if prices drop, many buyers are ready to purchase. Low buy depth = weak demand.
+                </>
+              }
+            />
           </div>
         </div>
         <div className="rounded-lg bg-red-500/5 border border-red-500/20 px-4 py-3">
           <div className="flex items-center gap-2 mb-1">
             <ArrowDownToLine className="h-3.5 w-3.5 text-red-400" />
             <span className="text-xs text-neutral-400">Lowest Sell Order</span>
+            <Tooltip
+              asIcon
+              content="The cheapest current listing on the Steam Market. This is the price you'd pay to buy one right now. Place a buy order at or above this and you'll purchase instantly."
+            />
           </div>
           <div className="text-lg font-bold text-red-400">
             {data.lowestSellOrder != null ? `$${data.lowestSellOrder.toFixed(2)}` : "—"}
           </div>
-          <div className="text-[10px] text-neutral-500 mt-0.5">
-            {data.sellOrderCount.toLocaleString()} total sell order{data.sellOrderCount !== 1 ? "s" : ""}
+          <div className="flex items-center gap-1 text-[10px] text-neutral-500 mt-0.5">
+            <span>{data.sellOrderCount.toLocaleString()} total sell order{data.sellOrderCount !== 1 ? "s" : ""}</span>
+            <Tooltip
+              asIcon
+              content={
+                <>
+                  <span className="block mb-1 font-medium text-white">Sell Depth</span>
+                  Total individual items currently for sale across all listings. This can be higher than the &ldquo;Listings&rdquo; count when sellers list multiple copies in a single listing.
+                </>
+              }
+            />
           </div>
         </div>
       </div>
@@ -111,8 +138,12 @@ export function OrderBook({ slug }: { slug: string }) {
       <div className="grid grid-cols-2 gap-3">
         {/* Buy orders */}
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-neutral-500 mb-2 px-1">
-            Buy Orders
+          <div className="flex items-center gap-1 mb-2 px-1">
+            <span className="text-[10px] uppercase tracking-wider text-neutral-500">Buy Orders</span>
+            <Tooltip
+              asIcon
+              content="People offering to buy at specific prices. If nobody's selling at your target price, you can place a buy order and wait for the price to drop to your level."
+            />
           </div>
           <div className="space-y-0.5">
             {data.buyOrders.length === 0 ? (
@@ -138,8 +169,12 @@ export function OrderBook({ slug }: { slug: string }) {
 
         {/* Sell orders */}
         <div>
-          <div className="text-[10px] uppercase tracking-wider text-neutral-500 mb-2 px-1">
-            Sell Orders
+          <div className="flex items-center gap-1 mb-2 px-1">
+            <span className="text-[10px] uppercase tracking-wider text-neutral-500">Sell Orders</span>
+            <Tooltip
+              asIcon
+              content="Items currently for sale at specific prices. The lowest sell price is what you'd pay to buy right now. Higher-priced sell orders only fill after lower ones sell out."
+            />
           </div>
           <div className="space-y-0.5">
             {data.sellOrders.length === 0 ? (

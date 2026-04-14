@@ -23,6 +23,7 @@ import { OrderBook } from "@/components/items/order-book";
 import { SpreadAnalysis } from "@/components/items/spread-analysis";
 import { PriceSignals } from "@/components/items/price-signals";
 import { WatchlistButton } from "@/components/items/watchlist-button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
 
 interface PricePoint {
@@ -130,6 +131,10 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
               >
                 {formatPriceChange(change)} (24h)
               </span>
+              <Tooltip
+                asIcon
+                content="Percentage change in current price compared to 24 hours ago. Green = price went up, red = price went down. Calculated against the last-synced price from the previous day."
+              />
             </div>
           </div>
 
@@ -140,6 +145,10 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 <div className="flex items-center gap-2 mb-1">
                   <DollarSign className="h-3.5 w-3.5 text-neutral-500" />
                   <span className="text-xs text-neutral-500">Lowest</span>
+                  <Tooltip
+                    asIcon
+                    content="The cheapest currently available price on the Steam Market. This is what you'd pay if you bought right now using the lowest active listing."
+                  />
                 </div>
                 <span className="text-sm font-semibold text-white">
                   {item.lowestPrice != null ? formatPrice(item.lowestPrice) : "N/A"}
@@ -151,6 +160,10 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 <div className="flex items-center gap-2 mb-1">
                   <BarChart3 className="h-3.5 w-3.5 text-neutral-500" />
                   <span className="text-xs text-neutral-500">Median</span>
+                  <Tooltip
+                    asIcon
+                    content="The middle price of recent sales — half of sales closed below this, half above. Less skewed by outliers than the average, making it a better gauge of fair value."
+                  />
                 </div>
                 <span className="text-sm font-semibold text-white">
                   {item.medianPrice != null ? formatPrice(item.medianPrice) : "N/A"}
@@ -162,6 +175,15 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 <div className="flex items-center gap-2 mb-1">
                   <Activity className="h-3.5 w-3.5 text-neutral-500" />
                   <span className="text-xs text-neutral-500">Listings</span>
+                  <Tooltip
+                    asIcon
+                    content={
+                      <>
+                        <span className="block mb-1 font-medium text-white">Active sell listings</span>
+                        Number of distinct seller entries on the Steam Market. One seller listing 10 items at the same price counts as 1 listing. See the Order Book for the actual total item count.
+                      </>
+                    }
+                  />
                 </div>
                 <span className="text-sm font-semibold text-white">
                   {item.volume?.toLocaleString() ?? "N/A"}
@@ -173,6 +195,10 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 <div className="flex items-center gap-2 mb-1">
                   <Package className="h-3.5 w-3.5 text-neutral-500" />
                   <span className="text-xs text-neutral-500">Total Supply</span>
+                  <Tooltip
+                    asIcon
+                    content="Total number of this item minted across the entire S&box economy — tracked by sbox.game. Lower supply usually correlates with higher scarcity and price. Some items aren't tracked by sbox.game and will show N/A."
+                  />
                 </div>
                 <span className="text-sm font-semibold text-white">
                   {item.totalSupply?.toLocaleString() ?? "N/A"}
@@ -241,7 +267,18 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
       {/* Order Book */}
       <Card className="bg-neutral-900/80 mt-6">
         <CardContent className="p-6">
-          <h3 className="text-sm font-medium text-neutral-300 mb-4">Buy & Sell Orders</h3>
+          <div className="flex items-center gap-2 mb-4">
+            <h3 className="text-sm font-medium text-neutral-300">Buy &amp; Sell Orders</h3>
+            <Tooltip
+              asIcon
+              content={
+                <>
+                  <span className="block mb-1 font-medium text-white">Order Book</span>
+                  A live snapshot of all active buy and sell orders on the Steam Market. Shows what buyers are offering and what sellers are asking, at every price level. Fetched directly from Steam in real-time.
+                </>
+              }
+            />
+          </div>
           <OrderBook slug={item.slug} />
         </CardContent>
       </Card>

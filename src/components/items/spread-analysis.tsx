@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { ArrowLeftRight, TrendingUp, AlertTriangle, Loader2 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface OrderEntry {
   price: number;
@@ -99,7 +100,18 @@ export function SpreadAnalysis({ slug }: { slug: string }) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-medium text-neutral-300">Spread Analysis</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-medium text-neutral-300">Spread Analysis</h3>
+        <Tooltip
+          asIcon
+          content={
+            <>
+              <span className="block mb-1 font-medium text-white">Spread Analysis</span>
+              Measures how tight or loose the market is. Narrow spread + balanced orders = healthy liquidity. Wide spread or one-sided pressure suggests volatility or thin trading.
+            </>
+          }
+        />
+      </div>
 
       {/* Spread stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -107,6 +119,10 @@ export function SpreadAnalysis({ slug }: { slug: string }) {
           <div className="flex items-center gap-1.5 mb-1">
             <ArrowLeftRight className="h-3 w-3 text-neutral-500" />
             <span className="text-[10px] text-neutral-500">Spread</span>
+            <Tooltip
+              asIcon
+              content="The gap between the lowest sell price and the highest buy price. Narrow = liquid, easy to buy/sell near market price. Wide = illiquid, costly to enter/exit."
+            />
           </div>
           <div className="text-sm font-semibold text-white">
             {formatPrice(spread)}
@@ -119,19 +135,35 @@ export function SpreadAnalysis({ slug }: { slug: string }) {
           <div className="flex items-center gap-1.5 mb-1">
             <TrendingUp className="h-3 w-3 text-neutral-500" />
             <span className="text-[10px] text-neutral-500">Midpoint</span>
+            <Tooltip
+              asIcon
+              content="The average of the highest buy order and lowest sell order. A reasonable estimate of the item's current fair market value."
+            />
           </div>
           <div className="text-sm font-semibold text-white">
             {formatPrice(midpoint)}
           </div>
         </div>
         <div className="rounded-lg bg-neutral-800/50 px-3 py-2.5">
-          <span className="text-[10px] text-neutral-500 block mb-1">Near Buy Depth</span>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-[10px] text-neutral-500">Near Buy Depth</span>
+            <Tooltip
+              asIcon
+              content="Number of items buyers want to purchase within 10% of the midpoint price. High near-buy depth means strong demand close to market rate."
+            />
+          </div>
           <div className="text-sm font-semibold text-emerald-400">
             {nearBuyQty.toLocaleString()}
           </div>
         </div>
         <div className="rounded-lg bg-neutral-800/50 px-3 py-2.5">
-          <span className="text-[10px] text-neutral-500 block mb-1">Near Sell Depth</span>
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className="text-[10px] text-neutral-500">Near Sell Depth</span>
+            <Tooltip
+              asIcon
+              content="Number of items sellers have listed within 10% of the midpoint price. High near-sell depth means plenty of supply close to market rate."
+            />
+          </div>
           <div className="text-sm font-semibold text-red-400">
             {nearSellQty.toLocaleString()}
           </div>
