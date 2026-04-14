@@ -46,32 +46,60 @@ async function scrapeSkinSupply(): Promise<SkinRow[]> {
   // Give Blazor a moment to finish rendering all rows
   await page.waitForTimeout(3000);
 
-  // Scroll to load any lazy-loaded content — repeat several times
+  // Scroll aggressively to load all lazy-rendered Blazor content.
+  // Blazor Server apps render on the server via SignalR — scrolling can trigger
+  // new chunks of the component tree to render.
   console.log("[scraper] Scrolling to load all items...");
   let previousRowCount = 0;
-  for (let i = 0; i < 10; i++) {
+  let stableCount = 0;
+  for (let i = 0; i < 20; i++) {
+    // Scroll in increments — some Blazor apps only render what's near the viewport
+    await page.evaluate((step) => {
+      window.scrollTo(0, step * 800);
+    }, i);
+    await page.waitForTimeout(800);
+
+    // Also scroll to absolute bottom
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await page.waitForTimeout(1500);
 
-    // Check for "load more" / "show all" buttons and click them
-    const loadMore = await page.$('button:has-text("Load More"), button:has-text("Show All"), button:has-text("Show more"), a:has-text("Load More"), a:has-text("Show All"), [class*="load-more"], [class*="show-all"], [class*="pagination"] button');
+    // Check for "load more" / "show all" / pagination buttons
+    const loadMore = await page.$([
+      'button:has-text("Load More")', 'button:has-text("Show All")',
+      'button:has-text("Show more")', 'button:has-text("View All")',
+      'a:has-text("Load More")', 'a:has-text("Show All")',
+      '[class*="load-more"]', '[class*="show-all"]',
+    ].join(", "));
     if (loadMore) {
       console.log("[scraper] Found 'load more' button, clicking...");
       await loadMore.click();
-      await page.waitForTimeout(2000);
+      await page.waitForTimeout(3000);
     }
 
     const currentRowCount = await page.$$eval("table tr", (trs) => trs.length);
-    if (currentRowCount === previousRowCount && i > 0) {
-      console.log(`[scraper] Row count stable at ${currentRowCount} after scroll ${i + 1}`);
-      break;
+    if (currentRowCount === previousRowCount) {
+      stableCount++;
+      // Only break after 3 consecutive stable counts to account for slow Blazor rendering
+      if (stableCount >= 3) {
+        console.log(`[scraper] Row count stable at ${currentRowCount} after ${i + 1} scrolls`);
+        break;
+      }
+    } else {
+      stableCount = 0;
+      console.log(`[scraper] Row count: ${previousRowCount} -> ${currentRowCount} (scroll ${i + 1})`);
     }
     previousRowCount = currentRowCount;
   }
 
+  // Scroll back to top and to bottom once more — some apps load differently on re-scroll
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(1000);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await page.waitForTimeout(2000);
+
   // Check for pagination — click through all pages
   let pageNum = 1;
-  while (true) {
+  while (pageNum < 20) {
     const nextBtn = await page.$('button:has-text("Next"), a:has-text("Next"), [aria-label="Next page"], .pagination .next:not(.disabled)');
     if (!nextBtn) break;
     console.log(`[scraper] Clicking to page ${++pageNum}...`);
