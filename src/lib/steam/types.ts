@@ -101,14 +101,12 @@ export interface SteamVanityResponse {
 
 export interface SteamOrderHistogram {
   success: number;
-  sell_order_count: string;
-  sell_order_price: string;
-  sell_order_table: string;
-  buy_order_count: string;
-  buy_order_price: string;
-  buy_order_table: string;
-  highest_buy_order: string; // price in cents
-  lowest_sell_order: string; // price in cents
+  sell_order_table: string;    // HTML table of sell orders
+  sell_order_summary: string;  // HTML summary with count + starting price
+  buy_order_table: string;     // HTML table of buy orders
+  buy_order_summary: string;   // HTML summary with count + price
+  highest_buy_order: string;   // price in cents as string
+  lowest_sell_order: string;   // price in cents as string
   buy_order_graph: [number, number, string][]; // [price, cumulative_qty, description]
   sell_order_graph: [number, number, string][]; // [price, cumulative_qty, description]
   graph_max_y: number;

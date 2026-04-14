@@ -59,9 +59,14 @@ export async function GET(request: NextRequest) {
       ? parseInt(histogram.lowest_sell_order, 10) / 100
       : null;
 
-    // Steam sometimes returns HTML in count fields — strip tags
-    const parseCount = (val: string) => {
-      const stripped = val.replace(/<[^>]*>/g, "").replace(/[,\s]/g, "");
+    // Extract order counts from the summary HTML.
+    // Format: '<span class="...">611</span> requests to buy...'
+    const extractCount = (html: string | undefined): number => {
+      if (!html) return 0;
+      const match = html.match(/>(\d[\d,]*)</);
+      if (match) return parseInt(match[1].replace(/,/g, ""), 10) || 0;
+      // Fallback: strip all tags, grab first number
+      const stripped = html.replace(/<[^>]*>/g, "").replace(/[,\s]/g, "");
       return parseInt(stripped, 10) || 0;
     };
 
@@ -78,8 +83,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       highestBuyOrder,
       lowestSellOrder,
-      buyOrderCount: parseCount(histogram.buy_order_count ?? "0"),
-      sellOrderCount: parseCount(histogram.sell_order_count ?? "0"),
+      buyOrderCount: extractCount(histogram.buy_order_summary),
+      sellOrderCount: extractCount(histogram.sell_order_summary),
       buyOrders,
       sellOrders,
     });
