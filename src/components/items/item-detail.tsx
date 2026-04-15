@@ -42,6 +42,7 @@ export interface ItemDetailData {
   imageUrl: string | null;
   marketUrl: string | null;
   steamMarketId: string | null;
+  sboxFullIdent: string | null;
   currentPrice: number | null;
   lowestPrice: number | null;
   medianPrice: number | null;
@@ -223,17 +224,31 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 </Button>
               </a>
             )}
-            <a
-              href="https://sbox.game/metrics/skins"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex"
-            >
-              <Button variant="outline" className="gap-2">
-                S&box Metrics
-                <ExternalLink className="h-4 w-4" />
-              </Button>
-            </a>
+            {item.sboxFullIdent ? (
+              <a
+                href={`https://sbox.game/${item.sboxFullIdent.replace(".", "/")}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex"
+              >
+                <Button variant="outline" className="gap-2">
+                  View on sbox.game
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </a>
+            ) : (
+              <a
+                href="https://sbox.game/metrics/skins"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex"
+              >
+                <Button variant="outline" className="gap-2">
+                  S&box Metrics
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </a>
+            )}
             <PriceAlertForm
               itemId={item.id}
               itemName={item.name}

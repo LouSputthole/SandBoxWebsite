@@ -16,7 +16,8 @@ model Item {
   type           String       // "character", "clothing", "accessory", "weapon", "tool"
   imageUrl       String?
   marketUrl      String?
-  steamItemNameId String?      // Steam numeric ID for order histogram (scraped locally)
+  steamItemNameId String?     // Steam numeric ID for order histogram (scraped locally)
+  sboxFullIdent  String?      // Facepunch FullIdent (e.g. "estavos.cardboardking") — used to link to the specific sbox.game item page
   storeStatus    String       @default("unknown") // "available", "delisted", "unknown"
   delistedAt     DateTime?    // When the item was removed from the S&box store
   storePrice     Float?       // Original store price (if known)
