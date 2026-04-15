@@ -118,16 +118,46 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
 }
 
 /**
- * Generate a description for an item based on its name and type.
+ * Generate an SEO-friendly, multi-sentence description for an item based on
+ * its name, type, and price context. Used when no custom description exists.
+ *
+ * Descriptions are written to be:
+ *  - keyword-rich (S&box, skin, Steam Community Market, type)
+ *  - contextual (mentions rough price tier and Steam category)
+ *  - useful (explains what the item is and how to act on it)
  */
-function generateDescription(name: string, type: string, steamType: string): string {
-  const typeLabel = type === "character" ? "character skin" :
-    type === "clothing" ? "clothing item" :
-    type === "accessory" ? "accessory" :
-    type === "weapon" ? "weapon skin" :
-    type === "tool" ? "tool skin" : "item";
+function generateDescription(
+  name: string,
+  type: string,
+  steamType: string,
+  priceInDollars: number,
+): string {
+  const typeLabel =
+    type === "character" ? "character skin"
+    : type === "clothing" ? "clothing item"
+    : type === "accessory" ? "accessory"
+    : type === "weapon" ? "weapon skin"
+    : type === "tool" ? "tool skin"
+    : "cosmetic item";
 
-  return `${name} is an S&box ${typeLabel} available on the Steam Community Market. Track its price history, current market value, and listing trends on sboxskins.gg.`;
+  const priceTier =
+    priceInDollars >= 100 ? "high-end, top-tier"
+    : priceInDollars >= 20 ? "premium"
+    : priceInDollars >= 5 ? "mid-range"
+    : priceInDollars >= 1 ? "affordable"
+    : "entry-level";
+
+  const steamTypeCleaned = steamType ? steamType.trim() : "";
+  const steamContext =
+    steamTypeCleaned && steamTypeCleaned.toLowerCase() !== typeLabel
+      ? ` categorized on Steam as a ${steamTypeCleaned}`
+      : "";
+
+  return (
+    `${name} is a ${priceTier} S&box ${typeLabel}${steamContext}, traded on the Steam Community Market. ` +
+    `Players buy and sell ${name} to customize their avatar in S&box, the Facepunch Studios sandbox game. ` +
+    `Track the live market price, historical price chart, total supply, and buy/sell order book for ${name} on sboxskins.gg — the dedicated S&box skin price tracker.`
+  );
 }
 
 /**
@@ -146,12 +176,19 @@ async function upsertItem(
     ? getSteamImageUrl(steamItem.asset_description.icon_url)
     : null;
 
+  const generatedDescription = generateDescription(
+    steamItem.name,
+    itemType,
+    steamItem.asset_description?.type || "",
+    priceInDollars,
+  );
+
   const data = {
     name: steamItem.name,
     slug,
     steamMarketId: hashName,
     type: itemType,
-    description: generateDescription(steamItem.name, itemType, steamItem.asset_description?.type || ""),
+    description: generatedDescription,
     imageUrl: iconUrl,
     marketUrl: getMarketUrl(hashName),
     currentPrice: priceInDollars,
@@ -169,12 +206,17 @@ async function upsertItem(
         ? ((priceInDollars - existing.currentPrice) / existing.currentPrice) * 100
         : 0;
 
+    // Detect a generated description so we can refresh it as prices change.
+    // Hand-edited descriptions (not starting with the item name + " is a") are preserved.
+    const isGeneratedDescription =
+      !existing.description || existing.description.startsWith(`${existing.name} is a`);
+
     await prisma.item.update({
       where: { steamMarketId: hashName },
       data: {
         ...data,
         priceChange24h: Math.round(priceChange * 100) / 100,
-        description: existing.description || undefined,
+        description: isGeneratedDescription ? generatedDescription : existing.description,
         imageUrl: iconUrl || existing.imageUrl, // Prefer fresh Steam image, keep existing if none
       },
     });

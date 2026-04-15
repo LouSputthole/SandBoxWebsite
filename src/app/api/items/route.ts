@@ -12,8 +12,10 @@ export async function GET(request: NextRequest) {
   const sort = searchParams.get("sort") || "name-asc";
   const page = searchParams.get("page") || "1";
   const limit = searchParams.get("limit") || "12";
+  const hasSupply = searchParams.get("hasSupply") || "";
+  const isLimited = searchParams.get("isLimited") || "";
 
-  const key = cacheKey("items", { q, type, minPrice, maxPrice, sort, page, limit });
+  const key = cacheKey("items", { q, type, minPrice, maxPrice, sort, page, limit, hasSupply, isLimited });
 
   const data = await cached(key, CACHE_TTL.ITEMS_LIST, async () => {
     const pageNum = Math.max(1, parseInt(page) || 1);
@@ -30,6 +32,12 @@ export async function GET(request: NextRequest) {
       where.currentPrice = {};
       if (minPrice) where.currentPrice.gte = parseFloat(minPrice);
       if (maxPrice) where.currentPrice.lte = parseFloat(maxPrice);
+    }
+    if (hasSupply === "true") {
+      where.totalSupply = { not: null, gt: 0 };
+    }
+    if (isLimited === "true") {
+      where.isLimited = true;
     }
 
     const orderBy: Prisma.ItemOrderByWithRelationInput = {};
@@ -57,6 +65,12 @@ export async function GET(request: NextRequest) {
         break;
       case "change-desc":
         orderBy.priceChange24h = "desc";
+        break;
+      case "supply-asc":
+        orderBy.totalSupply = "asc";
+        break;
+      case "supply-desc":
+        orderBy.totalSupply = "desc";
         break;
       default:
         orderBy.name = "asc";
