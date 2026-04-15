@@ -149,6 +149,7 @@ export default function HomePage() {
   const [rarest, setRarest] = useState<Item[]>([]);
   const [limited, setLimited] = useState<Item[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
+  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
@@ -191,6 +192,13 @@ export default function HomePage() {
           totalVolume: volumes.reduce((a, b) => a + b, 0),
           lastUpdated: allData.lastUpdated ?? null,
         });
+
+        // Count items per type to hide empty categories
+        const counts: Record<string, number> = {};
+        for (const item of items) {
+          counts[item.type] = (counts[item.type] ?? 0) + 1;
+        }
+        setCategoryCounts(counts);
       }
 
       setLoading(false);
@@ -341,20 +349,30 @@ export default function HomePage() {
           </Link>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-          {categories.map((cat) => (
-            <Link
-              key={cat.type}
-              href={`/items/type/${cat.type}`}
-              className={`group relative overflow-hidden rounded-xl border border-neutral-800 bg-gradient-to-br ${cat.color} p-5 transition hover:border-neutral-700 hover:scale-[1.02]`}
-            >
-              <div className={`inline-flex p-2.5 rounded-lg bg-neutral-900/60 mb-3`}>
-                <cat.Icon className={`h-5 w-5 ${cat.iconColor}`} />
-              </div>
-              <h3 className="text-base font-semibold text-white mb-1">{cat.label}</h3>
-              <p className="text-xs text-neutral-400 leading-snug">{cat.description}</p>
-              <ArrowRight className="absolute top-5 right-5 h-4 w-4 text-neutral-600 group-hover:text-white transition" />
-            </Link>
-          ))}
+          {categories
+            .filter((cat) => (categoryCounts[cat.type] ?? 0) > 0)
+            .map((cat) => {
+              const count = categoryCounts[cat.type] ?? 0;
+              return (
+                <Link
+                  key={cat.type}
+                  href={`/items/type/${cat.type}`}
+                  className={`group relative overflow-hidden rounded-xl border border-neutral-800 bg-gradient-to-br ${cat.color} p-5 transition hover:border-neutral-700 hover:scale-[1.02]`}
+                >
+                  <div className={`inline-flex p-2.5 rounded-lg bg-neutral-900/60 mb-3`}>
+                    <cat.Icon className={`h-5 w-5 ${cat.iconColor}`} />
+                  </div>
+                  <h3 className="text-base font-semibold text-white mb-1">
+                    {cat.label}
+                    <span className="ml-2 text-xs text-neutral-500 font-normal">
+                      {count}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-neutral-400 leading-snug">{cat.description}</p>
+                  <ArrowRight className="absolute top-5 right-5 h-4 w-4 text-neutral-600 group-hover:text-white transition" />
+                </Link>
+              );
+            })}
         </div>
       </section>
 

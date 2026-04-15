@@ -10,35 +10,70 @@ import type { SteamSearchResult, SyncResult } from "@/lib/steam/types";
 import { slugify } from "@/lib/utils";
 
 /**
- * Infer the item type from Steam's type string.
- * S&box items have types like "Hat", "Shirt", "Pants", etc.
+ * Infer the item type from the item name and Steam's type string.
+ * S&box items have Steam types like "Hat", "Shirt", "Pants", etc — but many
+ * items don't have useful Steam types, so we also scan the item name.
+ *
+ * Order matters: we check most-specific keywords first.
  */
-function inferItemType(steamType: string): string {
-  const t = steamType.toLowerCase();
-  if (t.includes("hat") || t.includes("hair") || t.includes("helmet") || t.includes("mask") || t.includes("head")) {
-    return "accessory";
-  }
-  if (t.includes("shirt") || t.includes("jacket") || t.includes("hoodie") || t.includes("coat") || t.includes("top")) {
-    return "clothing";
-  }
-  if (t.includes("pants") || t.includes("shorts") || t.includes("bottom") || t.includes("skirt")) {
-    return "clothing";
-  }
-  if (t.includes("boot") || t.includes("shoe") || t.includes("footwear")) {
-    return "clothing";
-  }
-  if (t.includes("glove")) {
-    return "accessory";
-  }
-  if (t.includes("skin") || t.includes("character") || t.includes("outfit") || t.includes("suit")) {
-    return "character";
-  }
-  if (t.includes("weapon") || t.includes("knife") || t.includes("sword") || t.includes("blade") || t.includes("gun")) {
-    return "weapon";
-  }
-  if (t.includes("tool")) {
-    return "tool";
-  }
+export function inferItemType(steamType: string, itemName = ""): string {
+  // Combine both strings — many clues are in the name (e.g. "SWAG Chain", "Pirate Hook")
+  const text = `${steamType} ${itemName}`.toLowerCase();
+
+  // Accessories: jewelry, small wearables, face items
+  const accessoryKeywords = [
+    "hat", "cap", "beanie", "crown", "hood", "hair",
+    "helmet", "mask", "head", "face", "goggles", "glasses",
+    "earring", "ear rings", "necklace", "chain", "pendant",
+    "ring", "bracelet", "watch", "jewelry", "nose", "beard",
+    "tattoo", "glove", "mitten", "bandana", "scarf",
+    "backpack", "bag", "handbag", "purse", "satchel",
+    "pipe", "cigar", "cigarette",
+  ];
+
+  // Weapons / tools held in hand
+  const weaponKeywords = [
+    "weapon", "knife", "sword", "blade", "gun", "pistol",
+    "rifle", "dagger", "axe", "hammer", "bat", "club",
+    "bow", "crossbow", "spear", "staff", "wand",
+  ];
+
+  // Tools — non-weapon utility items
+  const toolKeywords = [
+    "hook", "wrench", "screwdriver", "saw", "drill",
+    "flashlight", "lantern", "torch", "shovel", "pickaxe",
+  ];
+
+  // Clothing — outfits and body-worn items
+  const clothingKeywords = [
+    "shirt", "jacket", "hoodie", "coat", "raincoat", "jumper",
+    "sweater", "top", "dress", "gown", "robe", "blouse",
+    "pants", "trouser", "shorts", "bottom", "skirt", "jean",
+    "boot", "shoe", "footwear", "sneaker", "sandal", "slipper",
+    "slippers", "heels",
+    "boxers", "bra", "underwear", "lingerie", "bodice",
+    "waistcoat", "vest", "cape", "cloak", "apron", "uniform",
+    "jumpsuit", "tracksuit", "overalls", "lifejacket",
+  ];
+
+  // Character: full avatars, outfits, complete skins
+  const characterKeywords = [
+    "skin", "character", "outfit", "suit", "costume",
+    "avatar", "model", "player model",
+  ];
+
+  // Check in specificity order — most specific first so e.g. "Scuba Mask"
+  // matches accessory before a generic "skin" match.
+  if (accessoryKeywords.some((k) => text.includes(k))) return "accessory";
+  if (weaponKeywords.some((k) => text.includes(k))) return "weapon";
+  if (toolKeywords.some((k) => text.includes(k))) return "tool";
+  if (clothingKeywords.some((k) => text.includes(k))) return "clothing";
+  if (characterKeywords.some((k) => text.includes(k))) return "character";
+
+  // Fallback: Steam types that specifically said "tool"
+  if (text.includes("tool")) return "tool";
+
+  // Default to clothing for unknown items (most S&box cosmetics are clothing)
   return "clothing";
 }
 
@@ -171,7 +206,7 @@ async function upsertItem(
   const hashName = steamItem.hash_name;
   const slug = slugify(hashName);
   const priceInDollars = steamItem.sell_price / 100; // sell_price is in cents
-  const itemType = inferItemType(steamItem.asset_description?.type || "");
+  const itemType = inferItemType(steamItem.asset_description?.type || "", steamItem.name);
   const iconUrl = steamItem.asset_description?.icon_url
     ? getSteamImageUrl(steamItem.asset_description.icon_url)
     : null;

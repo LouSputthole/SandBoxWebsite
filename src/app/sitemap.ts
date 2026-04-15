@@ -3,11 +3,9 @@ import { prisma } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-const TYPES = ["character", "clothing", "accessory", "weapon", "tool"];
-
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const items = await prisma.item.findMany({
-    select: { slug: true, updatedAt: true },
+    select: { slug: true, type: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
   });
 
@@ -20,7 +18,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.7,
   }));
 
-  const typePages: MetadataRoute.Sitemap = TYPES.map((type) => ({
+  // Only include type pages for types that actually have items — empty category
+  // pages signal thin content to Google and hurt indexing.
+  const typesWithItems = Array.from(new Set(items.map((i) => i.type)));
+  const typePages: MetadataRoute.Sitemap = typesWithItems.map((type) => ({
     url: `https://sboxskins.gg/items/type/${type}`,
     lastModified: latestUpdate,
     changeFrequency: "daily",

@@ -18,11 +18,11 @@ export function Footer() {
           <div>
             <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">By Type</h3>
             <ul className="space-y-2 text-sm">
-              <li><Link href="/items/type/character" className="text-neutral-500 hover:text-white transition-colors">Characters</Link></li>
               <li><Link href="/items/type/clothing" className="text-neutral-500 hover:text-white transition-colors">Clothing</Link></li>
-              <li><Link href="/items/type/weapon" className="text-neutral-500 hover:text-white transition-colors">Weapons</Link></li>
               <li><Link href="/items/type/accessory" className="text-neutral-500 hover:text-white transition-colors">Accessories</Link></li>
-              <li><Link href="/items/type/tool" className="text-neutral-500 hover:text-white transition-colors">Tools</Link></li>
+              <li><Link href="/items/type/character" className="text-neutral-500 hover:text-white transition-colors">Characters</Link></li>
+              <li><Link href="/portfolio" className="text-neutral-500 hover:text-white transition-colors">Watchlist</Link></li>
+              <li><Link href="/trends" className="text-neutral-500 hover:text-white transition-colors">Market Trends</Link></li>
             </ul>
           </div>
           <div>
