@@ -71,6 +71,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "monthly",
       priority: 0.6,
     },
+    {
+      url: "https://sboxskins.gg/contact",
+      lastModified: latestUpdate,
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
     ...typePages,
     ...itemPages,
   ];

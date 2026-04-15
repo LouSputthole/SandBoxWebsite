@@ -104,6 +104,12 @@ export function Navbar() {
             >
               FAQ
             </Link>
+            <Link
+              href="/contact"
+              className="text-sm text-neutral-400 hover:text-white transition-colors"
+            >
+              Contact
+            </Link>
           </div>
 
           {/* Search */}
@@ -262,6 +268,13 @@ export function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               FAQ
+            </Link>
+            <Link
+              href="/contact"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Contact
             </Link>
 
             {/* Mobile Auth */}
