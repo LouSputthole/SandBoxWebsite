@@ -12,7 +12,8 @@ export type TweetKind =
   | "weekly-gainer"
   | "weekly-loser"
   | "weekly-recap"
-  | "weekly-market-change";
+  | "weekly-market-change"
+  | "market-insight";
 
 export interface GeneratedTweet {
   kind: TweetKind;
@@ -447,6 +448,104 @@ export async function genWeeklyMarketChange(): Promise<GeneratedTweet | null> {
   return { kind: "weekly-market-change", text, approxLength: approximateLength(text) };
 }
 
+/**
+ * Big-picture market analysis tweet. Synthesizes multiple signals from the
+ * past week into a narrative take: market cap change, gainer/loser ratio,
+ * average movement, most notable single mover.
+ *
+ * Adapts tone based on what the data shows:
+ *   bullish  — majority gainers, cap up, positive avg
+ *   bearish  — majority losers, cap down, negative avg
+ *   volatile — wide std dev, mixed signals, at least one big mover
+ *   stable   — everything within ±5%
+ */
+export async function genMarketInsight(): Promise<GeneratedTweet | null> {
+  const weekAgoChanges = await getWeeklyChanges();
+  if (weekAgoChanges.length < 5) return null;
+
+  const gainers = weekAgoChanges.filter((i) => i.weeklyChangePct > 0);
+  const losers = weekAgoChanges.filter((i) => i.weeklyChangePct < 0);
+  const bigMovers = weekAgoChanges.filter((i) => Math.abs(i.weeklyChangePct) >= 10);
+  const biggestAbsMover = [...weekAgoChanges].sort(
+    (a, b) => Math.abs(b.weeklyChangePct) - Math.abs(a.weeklyChangePct),
+  )[0];
+  const avgChange =
+    weekAgoChanges.reduce((s, i) => s + i.weeklyChangePct, 0) / weekAgoChanges.length;
+  const gainerPct = (gainers.length / weekAgoChanges.length) * 100;
+
+  // Market cap delta via MarketSnapshot (if available)
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const [currentItems, oldSnap] = await Promise.all([
+    prisma.item.findMany({ select: { currentPrice: true, volume: true } }),
+    prisma.marketSnapshot.findFirst({
+      where: { timestamp: { lte: new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000) } },
+      orderBy: { timestamp: "desc" },
+    }),
+  ]);
+  const currentCap = currentItems.reduce(
+    (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
+    0,
+  );
+  const capDelta =
+    oldSnap?.marketCap && oldSnap.marketCap > 0
+      ? ((currentCap - oldSnap.marketCap) / oldSnap.marketCap) * 100
+      : null;
+
+  // Classify sentiment
+  type Sentiment = "bullish" | "bearish" | "volatile" | "stable";
+  let sentiment: Sentiment = "stable";
+  if (bigMovers.length >= 3 && Math.abs(avgChange) < 3) {
+    sentiment = "volatile";
+  } else if (gainerPct > 60 && avgChange > 2) {
+    sentiment = "bullish";
+  } else if (gainerPct < 40 && avgChange < -2) {
+    sentiment = "bearish";
+  } else if (Math.abs(avgChange) < 1.5 && bigMovers.length === 0) {
+    sentiment = "stable";
+  } else {
+    // default to volatile if there's at least one big mover, otherwise stable
+    sentiment = bigMovers.length > 0 ? "volatile" : "stable";
+  }
+
+  const capClause = capDelta != null
+    ? ` Market cap ${capDelta >= 0 ? "+" : ""}${capDelta.toFixed(1)}%.`
+    : "";
+  const moverClause = biggestAbsMover
+    ? ` Biggest mover: ${biggestAbsMover.name} ${biggestAbsMover.weeklyChangePct >= 0 ? "+" : ""}${biggestAbsMover.weeklyChangePct.toFixed(0)}%.`
+    : "";
+
+  // Tone-specific templates
+  const templatesBySentiment: Record<Sentiment, string[]> = {
+    bullish: [
+      `S&box skin market had a week 📈 ${gainers.length} of ${weekAgoChanges.length} tracked items posted gains.${capClause}${moverClause}\n\n${SITE}`,
+      `Bullish run across S&box skins — average +${avgChange.toFixed(1)}% on the week, ${gainerPct.toFixed(0)}% of items in the green.${capClause}\n${SITE}`,
+      `The last 7 days in S&box: ${gainers.length} up, ${losers.length} down.${capClause}${moverClause} Not a bad stretch to be holding.\n\n${SITE}`,
+      `Quiet bull market vibes 🐂 — most S&box skins trending up this week, avg +${avgChange.toFixed(1)}%.${capClause}\n${SITE}`,
+    ],
+    bearish: [
+      `Tough week for S&box skins. ${losers.length} of ${weekAgoChanges.length} items down, avg ${avgChange.toFixed(1)}%.${capClause}${moverClause}\n\n${SITE}`,
+      `S&box market took some hits this week 📉 avg ${avgChange.toFixed(1)}%, ${losers.length} items lower.${capClause} Could be accumulation window.\n${SITE}`,
+      `Red across the board — ${gainerPct.toFixed(0)}% of S&box skins in the green this week (below 50 = bears in charge).${capClause}${moverClause}\n\n${SITE}`,
+      `Brutal stretch for holders. ${losers.length} of ${weekAgoChanges.length} S&box skins traded lower over 7d.${capClause} Watchlist time.\n${SITE}`,
+    ],
+    volatile: [
+      `Chop city this week in S&box 🎢 ${bigMovers.length} skins moved 10%+ in either direction.${moverClause}${capClause}\n\nFull movers: ${SITE}/trends`,
+      `S&box market = whipsaws this week. ${gainers.length} up, ${losers.length} down, ${bigMovers.length} big movers.${moverClause}\n${SITE}/trends`,
+      `Volatility alert: ${bigMovers.length} S&box skins posted moves >10% in 7d.${moverClause}${capClause} If you like action, this is your week.\n\n${SITE}/trends`,
+      `Not a quiet week — S&box had ${bigMovers.length} double-digit movers.${moverClause}${capClause} Traders eating good.\n${SITE}/trends`,
+    ],
+    stable: [
+      `S&box market: boring week (in a good way). avg ${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%, no 10%+ movers.${capClause}\n\n${SITE}`,
+      `Quiet 7 days for S&box skins. ${gainerPct.toFixed(0)}% of items in the green, nothing wild.${capClause} Consolidation phase.\n${SITE}`,
+      `Calm market this week. S&box skin prices holding range-bound, avg ${avgChange >= 0 ? "+" : ""}${avgChange.toFixed(1)}%.${capClause}\n\n${SITE}`,
+      `No fireworks in S&box this week — most items within a couple percent of last week's close.${capClause}\n${SITE}`,
+    ],
+  };
+
+  const text = seedPick(templatesBySentiment[sentiment]);
+  return { kind: "market-insight", text, approxLength: approximateLength(text) };
+}
+
 // ----- Entry points -----
 
 /** Generate one specific kind of tweet on demand (for the admin UI). */
@@ -462,6 +561,7 @@ export async function generateTweet(kind: TweetKind): Promise<GeneratedTweet | n
     case "weekly-loser": return genWeeklyLoser();
     case "weekly-recap": return genWeeklyRecap();
     case "weekly-market-change": return genWeeklyMarketChange();
+    case "market-insight": return genMarketInsight();
     case "new-high": return null; // reserved
   }
 }
@@ -479,6 +579,7 @@ export async function generateDrafts(): Promise<GeneratedTweet[]> {
     "weekly-loser",
     "weekly-recap",
     "weekly-market-change",
+    "market-insight",
   ];
   const results = await Promise.all(kinds.map((k) => generateTweet(k)));
   return results.filter((r): r is GeneratedTweet => r !== null);
@@ -492,6 +593,7 @@ export async function pickWeeklyTweet(): Promise<GeneratedTweet | null> {
   const order: TweetKind[] = [
     "weekly-recap",
     "weekly-gainer",
+    "market-insight",
     "weekly-market-change",
     "weekly-loser",
   ];

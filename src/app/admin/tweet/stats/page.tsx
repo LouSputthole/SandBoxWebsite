@@ -55,6 +55,7 @@ const KIND_LABELS: Record<string, string> = {
   "weekly-loser": "Weekly Loser",
   "weekly-recap": "Weekly Recap",
   "weekly-market-change": "Weekly Market Δ",
+  "market-insight": "Market Insight",
   reply: "Reply",
   custom: "Custom",
 };
