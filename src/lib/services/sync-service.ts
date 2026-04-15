@@ -153,45 +153,65 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
 }
 
 /**
- * Generate an SEO-friendly, multi-sentence description for an item based on
- * its name, type, and price context. Used when no custom description exists.
+ * Generate an item description that sounds human and hits SEO keywords without
+ * being a templated robo-blurb. Uses price tier and limited flag to vary the
+ * wording, and weaves Steam's own type label in naturally when it differs from
+ * our inferred category.
  *
- * Descriptions are written to be:
- *  - keyword-rich (S&box, skin, Steam Community Market, type)
- *  - contextual (mentions rough price tier and Steam category)
- *  - useful (explains what the item is and how to act on it)
+ * Keywords that still appear somewhere: S&box, Steam Community Market,
+ * Facepunch Studios, skin + type, live price, order book, total supply.
  */
 function generateDescription(
   name: string,
   type: string,
   steamType: string,
   priceInDollars: number,
+  isLimited = false,
 ): string {
-  const typeLabel =
-    type === "character" ? "character skin"
-    : type === "clothing" ? "clothing item"
-    : type === "accessory" ? "accessory"
-    : type === "weapon" ? "weapon skin"
-    : type === "tool" ? "tool skin"
-    : "cosmetic item";
+  // Natural type framing — varies so every item doesn't start "X is a clothing item"
+  const typePhrase: Record<string, string> = {
+    character: "a full-body S&box character skin",
+    clothing: "an S&box clothing piece",
+    accessory: "an S&box accessory",
+    weapon: "an S&box weapon skin",
+    tool: "an S&box tool skin",
+  };
+  const typeText = typePhrase[type] ?? "an S&box cosmetic";
 
-  const priceTier =
-    priceInDollars >= 100 ? "high-end, top-tier"
-    : priceInDollars >= 20 ? "premium"
-    : priceInDollars >= 5 ? "mid-range"
-    : priceInDollars >= 1 ? "affordable"
-    : "entry-level";
-
-  const steamTypeCleaned = steamType ? steamType.trim() : "";
-  const steamContext =
-    steamTypeCleaned && steamTypeCleaned.toLowerCase() !== typeLabel
-      ? ` categorized on Steam as a ${steamTypeCleaned}`
+  // Steam's raw type (e.g. "Outfit", "Workshop Item") woven in parenthetically,
+  // only when it adds info beyond our category guess.
+  const cleaned = (steamType ?? "").trim();
+  const steamNote =
+    cleaned && !typeText.toLowerCase().includes(cleaned.toLowerCase())
+      ? ` (Steam lists it as ${/^[aeiou]/i.test(cleaned) ? "an" : "a"} ${cleaned})`
       : "";
 
+  // Price context as a natural clause, not a robotic "premium-tier" label
+  const priceClause =
+    priceInDollars >= 100
+      ? "sitting near the top of the S&box market pricing-wise"
+      : priceInDollars >= 20
+      ? "in the higher price bracket for S&box skins"
+      : priceInDollars >= 5
+      ? "comfortably mid-range"
+      : priceInDollars >= 1
+      ? "an easy pickup price-wise"
+      : "one of the cheaper S&box skins around";
+
+  const limitedNote = isLimited
+    ? " It's flagged as limited edition, so no new ones get minted — supply is fixed."
+    : "";
+
+  // Vary the Facepunch mention slightly to avoid identical middle sentences
+  const facepunchBlurb =
+    type === "character"
+      ? "S&box is the sandbox game from Facepunch Studios, the folks behind Garry's Mod and Rust."
+      : "Made for S&box, the Facepunch Studios sandbox game (the team behind Garry's Mod and Rust).";
+
   return (
-    `${name} is a ${priceTier} S&box ${typeLabel}${steamContext}, traded on the Steam Community Market. ` +
-    `Players buy and sell ${name} to customize their avatar in S&box, the Facepunch Studios sandbox game. ` +
-    `Track the live market price, historical price chart, total supply, and buy/sell order book for ${name} on sboxskins.gg — the dedicated S&box skin price tracker.`
+    `${name} — ${typeText}${steamNote}, ${priceClause} and trading on the Steam Community Market.${limitedNote} ` +
+    `${facepunchBlurb} ` +
+    `Live price, 24h change, full buy/sell order book, total supply, and the price chart for ${name} are all below — synced from Steam every 15–30 minutes.`
   );
 }
 
@@ -211,11 +231,18 @@ async function upsertItem(
     ? getSteamImageUrl(steamItem.asset_description.icon_url)
     : null;
 
+  // Pull the existing isLimited flag so we can include it in the generated blurb
+  const existingForDescription = await prisma.item.findUnique({
+    where: { steamMarketId: hashName },
+    select: { isLimited: true },
+  });
+
   const generatedDescription = generateDescription(
     steamItem.name,
     itemType,
     steamItem.asset_description?.type || "",
     priceInDollars,
+    existingForDescription?.isLimited ?? false,
   );
 
   const data = {
@@ -241,10 +268,13 @@ async function upsertItem(
         ? ((priceInDollars - existing.currentPrice) / existing.currentPrice) * 100
         : 0;
 
-    // Detect a generated description so we can refresh it as prices change.
-    // Hand-edited descriptions (not starting with the item name + " is a") are preserved.
+    // Detect an auto-generated description so we can refresh it when the
+    // generator changes. Hand-edited descriptions (that don't match either
+    // the old "X is a..." or new "X — ..." patterns) are preserved.
     const isGeneratedDescription =
-      !existing.description || existing.description.startsWith(`${existing.name} is a`);
+      !existing.description ||
+      existing.description.startsWith(`${existing.name} is a`) ||
+      existing.description.startsWith(`${existing.name} — `);
 
     await prisma.item.update({
       where: { steamMarketId: hashName },

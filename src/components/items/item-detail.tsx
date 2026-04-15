@@ -224,7 +224,7 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 </Button>
               </a>
             )}
-            {item.sboxFullIdent ? (
+            {item.sboxFullIdent && (
               <a
                 href={`https://sbox.game/${item.sboxFullIdent.replace(".", "/")}`}
                 target="_blank"
@@ -236,19 +236,18 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                   <ExternalLink className="h-4 w-4" />
                 </Button>
               </a>
-            ) : (
-              <a
-                href="https://sbox.game/metrics/skins"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex"
-              >
-                <Button variant="outline" className="gap-2">
-                  S&box Metrics
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
-              </a>
             )}
+            <a
+              href="https://sbox.game/metrics/skins"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex"
+            >
+              <Button variant="outline" className="gap-2">
+                S&box Metrics
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            </a>
             <PriceAlertForm
               itemId={item.id}
               itemName={item.name}
