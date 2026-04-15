@@ -27,7 +27,7 @@ export function SpreadAnalysis({ slug }: { slug: string }) {
     fetch(`/api/orders?slug=${encodeURIComponent(slug)}`)
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => setData(json))
-      .catch(() => {})
+      .catch(() => setData(null)) // explicit null so UI shows "no data" instead of hanging on loading
       .finally(() => setLoading(false));
   }, [slug]);
 

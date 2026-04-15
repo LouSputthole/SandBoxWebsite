@@ -8,6 +8,7 @@ import {
 } from "@/lib/steam/client";
 import type { SteamSearchResult, SyncResult } from "@/lib/steam/types";
 import { slugify } from "@/lib/utils";
+import { debug } from "@/lib/debug";
 
 /**
  * Infer the item type from the item name and Steam's type string.
@@ -95,7 +96,7 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
   };
 
   try {
-    console.log("[sync] Fetching items from Steam Market (appid 590830)...");
+    debug("[sync] Fetching items from Steam Market (appid 590830)...");
     const steamItems = await fetchAllMarketItems();
 
     if (steamItems.length === 0) {
@@ -104,11 +105,11 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
       return result;
     }
 
-    console.log(`[sync] Found ${steamItems.length} items on Steam Market`);
+    debug(`[sync] Found ${steamItems.length} items on Steam Market`);
 
     // Log each item name for debugging
     for (const item of steamItems) {
-      console.log(`[sync]   - "${item.name}" (hash: ${item.hash_name}, price: $${(item.sell_price / 100).toFixed(2)}, listings: ${item.sell_listings})`);
+      debug(`[sync]   - "${item.name}" (hash: ${item.hash_name}, price: $${(item.sell_price / 100).toFixed(2)}, listings: ${item.sell_listings})`);
     }
 
     // Accumulate price points to write in one batch at the end (avoids N+1)
@@ -140,7 +141,7 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
 
     // Optionally fetch detailed price overview for each item
     if (fetchPrices) {
-      console.log("[sync] Fetching detailed price overviews...");
+      debug("[sync] Fetching detailed price overviews...");
       const items = await prisma.item.findMany({
         where: { steamMarketId: { not: null } },
         select: { id: true, name: true, steamMarketId: true },
@@ -162,7 +163,7 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
   }
 
   result.duration = Date.now() - startTime;
-  console.log(
+  debug(
     `[sync] Complete: ${result.itemsProcessed} processed, ${result.itemsCreated} created, ${result.itemsUpdated} updated, ${result.pricePointsCreated} price points in ${result.duration}ms`
   );
   return result;
@@ -383,7 +384,7 @@ export async function syncPriceBatch(batchSize = 30): Promise<SyncResult> {
       take: batchSize,
     });
 
-    console.log(`[sync:prices] Processing ${items.length} items...`);
+    debug(`[sync:prices] Processing ${items.length} items...`);
 
     for (const item of items) {
       try {
@@ -401,7 +402,7 @@ export async function syncPriceBatch(batchSize = 30): Promise<SyncResult> {
   }
 
   result.duration = Date.now() - startTime;
-  console.log(`[sync:prices] Complete: ${result.itemsProcessed} items in ${result.duration}ms`);
+  debug(`[sync:prices] Complete: ${result.itemsProcessed} items in ${result.duration}ms`);
   return result;
 }
 
@@ -430,15 +431,15 @@ export async function cleanupNonSteamItems(): Promise<SyncResult> {
     });
 
     if (fakeItems.length === 0) {
-      console.log("[cleanup] No non-Steam items found — database is clean");
+      debug("[cleanup] No non-Steam items found — database is clean");
       result.success = true;
       result.duration = Date.now() - startTime;
       return result;
     }
 
-    console.log(`[cleanup] Found ${fakeItems.length} non-Steam items to remove:`);
+    debug(`[cleanup] Found ${fakeItems.length} non-Steam items to remove:`);
     for (const item of fakeItems) {
-      console.log(`[cleanup]   - "${item.name}" (slug: ${item.slug})`);
+      debug(`[cleanup]   - "${item.name}" (slug: ${item.slug})`);
     }
 
     const fakeIds = fakeItems.map((i) => i.id);
@@ -447,19 +448,19 @@ export async function cleanupNonSteamItems(): Promise<SyncResult> {
     const deletedPoints = await prisma.pricePoint.deleteMany({
       where: { itemId: { in: fakeIds } },
     });
-    console.log(`[cleanup] Deleted ${deletedPoints.count} fake price points`);
+    debug(`[cleanup] Deleted ${deletedPoints.count} fake price points`);
 
     // Delete associated price alerts
     const deletedAlerts = await prisma.priceAlert.deleteMany({
       where: { itemId: { in: fakeIds } },
     });
-    console.log(`[cleanup] Deleted ${deletedAlerts.count} fake price alerts`);
+    debug(`[cleanup] Deleted ${deletedAlerts.count} fake price alerts`);
 
     // Delete the fake items
     const deleted = await prisma.item.deleteMany({
       where: { id: { in: fakeIds } },
     });
-    console.log(`[cleanup] Deleted ${deleted.count} non-Steam items`);
+    debug(`[cleanup] Deleted ${deleted.count} non-Steam items`);
 
     result.itemsProcessed = deleted.count;
     result.success = true;
@@ -501,5 +502,5 @@ export async function captureMarketSnapshot(): Promise<void> {
     },
   });
 
-  console.log(`[sync] Market snapshot captured: ${items.length} items, market cap $${items.reduce((sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0), 0).toFixed(2)}`);
+  debug(`[sync] Market snapshot captured: ${items.length} items, market cap $${items.reduce((sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0), 0).toFixed(2)}`);
 }

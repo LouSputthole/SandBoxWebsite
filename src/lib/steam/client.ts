@@ -1,4 +1,5 @@
 import type { SteamSearchResponse, SteamPriceOverview, SteamVanityResponse, SteamOrderHistogram } from "./types";
+import { debug, debugWarn } from "@/lib/debug";
 
 const STEAM_APPID = 590830;
 const STEAM_MARKET_BASE = "https://steamcommunity.com/market";
@@ -57,7 +58,7 @@ async function steamFetch<T>(url: string, retries = 2): Promise<T | null> {
       if (response.status === 429) {
         // Rate limited — back off exponentially
         const delay = 5000 * Math.pow(2, attempt);
-        console.warn(`[steam] Rate limited, retrying in ${delay}ms (attempt ${attempt + 1})`);
+        debugWarn(`[steam] Rate limited, retrying in ${delay}ms (attempt ${attempt + 1})`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -73,7 +74,7 @@ async function steamFetch<T>(url: string, retries = 2): Promise<T | null> {
     } catch (error) {
       if (attempt < retries) {
         const delay = 2000 * Math.pow(2, attempt);
-        console.warn(`[steam] Fetch failed, retrying in ${delay}ms (attempt ${attempt + 1}):`, error);
+        debugWarn(`[steam] Fetch failed, retrying in ${delay}ms (attempt ${attempt + 1}):`, error);
         await new Promise((r) => setTimeout(r, delay));
         continue;
       }
@@ -140,28 +141,28 @@ export async function fetchAllMarketItems(): Promise<SteamSearchResponse["result
   let emptyPages = 0;
 
   while (allItems.length < totalCount) {
-    console.log(`[steam] Fetching items ${start}–${start + count} (have ${allItems.length}/${totalCount === Infinity ? "?" : totalCount})...`);
+    debug(`[steam] Fetching items ${start}–${start + count} (have ${allItems.length}/${totalCount === Infinity ? "?" : totalCount})...`);
     const response = await searchMarketItems(start, count);
 
     if (!response || !response.success) {
-      console.warn("[steam] Search request failed, stopping pagination");
+      debugWarn("[steam] Search request failed, stopping pagination");
       break;
     }
 
     // Update total count from Steam's response
     if (response.total_count !== undefined) {
       totalCount = response.total_count;
-      console.log(`[steam] Steam reports ${totalCount} total items`);
+      debug(`[steam] Steam reports ${totalCount} total items`);
     }
 
     if (!response.results || response.results.length === 0) {
       emptyPages++;
       if (emptyPages >= 3) {
-        console.warn("[steam] Got 3 empty pages in a row, stopping");
+        debugWarn("[steam] Got 3 empty pages in a row, stopping");
         break;
       }
       // Steam might be throttling — wait longer and retry same offset
-      console.warn(`[steam] Empty page at start=${start}, waiting 10s before retry...`);
+      debugWarn(`[steam] Empty page at start=${start}, waiting 10s before retry...`);
       await new Promise((r) => setTimeout(r, 10000));
       continue;
     }
@@ -176,7 +177,7 @@ export async function fetchAllMarketItems(): Promise<SteamSearchResponse["result
     if (start >= totalCount) break;
   }
 
-  console.log(`[steam] Pagination complete: fetched ${allItems.length} of ${totalCount === Infinity ? "unknown" : totalCount} items`);
+  debug(`[steam] Pagination complete: fetched ${allItems.length} of ${totalCount === Infinity ? "unknown" : totalCount} items`);
   return allItems;
 }
 
@@ -267,12 +268,12 @@ export async function resolveVanityUrl(vanityName: string): Promise<string | nul
       const xml = await xmlRes.text();
       const match = xml.match(/<steamID64>(\d{17})<\/steamID64>/);
       if (match) {
-        console.log(`[steam] Resolved vanity "${vanityName}" via XML → ${match[1]}`);
+        debug(`[steam] Resolved vanity "${vanityName}" via XML → ${match[1]}`);
         return match[1];
       }
-      console.warn(`[steam] XML endpoint returned 200 but no steamID64 for "${vanityName}"`);
+      debugWarn(`[steam] XML endpoint returned 200 but no steamID64 for "${vanityName}"`);
     } else {
-      console.warn(`[steam] XML endpoint returned ${xmlRes.status} for "${vanityName}"`);
+      debugWarn(`[steam] XML endpoint returned ${xmlRes.status} for "${vanityName}"`);
     }
   } catch (error) {
     console.error("[steam] XML vanity resolution failed:", error);
@@ -297,7 +298,7 @@ export async function resolveVanityUrl(vanityName: string): Promise<string | nul
     if (!res.ok) return null;
     const data = (await res.json()) as SteamVanityResponse;
     if (data.response.success === 1 && data.response.steamid) {
-      console.log(`[steam] Resolved vanity "${vanityName}" via Web API → ${data.response.steamid}`);
+      debug(`[steam] Resolved vanity "${vanityName}" via Web API → ${data.response.steamid}`);
       return data.response.steamid;
     }
     return null;
@@ -339,7 +340,7 @@ export async function fetchItemNameId(marketHashName: string): Promise<string | 
       return match[1];
     }
 
-    console.warn(`[steam] Could not find item_nameid in listing page for ${marketHashName}`);
+    debugWarn(`[steam] Could not find item_nameid in listing page for ${marketHashName}`);
     return null;
   } catch (error) {
     console.error(`[steam] Failed to fetch listing page for ${marketHashName}:`, error);

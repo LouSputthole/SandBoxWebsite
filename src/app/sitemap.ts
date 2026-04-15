@@ -1,7 +1,9 @@
 import type { MetadataRoute } from "next";
 import { prisma } from "@/lib/db";
 
-export const dynamic = "force-dynamic";
+// ISR — regenerate sitemap every hour. Item list changes slowly (new items
+// added by sync), so hourly cache is plenty fresh for Googlebot.
+export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const items = await prisma.item.findMany({
