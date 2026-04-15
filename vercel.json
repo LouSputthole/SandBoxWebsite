@@ -20,6 +20,10 @@
     {
       "path": "/api/cron/tweet-weekly",
       "schedule": "0 17 * * 5"
+    },
+    {
+      "path": "/api/cron/tweet-dispatcher",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -15,13 +15,15 @@ import { invalidatePattern } from "@/lib/redis/cache";
  * Protected by CRON_SECRET header (set in env).
  */
 export async function POST(request: NextRequest) {
-  // Verify authorization
+  // Require CRON_SECRET to be configured AND to match the Authorization header.
+  // If the env var is missing, we fail closed instead of skipping auth.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!cronSecret) {
+    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
+  }
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const searchParams = request.nextUrl.searchParams;

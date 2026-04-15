@@ -138,6 +138,24 @@ model PageView {
   @@index([sessionId])
 }
 
+model ScheduledTweet {
+  id               String   @id @default(cuid())
+  text             String
+  scheduledFor     DateTime
+  status           String   @default("pending") // "pending" | "posted" | "failed" | "cancelled"
+  kind             String?  // mirror of SentTweet.kind so we can categorize later
+  itemSlug         String?
+  inReplyToTweetId String?
+  // Once posted, link back to the resulting SentTweet row
+  postedTweetId    String?
+  failureReason    String?
+  attemptedAt      DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([status, scheduledFor])
+  @@index([scheduledFor])
+}
+
 model SentTweet {
   id              String   @id @default(cuid())
   tweetId         String   @unique // X's numeric tweet ID

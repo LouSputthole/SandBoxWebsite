@@ -25,111 +25,118 @@ export async function GET(request: NextRequest) {
   const days = period === "30d" ? 30 : period === "24h" ? 1 : 7;
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-  const views = await prisma.pageView.findMany({
-    where: { timestamp: { gte: since } },
-    select: {
-      path: true,
-      referrer: true,
-      country: true,
-      device: true,
-      browser: true,
-      os: true,
-      sessionId: true,
-      timestamp: true,
-    },
-    orderBy: { timestamp: "desc" },
-  });
+  // Run all aggregations in parallel at the database layer instead of pulling
+  // the whole table into Node memory and grouping in JS. Significantly faster
+  // and uses constant memory regardless of pageview volume.
+  const [
+    totalViews,
+    visitorsRaw,
+    topPagesRaw,
+    topReferrersRaw,
+    topCountriesRaw,
+    devicesRaw,
+    browsersRaw,
+    osRaw,
+    dailyRaw,
+  ] = await Promise.all([
+    prisma.pageView.count({ where: { timestamp: { gte: since } } }),
 
-  const totalViews = views.length;
-  const uniqueVisitors = new Set(views.map((v) => v.sessionId).filter(Boolean))
-    .size;
+    // COUNT(DISTINCT sessionId) — Prisma's typed query layer doesn't expose
+    // distinct counts cleanly, so use raw.
+    prisma.$queryRaw<[{ count: bigint }]>`
+      SELECT COUNT(DISTINCT "sessionId")::bigint AS count
+      FROM "PageView"
+      WHERE "timestamp" >= ${since} AND "sessionId" IS NOT NULL
+    `,
 
-  // Top pages
-  const pageCounts = new Map<string, number>();
-  for (const v of views) {
-    pageCounts.set(v.path, (pageCounts.get(v.path) ?? 0) + 1);
-  }
-  const topPages = [...pageCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
-    .map(([path, count]) => ({ path, count }));
+    prisma.pageView.groupBy({
+      by: ["path"],
+      where: { timestamp: { gte: since } },
+      _count: { _all: true },
+      orderBy: { _count: { path: "desc" } },
+      take: 20,
+    }),
 
-  // Top referrers
-  const refCounts = new Map<string, number>();
-  for (const v of views) {
-    if (v.referrer) {
-      refCounts.set(v.referrer, (refCounts.get(v.referrer) ?? 0) + 1);
-    }
-  }
-  const topReferrers = [...refCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
-    .map(([referrer, count]) => ({ referrer, count }));
+    prisma.pageView.groupBy({
+      by: ["referrer"],
+      where: { timestamp: { gte: since }, referrer: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { referrer: "desc" } },
+      take: 20,
+    }),
 
-  // Countries
-  const countryCounts = new Map<string, number>();
-  for (const v of views) {
-    if (v.country) {
-      countryCounts.set(v.country, (countryCounts.get(v.country) ?? 0) + 1);
-    }
-  }
-  const topCountries = [...countryCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 20)
-    .map(([country, count]) => ({ country, count }));
+    prisma.pageView.groupBy({
+      by: ["country"],
+      where: { timestamp: { gte: since }, country: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { country: "desc" } },
+      take: 20,
+    }),
 
-  // Devices
-  const deviceCounts = new Map<string, number>();
-  for (const v of views) {
-    if (v.device) {
-      deviceCounts.set(v.device, (deviceCounts.get(v.device) ?? 0) + 1);
-    }
-  }
-  const devices = [...deviceCounts.entries()].map(([device, count]) => ({
-    device,
-    count,
+    prisma.pageView.groupBy({
+      by: ["device"],
+      where: { timestamp: { gte: since }, device: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { device: "desc" } },
+    }),
+
+    prisma.pageView.groupBy({
+      by: ["browser"],
+      where: { timestamp: { gte: since }, browser: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { browser: "desc" } },
+    }),
+
+    prisma.pageView.groupBy({
+      by: ["os"],
+      where: { timestamp: { gte: since }, os: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { os: "desc" } },
+    }),
+
+    // Daily views + unique visitors via DATE_TRUNC. One query, server-side.
+    prisma.$queryRaw<{ date: Date; views: bigint; visitors: bigint }[]>`
+      SELECT
+        DATE_TRUNC('day', "timestamp")::date AS date,
+        COUNT(*)::bigint AS views,
+        COUNT(DISTINCT "sessionId")::bigint AS visitors
+      FROM "PageView"
+      WHERE "timestamp" >= ${since}
+      GROUP BY 1
+      ORDER BY 1 ASC
+    `,
+  ]);
+
+  const uniqueVisitors = Number(visitorsRaw[0]?.count ?? 0);
+
+  const topPages = topPagesRaw.map((r) => ({
+    path: r.path,
+    count: r._count._all,
   }));
+  const topReferrers = topReferrersRaw
+    .filter((r) => r.referrer != null)
+    .map((r) => ({ referrer: r.referrer as string, count: r._count._all }));
+  const topCountries = topCountriesRaw
+    .filter((r) => r.country != null)
+    .map((r) => ({ country: r.country as string, count: r._count._all }));
+  const devices = devicesRaw
+    .filter((r) => r.device != null)
+    .map((r) => ({ device: r.device as string, count: r._count._all }));
+  const browsers = browsersRaw
+    .filter((r) => r.browser != null)
+    .map((r) => ({ browser: r.browser as string, count: r._count._all }));
+  const operatingSystems = osRaw
+    .filter((r) => r.os != null)
+    .map((r) => ({ os: r.os as string, count: r._count._all }));
 
-  // Browsers
-  const browserCounts = new Map<string, number>();
-  for (const v of views) {
-    if (v.browser) {
-      browserCounts.set(v.browser, (browserCounts.get(v.browser) ?? 0) + 1);
-    }
-  }
-  const browsers = [...browserCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([browser, count]) => ({ browser, count }));
-
-  // OS
-  const osCounts = new Map<string, number>();
-  for (const v of views) {
-    if (v.os) {
-      osCounts.set(v.os, (osCounts.get(v.os) ?? 0) + 1);
-    }
-  }
-  const operatingSystems = [...osCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([os, count]) => ({ os, count }));
-
-  // Views by day
-  const dailyCounts = new Map<string, { views: number; visitors: Set<string> }>();
-  for (const v of views) {
-    const day = v.timestamp.toISOString().slice(0, 10);
-    if (!dailyCounts.has(day)) {
-      dailyCounts.set(day, { views: 0, visitors: new Set() });
-    }
-    const entry = dailyCounts.get(day)!;
-    entry.views++;
-    if (v.sessionId) entry.visitors.add(v.sessionId);
-  }
-  const viewsByDay = [...dailyCounts.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, data]) => ({
-      date,
-      views: data.views,
-      visitors: data.visitors.size,
-    }));
+  const viewsByDay = dailyRaw.map((r) => ({
+    date:
+      r.date instanceof Date
+        ? r.date.toISOString().slice(0, 10)
+        : String(r.date),
+    views: Number(r.views),
+    visitors: Number(r.visitors),
+  }));
 
   return NextResponse.json({
     period,

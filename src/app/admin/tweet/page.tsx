@@ -13,6 +13,8 @@ import {
   MessageCircle,
   Megaphone,
   BarChart3,
+  Clock,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -46,6 +48,20 @@ interface Mention {
   reason: string;
 }
 
+interface ScheduledTweet {
+  id: string;
+  text: string;
+  scheduledFor: string;
+  status: string;
+  kind: string | null;
+  itemSlug: string | null;
+  inReplyToTweetId: string | null;
+  postedTweetId: string | null;
+  failureReason: string | null;
+  attemptedAt: string | null;
+  createdAt: string;
+}
+
 const KIND_LABELS: Record<string, string> = {
   "top-gainer": "Top Gainer (24h)",
   "top-loser": "Top Loser (24h)",
@@ -72,7 +88,7 @@ function formatTweetTime(iso: string): string {
 export default function TweetAdminPage() {
   const [key, setKey] = useState("");
   const [authed, setAuthed] = useState(false);
-  const [activeTab, setActiveTab] = useState<"drafts" | "mentions">("drafts");
+  const [activeTab, setActiveTab] = useState<"drafts" | "mentions" | "scheduled">("drafts");
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +107,14 @@ export default function TweetAdminPage() {
   const [replyText, setReplyText] = useState<Record<string, string>>({});
   const [replyResult, setReplyResult] = useState<Record<string, TweetResult>>({});
   const [posting, setPosting] = useState<string | null>(null);
+
+  // Scheduling state
+  const [scheduled, setScheduled] = useState<ScheduledTweet[]>([]);
+  const [scheduledLoading, setScheduledLoading] = useState(false);
+  const [scheduledError, setScheduledError] = useState<string | null>(null);
+  const [showCustomSchedule, setShowCustomSchedule] = useState(false);
+  const [customScheduleTime, setCustomScheduleTime] = useState("");
+  const [schedulingCustom, setSchedulingCustom] = useState(false);
 
   const fetchDrafts = useCallback(async () => {
     if (!key) return;
@@ -202,6 +226,82 @@ export default function TweetAdminPage() {
     }
   }, [key]);
 
+  // ---- Scheduled tweet helpers ----
+
+  const fetchScheduled = useCallback(async () => {
+    if (!key) return;
+    setScheduledLoading(true);
+    setScheduledError(null);
+    try {
+      const res = await fetch("/api/admin/tweet/schedule", {
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setScheduled(data.scheduled ?? []);
+    } catch (err) {
+      setScheduledError(err instanceof Error ? err.message : "Failed");
+    } finally {
+      setScheduledLoading(false);
+    }
+  }, [key]);
+
+  const scheduleCustom = async () => {
+    if (!customText.trim() || !customScheduleTime) return;
+    setSchedulingCustom(true);
+    setCustomResult(null);
+    try {
+      // datetime-local gives a value like "2026-04-15T18:30" — convert to ISO
+      const scheduledFor = new Date(customScheduleTime).toISOString();
+      const res = await fetch("/api/admin/tweet/schedule", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({ text: customText, scheduledFor, kind: "custom" }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCustomResult({ success: true });
+        setCustomText("");
+        setCustomScheduleTime("");
+        setShowCustomSchedule(false);
+        // Refresh the scheduled list if it's been loaded
+        if (scheduled.length > 0) fetchScheduled();
+      } else {
+        setCustomResult({ success: false, error: data.error || "Failed to schedule" });
+      }
+    } catch (err) {
+      setCustomResult({
+        success: false,
+        error: err instanceof Error ? err.message : "Failed to schedule",
+      });
+    } finally {
+      setSchedulingCustom(false);
+    }
+  };
+
+  const cancelScheduled = async (id: string) => {
+    try {
+      const res = await fetch(`/api/admin/tweet/schedule?id=${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${key}` },
+      });
+      if (res.ok) {
+        // Optimistic update
+        setScheduled((prev) =>
+          prev.map((s) => (s.id === id ? { ...s, status: "cancelled" } : s)),
+        );
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const sendReply = async (tweetId: string) => {
     const text = replyText[tweetId];
     if (!text?.trim()) return;
@@ -284,12 +384,13 @@ export default function TweetAdminPage() {
               Stats
             </Button>
           </Link>
-          {activeTab === "drafts" ? (
+          {activeTab === "drafts" && (
             <Button onClick={fetchDrafts} disabled={loading} variant="outline" className="gap-2">
               <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
               Regenerate
             </Button>
-          ) : (
+          )}
+          {activeTab === "mentions" && (
             <Button
               onClick={fetchMentions}
               disabled={mentionsLoading}
@@ -297,6 +398,17 @@ export default function TweetAdminPage() {
               className="gap-2"
             >
               <RefreshCw className={`h-4 w-4 ${mentionsLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          )}
+          {activeTab === "scheduled" && (
+            <Button
+              onClick={fetchScheduled}
+              disabled={scheduledLoading}
+              variant="outline"
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${scheduledLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
           )}
@@ -332,6 +444,25 @@ export default function TweetAdminPage() {
           {mentions.length > 0 && (
             <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
               {mentions.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab("scheduled");
+            if (scheduled.length === 0) fetchScheduled();
+          }}
+          className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition ${
+            activeTab === "scheduled"
+              ? "bg-neutral-800 text-white"
+              : "text-neutral-400 hover:text-white"
+          }`}
+        >
+          <Clock className="h-3.5 w-3.5" />
+          Scheduled
+          {scheduled.filter((s) => s.status === "pending").length > 0 && (
+            <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300">
+              {scheduled.filter((s) => s.status === "pending").length}
             </span>
           )}
         </button>
@@ -451,15 +582,53 @@ export default function TweetAdminPage() {
           >
             {customText.length} / 280
           </span>
-          <Button
-            onClick={postCustom}
-            disabled={!customText.trim() || postingCustom || customText.length > 280}
-            className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
-          >
-            {postingCustom ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            Post
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={() => setShowCustomSchedule((v) => !v)}
+              variant="outline"
+              className="gap-2"
+              disabled={!customText.trim() || customText.length > 280}
+            >
+              <Clock className="h-4 w-4" />
+              {showCustomSchedule ? "Cancel schedule" : "Schedule for later"}
+            </Button>
+            <Button
+              onClick={postCustom}
+              disabled={!customText.trim() || postingCustom || customText.length > 280}
+              className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
+            >
+              {postingCustom ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              Post now
+            </Button>
+          </div>
         </div>
+
+        {showCustomSchedule && (
+          <div className="mt-3 p-4 rounded-lg border border-purple-500/30 bg-purple-500/5 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Clock className="h-4 w-4 text-purple-400" />
+              <input
+                type="datetime-local"
+                value={customScheduleTime}
+                onChange={(e) => setCustomScheduleTime(e.target.value)}
+                className="rounded-md border border-neutral-700 bg-neutral-950 px-3 py-1.5 text-sm text-neutral-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500"
+              />
+            </div>
+            <Button
+              onClick={scheduleCustom}
+              disabled={!customScheduleTime || schedulingCustom}
+              className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
+              size="sm"
+            >
+              {schedulingCustom ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Clock className="h-4 w-4" />
+              )}
+              Schedule
+            </Button>
+          </div>
+        )}
         {customResult && (
           <div className="mt-3">
             {customResult.success ? (
@@ -656,6 +825,114 @@ export default function TweetAdminPage() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {/* Scheduled tab */}
+      {activeTab === "scheduled" && (
+        <div>
+          {scheduledError && (
+            <div className="mb-6 p-4 rounded-lg border border-red-500/30 bg-red-500/10 flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+              <p className="text-sm text-red-300">{scheduledError}</p>
+            </div>
+          )}
+
+          {scheduledLoading && scheduled.length === 0 && (
+            <div className="flex items-center justify-center gap-2 text-neutral-500 py-16">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              Loading scheduled tweets...
+            </div>
+          )}
+
+          {!scheduledLoading && scheduled.length === 0 && !scheduledError && (
+            <div className="text-center text-neutral-500 py-16">
+              <Clock className="h-10 w-10 mx-auto mb-3 text-neutral-700" />
+              <p className="text-sm">No scheduled tweets yet.</p>
+              <p className="text-xs mt-1 text-neutral-600">
+                Use the &ldquo;Schedule for later&rdquo; button on the Drafts tab&apos;s custom composer.
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {scheduled.map((s) => {
+              const when = new Date(s.scheduledFor);
+              const isPast = when.getTime() < Date.now();
+              const statusColor =
+                s.status === "posted"
+                  ? "bg-emerald-500/20 text-emerald-300"
+                  : s.status === "failed"
+                    ? "bg-red-500/20 text-red-300"
+                    : s.status === "cancelled"
+                      ? "bg-neutral-500/20 text-neutral-400"
+                      : isPast
+                        ? "bg-amber-500/20 text-amber-300"
+                        : "bg-purple-500/20 text-purple-300";
+              const statusLabel =
+                s.status === "pending" && isPast ? "due (next dispatch)" : s.status;
+
+              return (
+                <Card key={s.id} className="bg-neutral-900">
+                  <CardContent className="p-4">
+                    <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span
+                          className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full font-medium ${statusColor}`}
+                        >
+                          {statusLabel}
+                        </span>
+                        <span className="text-xs text-neutral-500">
+                          {when.toLocaleString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                        {s.kind && s.kind !== "scheduled" && (
+                          <span className="text-[10px] text-neutral-500">{s.kind}</span>
+                        )}
+                      </div>
+                      {s.status === "pending" && (
+                        <button
+                          onClick={() => cancelScheduled(s.id)}
+                          className="inline-flex items-center gap-1 text-xs text-neutral-500 hover:text-red-400 transition"
+                          aria-label="Cancel"
+                        >
+                          <X className="h-3 w-3" />
+                          Cancel
+                        </button>
+                      )}
+                      {s.status === "posted" && s.postedTweetId && (
+                        <a
+                          href={`https://x.com/SboxSkinsgg/status/${s.postedTweetId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-emerald-300 hover:underline"
+                        >
+                          View on X
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                    <pre className="text-sm text-neutral-200 whitespace-pre-wrap font-sans leading-relaxed">
+                      {s.text}
+                    </pre>
+                    {s.failureReason && (
+                      <p className="mt-2 text-xs text-red-400">
+                        <span className="font-medium">Error:</span> {s.failureReason}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          <p className="text-[11px] text-neutral-600 text-center mt-6">
+            Dispatcher runs every 5 minutes. Tweets fire within 5 min of their scheduled time.
+          </p>
         </div>
       )}
     </div>

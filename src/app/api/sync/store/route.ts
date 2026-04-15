@@ -11,12 +11,14 @@ import { prisma } from "@/lib/db";
  * Body: { items: [{ name: string, storePrice?: number }] }
  */
 export async function POST(request: NextRequest) {
+  // Fail closed if CRON_SECRET is missing — never expose this endpoint publicly.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret) {
-    const authHeader = request.headers.get("authorization");
-    if (authHeader !== `Bearer ${cronSecret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!cronSecret) {
+    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
+  }
+  const authHeader = request.headers.get("authorization");
+  if (authHeader !== `Bearer ${cronSecret}`) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   let body: { items?: { name: string; storePrice?: number }[] };
