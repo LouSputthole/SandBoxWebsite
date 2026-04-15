@@ -42,10 +42,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const item = await getItem(slug);
 
   if (!item) {
-    return {
-      title: "Item Not Found - S&box Skins",
-      robots: { index: false, follow: false },
-    };
+    // Calling notFound() from generateMetadata tells Next.js to return a real
+    // HTTP 404 (instead of a soft 200). Page component also calls notFound().
+    notFound();
   }
 
   const price = item.currentPrice != null ? formatPrice(item.currentPrice) : "N/A";
