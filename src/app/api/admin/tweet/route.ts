@@ -49,12 +49,15 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Accept either CRON_SECRET (for automated/cron posts) or ANALYTICS_KEY
+  // (for manual posts from the admin UI — that's what users type in)
   const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
+  const adminKey = process.env.ANALYTICS_KEY;
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  const validAuth =
+    (cronSecret && authHeader === `Bearer ${cronSecret}`) ||
+    (adminKey && authHeader === `Bearer ${adminKey}`);
+  if (!validAuth) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
