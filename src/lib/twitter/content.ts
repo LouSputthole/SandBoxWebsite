@@ -147,31 +147,47 @@ export async function genMarketCap(): Promise<GeneratedTweet | null> {
   });
   if (items.length === 0) return null;
 
-  const marketCap = items.reduce(
+  // Listings value: sum(price * active listings) — the dollar value of all open sell orders
+  const listingsValue = items.reduce(
     (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
     0,
   );
+  // Estimated market cap: sum(price * totalSupply) across items with known supply
+  const itemsWithSupply = items.filter(
+    (i) => i.totalSupply != null && i.totalSupply > 0 && (i.currentPrice ?? 0) > 0,
+  );
+  const estMarketCap = itemsWithSupply.reduce(
+    (sum, i) => sum + (i.currentPrice ?? 0) * (i.totalSupply ?? 0),
+    0,
+  );
   const totalListings = items.reduce((s, i) => s + (i.volume ?? 0), 0);
-  const cap = formatPrice(marketCap);
+
+  // Prefer the supply-based est market cap if we have decent coverage (half of items)
+  const haveCap = estMarketCap > 0 && itemsWithSupply.length >= items.length / 2;
+  const headline = haveCap ? estMarketCap : listingsValue;
+  const cap = formatPrice(headline);
+  const lv = formatPrice(listingsValue);
+  const label = haveCap ? "market cap" : "listings value";
+  const Label = haveCap ? "Market cap" : "Listings value";
 
   const templates = [
     // loose / wendy's
     `${cap} floating around in S&box skins right now. try explaining that at thanksgiving.\n\n${SITE}`,
-    `state of the S&box economy:\n${cap} market cap, ${totalListings.toLocaleString()} listings, ${items.length} skins tracked. we just built the spreadsheet.\n\n${SITE}`,
+    `state of the S&box economy:\n${cap} ${label}, ${totalListings.toLocaleString()} listings, ${items.length} skins tracked. we just built the spreadsheet.\n\n${SITE}`,
     `daily PSA: S&box skins are a ${cap} market. your hat hobby is an asset class now.\n\n${SITE}`,
     `${cap} in hats, shoes, and face tattoos. the S&box economy is doing numbers.\n\n${SITE}`,
     // analytical
-    `S&box skin market snapshot:\n• Market cap: ${cap}\n• Active listings: ${totalListings.toLocaleString()}\n• Tracked items: ${items.length}\n\n${SITE}`,
-    `Market cap across all ${items.length} tracked S&box skins: ${cap}. Updated every 15–30 min.\n\n${SITE}`,
+    `S&box skin market snapshot:\n• ${Label}: ${cap}${haveCap ? `\n• Listings value: ${lv}` : ""}\n• Active listings: ${totalListings.toLocaleString()}\n• Tracked items: ${items.length}\n\n${SITE}`,
+    `${Label} across ${haveCap ? `${itemsWithSupply.length}/${items.length}` : items.length} tracked S&box skins: ${cap}. Updated every 15–30 min.\n\n${SITE}`,
     // hype
     `${cap} S&box skin market and climbing 🚀 This is just the start.\n\n${SITE}`,
-    `${items.length} skins, ${cap} market cap, thousands of listings. The S&box economy is here.\n\n${SITE}`,
+    `${items.length} skins, ${cap} ${label}, thousands of listings. The S&box economy is here.\n\n${SITE}`,
     // CS comparison
-    `S&box market cap: ${cap}. For reference, that's roughly equivalent to a single AK-47 Case Hardened Blue Gem at auction. Room to grow.\n\n${SITE}`,
+    `S&box ${label}: ${cap}. For reference, that's roughly equivalent to a single AK-47 Case Hardened Blue Gem at auction. Room to grow.\n\n${SITE}`,
     `CS:GO skin market took 5 years to hit $1B. S&box sitting at ${cap} already. Math it out.\n\n${SITE}`,
     `Everyone who traded CS skins in 2014 is nodding rn. S&box market: ${cap}.\n\n${SITE}`,
     // newsy
-    `📊 S&box market cap: ${cap} · ${totalListings.toLocaleString()} listings · ${items.length} tracked items\n${SITE}`,
+    `📊 S&box ${label}: ${cap} · ${totalListings.toLocaleString()} listings · ${items.length} tracked items\n${SITE}`,
     // community
     `Where we at fam → ${cap} S&box skin economy. ${items.length} items, ${totalListings.toLocaleString()} listings.\n\n${SITE}`,
   ];
@@ -258,24 +274,34 @@ export async function genLimitedEdition(): Promise<GeneratedTweet | null> {
 // ----- Weekly tweet generators -----
 
 /**
- * Find the price of each item roughly 7 days ago by querying PricePoint.
- * Returns a map of itemId -> price-7d-ago (or null if we don't have history).
+ * Find the price of each item ~7 days ago by querying PricePoint.
+ * Uses a narrow [7d - 4h, 7d + 4h] window centered on the target time and
+ * picks the point closest to exactly 7 days ago. Returns a map of
+ * itemId -> price.
  */
 async function getWeekAgoPrices(): Promise<Map<string, number>> {
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  // For each item, find the price point closest to 7 days ago
+  const targetTime = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const windowStart = new Date(targetTime - 4 * 60 * 60 * 1000);
+  const windowEnd = new Date(targetTime + 4 * 60 * 60 * 1000);
+
   const points = await prisma.pricePoint.findMany({
-    where: { timestamp: { lte: new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000) } },
-    orderBy: { timestamp: "desc" },
+    where: { timestamp: { gte: windowStart, lte: windowEnd } },
     select: { itemId: true, price: true, timestamp: true },
   });
 
-  // Keep the newest point per item that's still <= weekAgo+12h
-  const map = new Map<string, number>();
+  // For each item, pick the point with the smallest |timestamp - target|
+  const closest = new Map<string, { price: number; delta: number }>();
   for (const p of points) {
-    if (!map.has(p.itemId)) {
-      map.set(p.itemId, p.price);
+    const delta = Math.abs(p.timestamp.getTime() - targetTime);
+    const existing = closest.get(p.itemId);
+    if (!existing || delta < existing.delta) {
+      closest.set(p.itemId, { price: p.price, delta });
     }
+  }
+
+  const map = new Map<string, number>();
+  for (const [id, { price }] of closest) {
+    map.set(id, price);
   }
   return map;
 }
@@ -408,41 +434,47 @@ export async function genWeeklyRecap(): Promise<GeneratedTweet | null> {
 }
 
 export async function genWeeklyMarketChange(): Promise<GeneratedTweet | null> {
-  // Compare current market cap to market cap 7 days ago via MarketSnapshot
-  // or estimate from price history.
+  // Compare current market size to 7 days ago via MarketSnapshot.
+  // Prefers the supply-based estMarketCap when available on both snapshots,
+  // otherwise falls back to listingsValue for a like-for-like comparison.
   const items = await prisma.item.findMany({
-    select: { currentPrice: true, volume: true },
+    select: { currentPrice: true, volume: true, totalSupply: true },
   });
   if (items.length === 0) return null;
 
-  const currentCap = items.reduce(
+  const currentListings = items.reduce(
     (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
     0,
   );
+  const currentEstCap = items
+    .filter((i) => i.totalSupply != null && i.totalSupply > 0 && (i.currentPrice ?? 0) > 0)
+    .reduce((sum, i) => sum + (i.currentPrice ?? 0) * (i.totalSupply ?? 0), 0);
 
-  // Try MarketSnapshot for last-week reference
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const oldSnap = await prisma.marketSnapshot.findFirst({
     where: { timestamp: { lte: new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000) } },
     orderBy: { timestamp: "desc" },
   });
+  if (!oldSnap) return null;
 
-  if (!oldSnap || !oldSnap.marketCap || oldSnap.marketCap <= 0) {
-    // Fallback: just report current cap without a delta
-    return null;
-  }
+  const useEstCap =
+    currentEstCap > 0 && oldSnap.estMarketCap != null && oldSnap.estMarketCap > 0;
+  const current = useEstCap ? currentEstCap : currentListings;
+  const old = useEstCap ? (oldSnap.estMarketCap ?? 0) : oldSnap.listingsValue;
+  if (old <= 0) return null;
 
-  const changePct = ((currentCap - oldSnap.marketCap) / oldSnap.marketCap) * 100;
+  const changePct = ((current - old) / old) * 100;
   const direction = changePct >= 0 ? "+" : "";
   const arrow = changePct >= 0 ? "📈" : "📉";
-  const currentCapFmt = formatPrice(currentCap);
-  const oldCapFmt = formatPrice(oldSnap.marketCap);
+  const currentFmt = formatPrice(current);
+  const oldFmt = formatPrice(old);
+  const label = useEstCap ? "market cap" : "listings value";
 
   const templates = [
-    `S&box market cap this week: ${oldCapFmt} → ${currentCapFmt} (${direction}${changePct.toFixed(1)}%) ${arrow}\n\n${SITE}`,
-    `Week-over-week S&box skin economy: ${direction}${changePct.toFixed(1)}%. ${oldCapFmt} → ${currentCapFmt}.\n${SITE}`,
-    `the S&box market did a ${direction}${changePct.toFixed(1)}% this week. cap went from ${oldCapFmt} to ${currentCapFmt}.\n\n${SITE}`,
-    `7 days ago S&box skins were a ${oldCapFmt} market. now: ${currentCapFmt}. ${direction}${changePct.toFixed(1)}%.\n${SITE}`,
+    `S&box ${label} this week: ${oldFmt} → ${currentFmt} (${direction}${changePct.toFixed(1)}%) ${arrow}\n\n${SITE}`,
+    `Week-over-week S&box skin economy: ${direction}${changePct.toFixed(1)}%. ${oldFmt} → ${currentFmt}.\n${SITE}`,
+    `the S&box market did a ${direction}${changePct.toFixed(1)}% this week. ${label} went from ${oldFmt} to ${currentFmt}.\n\n${SITE}`,
+    `7 days ago S&box skins were a ${oldFmt} market. now: ${currentFmt}. ${direction}${changePct.toFixed(1)}%.\n${SITE}`,
   ];
   const text = seedPick(templates);
   return { kind: "weekly-market-change", text, approxLength: approximateLength(text) };
@@ -473,23 +505,28 @@ export async function genMarketInsight(): Promise<GeneratedTweet | null> {
     weekAgoChanges.reduce((s, i) => s + i.weeklyChangePct, 0) / weekAgoChanges.length;
   const gainerPct = (gainers.length / weekAgoChanges.length) * 100;
 
-  // Market cap delta via MarketSnapshot (if available)
+  // Market-size delta via MarketSnapshot (if available). Prefer supply-based
+  // estMarketCap when both sides have it; otherwise fall back to listingsValue.
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const [currentItems, oldSnap] = await Promise.all([
-    prisma.item.findMany({ select: { currentPrice: true, volume: true } }),
+    prisma.item.findMany({ select: { currentPrice: true, volume: true, totalSupply: true } }),
     prisma.marketSnapshot.findFirst({
       where: { timestamp: { lte: new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000) } },
       orderBy: { timestamp: "desc" },
     }),
   ]);
-  const currentCap = currentItems.reduce(
+  const currentListings = currentItems.reduce(
     (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
     0,
   );
-  const capDelta =
-    oldSnap?.marketCap && oldSnap.marketCap > 0
-      ? ((currentCap - oldSnap.marketCap) / oldSnap.marketCap) * 100
-      : null;
+  const currentEstCap = currentItems
+    .filter((i) => i.totalSupply != null && i.totalSupply > 0 && (i.currentPrice ?? 0) > 0)
+    .reduce((sum, i) => sum + (i.currentPrice ?? 0) * (i.totalSupply ?? 0), 0);
+  const useEstCap =
+    currentEstCap > 0 && oldSnap?.estMarketCap != null && oldSnap.estMarketCap > 0;
+  const currentCap = useEstCap ? currentEstCap : currentListings;
+  const oldCap = useEstCap ? (oldSnap?.estMarketCap ?? 0) : (oldSnap?.listingsValue ?? 0);
+  const capDelta = oldCap > 0 ? ((currentCap - oldCap) / oldCap) * 100 : null;
 
   // Classify sentiment
   type Sentiment = "bullish" | "bearish" | "volatile" | "stable";
@@ -507,8 +544,9 @@ export async function genMarketInsight(): Promise<GeneratedTweet | null> {
     sentiment = bigMovers.length > 0 ? "volatile" : "stable";
   }
 
+  const capLabel = useEstCap ? "Market cap" : "Listings value";
   const capClause = capDelta != null
-    ? ` Market cap ${capDelta >= 0 ? "+" : ""}${capDelta.toFixed(1)}%.`
+    ? ` ${capLabel} ${capDelta >= 0 ? "+" : ""}${capDelta.toFixed(1)}%.`
     : "";
   const moverClause = biggestAbsMover
     ? ` Biggest mover: ${biggestAbsMover.name} ${biggestAbsMover.weeklyChangePct >= 0 ? "+" : ""}${biggestAbsMover.weeklyChangePct.toFixed(0)}%.`

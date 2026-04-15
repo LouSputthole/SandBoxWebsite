@@ -24,6 +24,21 @@ export function slugify(text: string): string {
     .replace(/(^-|-$)/g, "");
 }
 
+/**
+ * Proper median — averages the two middle values for even-length arrays.
+ * Returns null for empty input. Input is assumed to be valid numbers; caller
+ * filters out nulls/zeros if that's desired.
+ */
+export function median(values: number[]): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = sorted.length / 2;
+  if (sorted.length % 2 === 0) {
+    return (sorted[mid - 1] + sorted[mid]) / 2;
+  }
+  return sorted[Math.floor(mid)];
+}
+
 export function formatRelativeTime(date: string | Date): string {
   const then = typeof date === "string" ? new Date(date) : date;
   const seconds = Math.floor((Date.now() - then.getTime()) / 1000);

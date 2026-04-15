@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Market Trends & Analytics - S&box Skins",
   description:
-    "Track S&box skin market trends, price movements, and top gainers/losers. View market cap, average price, volume, and type breakdown charts across 7, 30, or 90 day windows.",
+    "Track S&box skin market trends, price movements, and top gainers/losers. View estimated market cap, listings value, average price, volume, and type breakdown charts across 7, 30, or 90 day windows.",
   alternates: { canonical: "/trends" },
   openGraph: {
     title: "S&box Market Trends & Analytics",

@@ -69,16 +69,17 @@ model PriceAlert {
 }
 
 model MarketSnapshot {
-  id          String   @id @default(cuid())
-  timestamp   DateTime @default(now())
-  totalItems  Int
-  marketCap   Float    // sum(currentPrice * volume) across all items
-  avgPrice    Float    // mean of currentPrice
-  medianPrice Float?   // median of currentPrice
-  totalVolume Int      // sum of all volumes (listings)
-  totalSupply Int?     // sum of totalSupply across all items
-  floor       Float?   // cheapest item price
-  ceiling     Float?   // most expensive item price
+  id            String   @id @default(cuid())
+  timestamp     DateTime @default(now())
+  totalItems    Int
+  listingsValue Float    // sum(currentPrice * sellListings) — value of all active listings. (Renamed from marketCap — previous name was misleading.)
+  estMarketCap  Float?   // NEW: sum(currentPrice * totalSupply) where supply is known — actual estimated market cap
+  avgPrice      Float    // mean of currentPrice (items with price > 0)
+  medianPrice   Float?   // true median of currentPrice
+  totalVolume   Int      // sum of all active listings
+  totalSupply   Int?     // sum of totalSupply across items that have it
+  floor         Float?   // cheapest item price
+  ceiling       Float?   // most expensive item price
 
   @@index([timestamp])
 }

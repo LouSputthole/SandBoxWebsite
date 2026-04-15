@@ -47,7 +47,8 @@ export default async function TrendsPage({ searchParams }: PageProps) {
   // Pre-build view data the chart section needs (serialize timestamps for client)
   const snapshots = data.snapshots.map((sn) => ({
     timestamp: sn.timestamp.toISOString(),
-    marketCap: sn.marketCap,
+    listingsValue: sn.listingsValue,
+    estMarketCap: sn.estMarketCap,
     avgPrice: sn.avgPrice,
     totalVolume: sn.totalVolume,
   }));
@@ -79,9 +80,17 @@ export default async function TrendsPage({ searchParams }: PageProps) {
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="h-4 w-4 text-purple-400" />
-            <span className="text-[10px] uppercase tracking-wider text-neutral-500">Market Cap</span>
+            <span className="text-[10px] uppercase tracking-wider text-neutral-500">Est. Market Cap</span>
           </div>
-          <p className="text-xl font-bold text-white">{formatPrice(s.marketCap)}</p>
+          <p className="text-xl font-bold text-white">
+            {s.estMarketCap > 0 ? formatPrice(s.estMarketCap) : "—"}
+          </p>
+          <p className="text-[10px] text-neutral-500">
+            {s.estMarketCap > 0 && s.estMarketCapItemCount < s.totalItems
+              ? `${s.estMarketCapItemCount}/${s.totalItems} w/ supply · `
+              : ""}
+            Listings: {formatPrice(s.listingsValue)}
+          </p>
         </div>
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
           <div className="flex items-center gap-2 mb-2">

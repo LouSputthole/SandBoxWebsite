@@ -19,21 +19,24 @@ const MarketAreaChart = dynamic(
 
 interface Snapshot {
   timestamp: string;
-  marketCap: number;
+  listingsValue: number;
+  estMarketCap: number | null;
   avgPrice: number;
   totalVolume: number;
 }
 
-type ChartMetric = "marketCap" | "avgPrice" | "totalVolume";
+type ChartMetric = "estMarketCap" | "listingsValue" | "avgPrice" | "totalVolume";
 
 const metricConfig = {
-  marketCap: { label: "Market Cap", format: (v: number) => formatPrice(v), color: "#8b5cf6" },
+  estMarketCap: { label: "Est. Market Cap", format: (v: number) => formatPrice(v), color: "#8b5cf6" },
+  listingsValue: { label: "Listings Value", format: (v: number) => formatPrice(v), color: "#a855f7" },
   avgPrice: { label: "Avg Price", format: (v: number) => `$${v.toFixed(2)}`, color: "#22c55e" },
   totalVolume: { label: "Volume", format: (v: number) => v.toLocaleString(), color: "#3b82f6" },
 } as const;
 
 const metrics: { key: ChartMetric; label: string }[] = [
-  { key: "marketCap", label: "Market Cap" },
+  { key: "estMarketCap", label: "Est. Mkt Cap" },
+  { key: "listingsValue", label: "Listings $" },
   { key: "avgPrice", label: "Avg Price" },
   { key: "totalVolume", label: "Volume" },
 ];
@@ -43,14 +46,21 @@ function formatShortDate(dateStr: string): string {
 }
 
 export function TrendsChartSection({ snapshots }: { snapshots: Snapshot[] }) {
-  const [chartMetric, setChartMetric] = useState<ChartMetric>("marketCap");
+  const hasEstCap = useMemo(
+    () => snapshots.some((s) => s.estMarketCap != null && s.estMarketCap > 0),
+    [snapshots],
+  );
+  const [chartMetric, setChartMetric] = useState<ChartMetric>(
+    hasEstCap ? "estMarketCap" : "listingsValue",
+  );
 
   const chartData = useMemo(
     () =>
       snapshots.map((s) => ({
         date: formatShortDate(s.timestamp),
         timestamp: s.timestamp,
-        marketCap: s.marketCap,
+        estMarketCap: s.estMarketCap ?? 0,
+        listingsValue: s.listingsValue,
         avgPrice: s.avgPrice,
         totalVolume: s.totalVolume,
       })),

@@ -127,7 +127,9 @@ async function getHomepageData() {
   // One roundtrip to the DB for everything we need on the homepage.
   // Running these in parallel so we don't stall the response.
   const [allItems, trending, losers, expensive, rarest, limited] = await Promise.all([
-    prisma.item.findMany({ select: { currentPrice: true, volume: true, type: true } }),
+    prisma.item.findMany({
+      select: { currentPrice: true, volume: true, totalSupply: true, type: true },
+    }),
     prisma.item.findMany({
       orderBy: { priceChange24h: "desc" },
       take: 6,
@@ -159,8 +161,18 @@ async function getHomepageData() {
   // Compute homepage-wide stats from the all-items query
   const prices = allItems.map((i) => i.currentPrice ?? 0).filter((p) => p > 0);
   const totalListings = allItems.reduce((sum, i) => sum + (i.volume ?? 0), 0);
-  const marketCap = allItems.reduce(
+  // listingsValue = price × active-listings (what Steam has for sale right now)
+  const listingsValue = allItems.reduce(
     (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
+    0,
+  );
+  // estMarketCap = price × totalSupply, but only for items where supply is known.
+  // This is the true "market cap" concept vs listingsValue (which is just liquidity).
+  const itemsWithSupply = allItems.filter(
+    (i) => i.totalSupply != null && i.totalSupply > 0 && (i.currentPrice ?? 0) > 0,
+  );
+  const estMarketCap = itemsWithSupply.reduce(
+    (sum, i) => sum + (i.currentPrice ?? 0) * (i.totalSupply ?? 0),
     0,
   );
   const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
@@ -180,7 +192,9 @@ async function getHomepageData() {
     stats: {
       totalItems: allItems.length,
       avgPrice,
-      marketCap,
+      listingsValue,
+      estMarketCap,
+      estMarketCapItemCount: itemsWithSupply.length,
       totalListings,
       lastUpdated: lastUpdatedRow?.updatedAt.toISOString() ?? null,
     },
@@ -247,8 +261,17 @@ export default async function HomePage() {
                 <BarChart3 className="h-5 w-5 text-purple-400" />
               </div>
               <div>
-                <p className="text-xl font-bold text-white">{formatPrice(stats.marketCap)}</p>
-                <p className="text-[11px] text-neutral-500">Market Cap</p>
+                <p className="text-xl font-bold text-white">
+                  {stats.estMarketCap > 0 ? formatPrice(stats.estMarketCap) : "—"}
+                </p>
+                <p className="text-[11px] text-neutral-500">
+                  Est. Market Cap
+                  {stats.estMarketCap > 0 && stats.estMarketCapItemCount < stats.totalItems && (
+                    <span className="text-neutral-600">
+                      {" "}· {stats.estMarketCapItemCount}/{stats.totalItems}
+                    </span>
+                  )}
+                </p>
               </div>
             </div>
             <div className="flex items-center gap-3">

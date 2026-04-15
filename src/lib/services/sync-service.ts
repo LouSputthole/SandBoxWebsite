@@ -7,7 +7,7 @@ import {
   parseSteamPrice,
 } from "@/lib/steam/client";
 import type { SteamSearchResult, SyncResult } from "@/lib/steam/types";
-import { slugify } from "@/lib/utils";
+import { slugify, median } from "@/lib/utils";
 import { debug } from "@/lib/debug";
 
 /**
@@ -518,16 +518,29 @@ export async function captureMarketSnapshot(): Promise<void> {
 
   const prices = items.map((i) => i.currentPrice ?? 0).filter((p) => p > 0);
   const sortedPrices = [...prices].sort((a, b) => a - b);
-  const median = sortedPrices.length > 0
-    ? sortedPrices[Math.floor(sortedPrices.length / 2)]
+
+  const listingsValue = items.reduce(
+    (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
+    0,
+  );
+  // Estimated true market cap — only items with known supply
+  const itemsWithSupply = items.filter(
+    (i) => i.totalSupply != null && i.totalSupply > 0 && (i.currentPrice ?? 0) > 0,
+  );
+  const estMarketCap = itemsWithSupply.length > 0
+    ? itemsWithSupply.reduce(
+        (sum, i) => sum + (i.currentPrice ?? 0) * (i.totalSupply ?? 0),
+        0,
+      )
     : null;
 
   await prisma.marketSnapshot.create({
     data: {
       totalItems: items.length,
-      marketCap: items.reduce((sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0), 0),
+      listingsValue,
+      estMarketCap,
       avgPrice: prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0,
-      medianPrice: median,
+      medianPrice: median(prices),
       totalVolume: items.reduce((sum, i) => sum + (i.volume ?? 0), 0),
       totalSupply: items.reduce((sum, i) => sum + (i.totalSupply ?? 0), 0) || null,
       floor: sortedPrices.length > 0 ? sortedPrices[0] : null,
@@ -535,5 +548,7 @@ export async function captureMarketSnapshot(): Promise<void> {
     },
   });
 
-  debug(`[sync] Market snapshot captured: ${items.length} items, market cap $${items.reduce((sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0), 0).toFixed(2)}`);
+  debug(
+    `[sync] Market snapshot: ${items.length} items, listings value $${listingsValue.toFixed(2)}, est market cap ${estMarketCap ? `$${estMarketCap.toFixed(2)}` : "n/a"}`,
+  );
 }

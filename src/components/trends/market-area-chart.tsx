@@ -16,12 +16,13 @@ import {
 
 interface ChartPoint {
   date: string;
-  marketCap: number;
+  estMarketCap: number;
+  listingsValue: number;
   avgPrice: number;
   totalVolume: number;
 }
 
-export type ChartMetric = "marketCap" | "avgPrice" | "totalVolume";
+export type ChartMetric = "estMarketCap" | "listingsValue" | "avgPrice" | "totalVolume";
 
 interface MetricConfig {
   label: string;

@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { median } from "@/lib/utils";
 
 /**
  * Trends data fetcher — pulls market snapshots, item breakdowns, and top
@@ -11,7 +12,9 @@ export type TrendsPeriod = "7d" | "30d" | "90d" | "all";
 export interface TrendsData {
   currentStats: {
     totalItems: number;
-    marketCap: number;
+    listingsValue: number; // sum(currentPrice * activeListings) — value of all active listings
+    estMarketCap: number;  // sum(currentPrice * totalSupply) across items with known supply
+    estMarketCapItemCount: number; // how many items contributed to estMarketCap
     avgPrice: number;
     medianPrice: number;
     totalVolume: number;
@@ -21,7 +24,8 @@ export interface TrendsData {
   };
   snapshots: {
     timestamp: Date;
-    marketCap: number;
+    listingsValue: number;
+    estMarketCap: number | null;
     avgPrice: number;
     totalVolume: number;
     totalItems: number;
@@ -67,7 +71,8 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
       orderBy: { timestamp: "asc" },
       select: {
         timestamp: true,
-        marketCap: true,
+        listingsValue: true,
+        estMarketCap: true,
         avgPrice: true,
         totalVolume: true,
         totalItems: true,
@@ -116,15 +121,27 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
     }),
   ]);
 
+  // Build typeBreakdown from price-having items only, computing both a true
+  // avgPrice (mean of item prices) and a totalValue (sum of listing values).
+  // Previously avgPrice was `totalValue / count` which was listings value per
+  // item, not average item price.
   const typeBreakdown: TrendsData["typeBreakdown"] = {};
+  const typePriceSums: Record<string, { sum: number; priced: number }> = {};
   for (const item of items) {
     const t = item.type || "unknown";
     if (!typeBreakdown[t]) typeBreakdown[t] = { count: 0, totalValue: 0, avgPrice: 0 };
+    if (!typePriceSums[t]) typePriceSums[t] = { sum: 0, priced: 0 };
     typeBreakdown[t].count++;
-    typeBreakdown[t].totalValue += (item.currentPrice ?? 0) * (item.volume ?? 0);
+    const price = item.currentPrice ?? 0;
+    if (price > 0) {
+      typePriceSums[t].sum += price;
+      typePriceSums[t].priced++;
+    }
+    typeBreakdown[t].totalValue += price * (item.volume ?? 0);
   }
-  for (const t of Object.values(typeBreakdown)) {
-    t.avgPrice = t.count > 0 ? t.totalValue / t.count : 0;
+  for (const [t, entry] of Object.entries(typeBreakdown)) {
+    const { sum, priced } = typePriceSums[t];
+    entry.avgPrice = priced > 0 ? sum / priced : 0;
   }
 
   const storeStatusCounts = { available: 0, delisted: 0, unknown: 0 };
@@ -136,15 +153,27 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
 
   const prices = items.map((i) => i.currentPrice ?? 0).filter((p) => p > 0);
   const sortedPrices = [...prices].sort((a, b) => a - b);
-  const median = sortedPrices.length > 0
-    ? sortedPrices[Math.floor(sortedPrices.length / 2)]
-    : 0;
+
+  // Estimated market cap: for items with known totalSupply, sum price * supply.
+  // This is the real "market cap" concept; listingsValue is just active liquidity.
+  const itemsWithSupply = items.filter(
+    (i) => i.totalSupply != null && i.totalSupply > 0 && (i.currentPrice ?? 0) > 0,
+  );
+  const estMarketCap = itemsWithSupply.reduce(
+    (sum, i) => sum + (i.currentPrice ?? 0) * (i.totalSupply ?? 0),
+    0,
+  );
 
   const currentStats = {
     totalItems: items.length,
-    marketCap: items.reduce((sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0), 0),
+    listingsValue: items.reduce(
+      (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
+      0,
+    ),
+    estMarketCap,
+    estMarketCapItemCount: itemsWithSupply.length,
     avgPrice: prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0,
-    medianPrice: median,
+    medianPrice: median(prices) ?? 0,
     totalVolume: items.reduce((sum, i) => sum + (i.volume ?? 0), 0),
     totalSupply: items.reduce((sum, i) => sum + (i.totalSupply ?? 0), 0),
     floor: sortedPrices.length > 0 ? sortedPrices[0] : 0,

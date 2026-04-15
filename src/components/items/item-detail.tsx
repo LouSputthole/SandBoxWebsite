@@ -163,7 +163,7 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                   <span className="text-xs text-neutral-500">Median</span>
                   <Tooltip
                     asIcon
-                    content="The middle price of recent sales — half of sales closed below this, half above. Less skewed by outliers than the average, making it a better gauge of fair value."
+                    content="Steam's reported median sale price — the middle price of recent sales on the Steam Community Market. Less skewed by outliers than the average, making it a better gauge of fair value."
                   />
                 </div>
                 <span className="text-sm font-semibold text-white">

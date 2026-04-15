@@ -116,13 +116,13 @@ export async function draftReply(tweet: TweetWithAuthor): Promise<ReplyDraft> {
     const stats = await prisma.item.findMany({
       select: { currentPrice: true, volume: true },
     });
-    const marketCap = stats.reduce(
+    const listingsValue = stats.reduce(
       (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
       0,
     );
     const replies = [
       `if it helps, we track every S&box skin price in one place: ${SITE}`,
-      `S&box market is doing ${formatPrice(marketCap)} right now. live data at ${SITE}`,
+      `S&box has ${formatPrice(listingsValue)} in active listings right now. live data at ${SITE}`,
       `we pull live prices from Steam every 15 min. charts, order books, the whole thing: ${SITE}`,
     ];
     return {
