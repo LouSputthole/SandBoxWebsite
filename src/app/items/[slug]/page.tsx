@@ -6,9 +6,15 @@ import { ItemDetail } from "@/components/items/item-detail";
 import { ItemCard } from "@/components/items/item-card";
 import { formatPrice } from "@/lib/utils";
 
-// Force dynamic rendering so notFound() returns a proper HTTP 404
-// (instead of a soft 200 + noindex that Google keeps in Crawled-not-indexed).
-export const dynamic = "force-dynamic";
+// ISR — regenerate each item page every 5 minutes. Sync runs every 15-30 min,
+// so 5-min cache is always fresh relative to actual data updates. Googlebot
+// + users see cached HTML → faster loads, lower DB + function cost.
+//
+// (Previously used force-dynamic hoping to produce real 404s for missing
+// items, but that's a Next.js streaming limitation we can't fix at this layer.
+// The noindex meta tag from not-found.tsx is what keeps Google from indexing
+// fake slugs — it works identically with or without dynamic rendering.)
+export const revalidate = 300;
 
 interface PageProps {
   params: Promise<{ slug: string }>;
