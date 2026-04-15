@@ -47,12 +47,16 @@ interface Mention {
 }
 
 const KIND_LABELS: Record<string, string> = {
-  "top-gainer": "Top Gainer",
-  "top-loser": "Top Loser",
+  "top-gainer": "Top Gainer (24h)",
+  "top-loser": "Top Loser (24h)",
   rarest: "Rarest Skin",
   "market-cap": "Market Snapshot",
   "item-spotlight": "Item Spotlight",
   "limited-edition": "Limited Edition",
+  "weekly-gainer": "Weekly Gainer (7d)",
+  "weekly-loser": "Weekly Loser (7d)",
+  "weekly-recap": "Weekly Recap",
+  "weekly-market-change": "Weekly Market Change",
 };
 
 function formatTweetTime(iso: string): string {

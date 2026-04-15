@@ -8,7 +8,11 @@ export type TweetKind =
   | "market-cap"
   | "item-spotlight"
   | "new-high"
-  | "limited-edition";
+  | "limited-edition"
+  | "weekly-gainer"
+  | "weekly-loser"
+  | "weekly-recap"
+  | "weekly-market-change";
 
 export interface GeneratedTweet {
   kind: TweetKind;
@@ -250,6 +254,199 @@ export async function genLimitedEdition(): Promise<GeneratedTweet | null> {
   return { kind: "limited-edition", text, itemSlug: item.slug, approxLength: approximateLength(text) };
 }
 
+// ----- Weekly tweet generators -----
+
+/**
+ * Find the price of each item roughly 7 days ago by querying PricePoint.
+ * Returns a map of itemId -> price-7d-ago (or null if we don't have history).
+ */
+async function getWeekAgoPrices(): Promise<Map<string, number>> {
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  // For each item, find the price point closest to 7 days ago
+  const points = await prisma.pricePoint.findMany({
+    where: { timestamp: { lte: new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000) } },
+    orderBy: { timestamp: "desc" },
+    select: { itemId: true, price: true, timestamp: true },
+  });
+
+  // Keep the newest point per item that's still <= weekAgo+12h
+  const map = new Map<string, number>();
+  for (const p of points) {
+    if (!map.has(p.itemId)) {
+      map.set(p.itemId, p.price);
+    }
+  }
+  return map;
+}
+
+interface ItemWithWeekly {
+  id: string;
+  name: string;
+  slug: string;
+  currentPrice: number | null;
+  weekAgoPrice: number;
+  weeklyChangePct: number;
+}
+
+async function getWeeklyChanges(): Promise<ItemWithWeekly[]> {
+  const [items, weekAgoMap] = await Promise.all([
+    prisma.item.findMany({
+      where: { currentPrice: { not: null, gt: 0 } },
+      select: { id: true, name: true, slug: true, currentPrice: true },
+    }),
+    getWeekAgoPrices(),
+  ]);
+
+  const withWeekly: ItemWithWeekly[] = [];
+  for (const item of items) {
+    const weekAgoPrice = weekAgoMap.get(item.id);
+    if (!weekAgoPrice || !item.currentPrice || weekAgoPrice <= 0) continue;
+    const pct = ((item.currentPrice - weekAgoPrice) / weekAgoPrice) * 100;
+    withWeekly.push({ ...item, weekAgoPrice, weeklyChangePct: pct });
+  }
+  return withWeekly;
+}
+
+export async function genWeeklyGainer(): Promise<GeneratedTweet | null> {
+  const items = await getWeeklyChanges();
+  const gainers = items
+    .filter((i) => i.weeklyChangePct > 0)
+    .sort((a, b) => b.weeklyChangePct - a.weeklyChangePct);
+  const item = gainers[0];
+  if (!item) return null;
+
+  const pct = item.weeklyChangePct.toFixed(1);
+  const price = formatPrice(item.currentPrice!);
+  const wasPrice = formatPrice(item.weekAgoPrice);
+
+  const templates = [
+    // loose / wendy's
+    `weekly winner: ${item.name} up ${pct}% over the last 7 days. ${wasPrice} → ${price}. someone's feeling smug.\n${itemUrl(item.slug)}`,
+    `${item.name} ate well this week. +${pct}% from ${wasPrice} to ${price}.\n${itemUrl(item.slug)}`,
+    // analytical
+    `Biggest 7-day S&box mover: ${item.name} +${pct}% (${wasPrice} → ${price}).\nFull chart → ${itemUrl(item.slug)}`,
+    `Weekly top performer: ${item.name}, ${pct}% gain over 7 days. Current: ${price}.\n${itemUrl(item.slug)}`,
+    // hype
+    `${item.name} had a WEEK 🚀 up ${pct}% to ${price}. You seen this chart?\n${itemUrl(item.slug)}`,
+    `Holders of ${item.name} eating good. +${pct}% on the week at ${price}.\n${itemUrl(item.slug)}`,
+    // CS comparison
+    `${item.name} +${pct}% this week. That's the kind of weekly move CS traders circle on their charts.\n${price} · ${itemUrl(item.slug)}`,
+    `${item.name} 7-day run: +${pct}%. Feels like watching a CS skin break out of a consolidation range.\n${itemUrl(item.slug)}`,
+    // newsy
+    `📈 Weekly top gainer: ${item.name} +${pct}% · ${wasPrice} → ${price}\n${itemUrl(item.slug)}`,
+    // community
+    `Week recap — ${item.name} was the biggest winner, up ${pct}% at ${price}. Anyone catch this one?\n${itemUrl(item.slug)}`,
+  ];
+  const text = seedPick(templates);
+  return { kind: "weekly-gainer", text, itemSlug: item.slug, approxLength: approximateLength(text) };
+}
+
+export async function genWeeklyLoser(): Promise<GeneratedTweet | null> {
+  const items = await getWeeklyChanges();
+  const losers = items
+    .filter((i) => i.weeklyChangePct < 0)
+    .sort((a, b) => a.weeklyChangePct - b.weeklyChangePct);
+  const item = losers[0];
+  if (!item) return null;
+
+  const pct = Math.abs(item.weeklyChangePct).toFixed(1);
+  const price = formatPrice(item.currentPrice!);
+  const wasPrice = formatPrice(item.weekAgoPrice);
+
+  const templates = [
+    // loose / wendy's
+    `tough week for ${item.name}. down ${pct}% from ${wasPrice} to ${price}. happens to the best of us.\n${itemUrl(item.slug)}`,
+    `${item.name} had a week. not in a good way. -${pct}% at ${price}.\n${itemUrl(item.slug)}`,
+    // analytical
+    `Biggest 7-day S&box decline: ${item.name} at -${pct}% (${wasPrice} → ${price}).\n${itemUrl(item.slug)}`,
+    `${item.name} closed the week -${pct}%, sitting at ${price}. Chart: ${itemUrl(item.slug)}`,
+    // dip-buyer angle
+    `Week's biggest dip: ${item.name} down ${pct}% to ${price}. Interesting entry or falling knife?\n${itemUrl(item.slug)}`,
+    // CS comparison
+    `${item.name} -${pct}% this week. CS traders know weekly dips this deep sometimes precede solid bounces.\n${price} · ${itemUrl(item.slug)}`,
+    // newsy
+    `📉 Weekly top loser: ${item.name} -${pct}% · ${wasPrice} → ${price}\n${itemUrl(item.slug)}`,
+    // community
+    `Weekly recap — ${item.name} took the biggest L at -${pct}% (${price}). Holding or dumping?\n${itemUrl(item.slug)}`,
+  ];
+  const text = seedPick(templates);
+  return { kind: "weekly-loser", text, itemSlug: item.slug, approxLength: approximateLength(text) };
+}
+
+export async function genWeeklyRecap(): Promise<GeneratedTweet | null> {
+  const items = await getWeeklyChanges();
+  if (items.length < 3) return null;
+
+  const gainers = items
+    .filter((i) => i.weeklyChangePct > 0)
+    .sort((a, b) => b.weeklyChangePct - a.weeklyChangePct)
+    .slice(0, 3);
+  const losers = items
+    .filter((i) => i.weeklyChangePct < 0)
+    .sort((a, b) => a.weeklyChangePct - b.weeklyChangePct)
+    .slice(0, 2);
+
+  if (gainers.length === 0) return null;
+
+  // Build a compact recap — up to 3 gainers, up to 2 losers
+  const gainerLines = gainers
+    .map((g) => `• ${g.name} +${g.weeklyChangePct.toFixed(1)}%`)
+    .join("\n");
+  const loserLines = losers
+    .map((l) => `• ${l.name} ${l.weeklyChangePct.toFixed(1)}%`)
+    .join("\n");
+
+  const templates = [
+    `S&box weekly recap 📊\n\nTop movers up:\n${gainerLines}\n\nTop movers down:\n${loserLines}\n\n${SITE}`,
+    `this week in S&box skins:\n\nwinners:\n${gainerLines}\n\nlosers:\n${loserLines}\n\nfull charts → ${SITE}`,
+    `Weekly S&box market recap:\n\n🟢 Best performers\n${gainerLines}\n\n🔴 Worst performers\n${loserLines}\n\n${SITE}`,
+    `7-day S&box recap\n\nWINS\n${gainerLines}\n\nLOSSES\n${loserLines}\n\n${SITE}`,
+  ];
+  const text = seedPick(templates);
+  return { kind: "weekly-recap", text, approxLength: approximateLength(text) };
+}
+
+export async function genWeeklyMarketChange(): Promise<GeneratedTweet | null> {
+  // Compare current market cap to market cap 7 days ago via MarketSnapshot
+  // or estimate from price history.
+  const items = await prisma.item.findMany({
+    select: { currentPrice: true, volume: true },
+  });
+  if (items.length === 0) return null;
+
+  const currentCap = items.reduce(
+    (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
+    0,
+  );
+
+  // Try MarketSnapshot for last-week reference
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const oldSnap = await prisma.marketSnapshot.findFirst({
+    where: { timestamp: { lte: new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000) } },
+    orderBy: { timestamp: "desc" },
+  });
+
+  if (!oldSnap || !oldSnap.marketCap || oldSnap.marketCap <= 0) {
+    // Fallback: just report current cap without a delta
+    return null;
+  }
+
+  const changePct = ((currentCap - oldSnap.marketCap) / oldSnap.marketCap) * 100;
+  const direction = changePct >= 0 ? "+" : "";
+  const arrow = changePct >= 0 ? "📈" : "📉";
+  const currentCapFmt = formatPrice(currentCap);
+  const oldCapFmt = formatPrice(oldSnap.marketCap);
+
+  const templates = [
+    `S&box market cap this week: ${oldCapFmt} → ${currentCapFmt} (${direction}${changePct.toFixed(1)}%) ${arrow}\n\n${SITE}`,
+    `Week-over-week S&box skin economy: ${direction}${changePct.toFixed(1)}%. ${oldCapFmt} → ${currentCapFmt}.\n${SITE}`,
+    `the S&box market did a ${direction}${changePct.toFixed(1)}% this week. cap went from ${oldCapFmt} to ${currentCapFmt}.\n\n${SITE}`,
+    `7 days ago S&box skins were a ${oldCapFmt} market. now: ${currentCapFmt}. ${direction}${changePct.toFixed(1)}%.\n${SITE}`,
+  ];
+  const text = seedPick(templates);
+  return { kind: "weekly-market-change", text, approxLength: approximateLength(text) };
+}
+
 // ----- Entry points -----
 
 /** Generate one specific kind of tweet on demand (for the admin UI). */
@@ -261,15 +458,48 @@ export async function generateTweet(kind: TweetKind): Promise<GeneratedTweet | n
     case "market-cap": return genMarketCap();
     case "item-spotlight": return genItemSpotlight();
     case "limited-edition": return genLimitedEdition();
+    case "weekly-gainer": return genWeeklyGainer();
+    case "weekly-loser": return genWeeklyLoser();
+    case "weekly-recap": return genWeeklyRecap();
+    case "weekly-market-change": return genWeeklyMarketChange();
     case "new-high": return null; // reserved
   }
 }
 
 /** Generate 3 different draft variations for the admin UI. */
 export async function generateDrafts(): Promise<GeneratedTweet[]> {
-  const kinds: TweetKind[] = ["top-gainer", "top-loser", "rarest", "market-cap", "item-spotlight", "limited-edition"];
+  const kinds: TweetKind[] = [
+    "top-gainer",
+    "top-loser",
+    "rarest",
+    "market-cap",
+    "item-spotlight",
+    "limited-edition",
+    "weekly-gainer",
+    "weekly-loser",
+    "weekly-recap",
+    "weekly-market-change",
+  ];
   const results = await Promise.all(kinds.map((k) => generateTweet(k)));
   return results.filter((r): r is GeneratedTweet => r !== null);
+}
+
+/**
+ * Pick a weekly-flavored tweet for the Friday cron. Tries weekly-recap first,
+ * then falls back to individual weekly kinds if that doesn't have enough data.
+ */
+export async function pickWeeklyTweet(): Promise<GeneratedTweet | null> {
+  const order: TweetKind[] = [
+    "weekly-recap",
+    "weekly-gainer",
+    "weekly-market-change",
+    "weekly-loser",
+  ];
+  for (const kind of order) {
+    const tweet = await generateTweet(kind);
+    if (tweet) return tweet;
+  }
+  return null;
 }
 
 /**

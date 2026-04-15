@@ -45,12 +45,16 @@ const PERIODS = [
 ];
 
 const KIND_LABELS: Record<string, string> = {
-  "top-gainer": "Top Gainer",
-  "top-loser": "Top Loser",
+  "top-gainer": "Top Gainer (24h)",
+  "top-loser": "Top Loser (24h)",
   rarest: "Rarest",
   "market-cap": "Market Snapshot",
   "item-spotlight": "Spotlight",
   "limited-edition": "Limited Edition",
+  "weekly-gainer": "Weekly Gainer",
+  "weekly-loser": "Weekly Loser",
+  "weekly-recap": "Weekly Recap",
+  "weekly-market-change": "Weekly Market Δ",
   reply: "Reply",
   custom: "Custom",
 };
