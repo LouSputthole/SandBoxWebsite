@@ -1,6 +1,3 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   TrendingUp,
@@ -10,7 +7,6 @@ import {
   Crown,
   Package,
   DollarSign,
-  Activity,
   Gamepad2,
   BarChart3,
   ShoppingCart,
@@ -29,8 +25,12 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ItemCard } from "@/components/items/item-card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { prisma } from "@/lib/db";
 import { formatPrice, formatRelativeTime } from "@/lib/utils";
+
+// Render at request time — homepage data changes every sync cycle (15-30 min).
+// Next.js will cache the rendered HTML briefly at the edge anyway.
+export const revalidate = 300; // 5 minutes
 
 interface Item {
   id: string;
@@ -43,25 +43,6 @@ interface Item {
   volume: number | null;
   totalSupply: number | null;
   isLimited: boolean;
-}
-
-interface Stats {
-  totalItems: number;
-  avgPrice: number;
-  marketCap: number;
-  totalListings: number;
-  totalVolume: number;
-  lastUpdated: string | null;
-}
-
-async function safeFetch(url: string) {
-  try {
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
 }
 
 const categories = [
@@ -142,87 +123,73 @@ const features = [
   },
 ];
 
-export default function HomePage() {
-  const [trending, setTrending] = useState<Item[]>([]);
-  const [losers, setLosers] = useState<Item[]>([]);
-  const [expensive, setExpensive] = useState<Item[]>([]);
-  const [rarest, setRarest] = useState<Item[]>([]);
-  const [limited, setLimited] = useState<Item[]>([]);
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [categoryCounts, setCategoryCounts] = useState<Record<string, number>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+async function getHomepageData() {
+  // One roundtrip to the DB for everything we need on the homepage.
+  // Running these in parallel so we don't stall the response.
+  const [allItems, trending, losers, expensive, rarest, limited] = await Promise.all([
+    prisma.item.findMany({ select: { currentPrice: true, volume: true, type: true } }),
+    prisma.item.findMany({
+      orderBy: { priceChange24h: "desc" },
+      take: 6,
+    }),
+    prisma.item.findMany({
+      orderBy: { priceChange24h: "asc" },
+      take: 6,
+    }),
+    prisma.item.findMany({
+      orderBy: { currentPrice: "desc" },
+      take: 6,
+    }),
+    prisma.item.findMany({
+      where: { totalSupply: { not: null, gt: 0 } },
+      orderBy: { totalSupply: "asc" },
+      take: 6,
+    }),
+    prisma.item.findMany({
+      where: { isLimited: true },
+      take: 6,
+    }),
+  ]);
 
-  useEffect(() => {
-    async function fetchData() {
-      const [trendingData, losersData, expensiveData, rarestData, limitedData, allData] =
-        await Promise.all([
-          safeFetch("/api/items?sort=change-desc&limit=6"),
-          safeFetch("/api/items?sort=change-asc&limit=6"),
-          safeFetch("/api/items?sort=price-desc&limit=6"),
-          safeFetch("/api/items?sort=supply-asc&hasSupply=true&limit=6"),
-          safeFetch("/api/items?isLimited=true&limit=6"),
-          safeFetch("/api/items?limit=200"),
-        ]);
+  const lastUpdatedRow = await prisma.item.findFirst({
+    orderBy: { updatedAt: "desc" },
+    select: { updatedAt: true },
+  });
 
-      if (!trendingData && !expensiveData && !allData) {
-        setError(true);
-        setLoading(false);
-        return;
-      }
+  // Compute homepage-wide stats from the all-items query
+  const prices = allItems.map((i) => i.currentPrice ?? 0).filter((p) => p > 0);
+  const totalListings = allItems.reduce((sum, i) => sum + (i.volume ?? 0), 0);
+  const marketCap = allItems.reduce(
+    (sum, i) => sum + (i.currentPrice ?? 0) * (i.volume ?? 0),
+    0,
+  );
+  const avgPrice = prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0;
 
-      if (trendingData?.items) setTrending(trendingData.items);
-      if (losersData?.items) setLosers(losersData.items);
-      if (expensiveData?.items) setExpensive(expensiveData.items);
-      if (rarestData?.items) setRarest(rarestData.items);
-      if (limitedData?.items) setLimited(limitedData.items);
-
-      if (allData?.items) {
-        const items = allData.items as Item[];
-        const prices = items.map((i) => i.currentPrice ?? 0);
-        const volumes = items.map((i) => i.volume ?? 0);
-        const marketCap = items.reduce((sum, i) => {
-          return sum + (i.currentPrice ?? 0) * (i.volume ?? 0);
-        }, 0);
-        setStats({
-          totalItems: allData.total,
-          avgPrice: prices.length > 0 ? prices.reduce((a, b) => a + b, 0) / prices.length : 0,
-          marketCap,
-          totalListings: volumes.reduce((a, b) => a + b, 0),
-          totalVolume: volumes.reduce((a, b) => a + b, 0),
-          lastUpdated: allData.lastUpdated ?? null,
-        });
-
-        // Count items per type to hide empty categories
-        const counts: Record<string, number> = {};
-        for (const item of items) {
-          counts[item.type] = (counts[item.type] ?? 0) + 1;
-        }
-        setCategoryCounts(counts);
-      }
-
-      setLoading(false);
-    }
-    fetchData();
-  }, []);
-
-  if (error) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-20 text-center">
-        <p className="text-6xl mb-4">&#x26A0;&#xFE0F;</p>
-        <h2 className="text-2xl font-bold text-white mb-2">Unable to load data</h2>
-        <p className="text-neutral-500 mb-6">
-          The database may be unavailable. Try refreshing the page.
-        </p>
-        <Button
-          onClick={() => window.location.reload()}
-          className="bg-purple-600 hover:bg-purple-700 text-white"
-        >
-          Refresh Page
-        </Button>
-      </div>
-    );
+  const categoryCounts: Record<string, number> = {};
+  for (const item of allItems) {
+    categoryCounts[item.type] = (categoryCounts[item.type] ?? 0) + 1;
   }
+
+  return {
+    trending: trending as unknown as Item[],
+    losers: losers as unknown as Item[],
+    expensive: expensive as unknown as Item[],
+    rarest: rarest as unknown as Item[],
+    limited: limited as unknown as Item[],
+    categoryCounts,
+    stats: {
+      totalItems: allItems.length,
+      avgPrice,
+      marketCap,
+      totalListings,
+      lastUpdated: lastUpdatedRow?.updatedAt.toISOString() ?? null,
+    },
+  };
+}
+
+export default async function HomePage() {
+  const { trending, losers, expensive, rarest, limited, categoryCounts, stats } =
+    await getHomepageData();
 
   return (
     <div>
@@ -274,62 +241,52 @@ export default function HomePage() {
       {/* Stats Bar */}
       <section className="border-b border-neutral-800 bg-neutral-900/50">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-5">
-          {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-              {[1, 2, 3, 4].map((i) => (
-                <Skeleton key={i} className="h-16" />
-              ))}
-            </div>
-          ) : stats ? (
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-lg bg-purple-500/10">
-                    <BarChart3 className="h-5 w-5 text-purple-400" />
-                  </div>
-                  <div>
-                    <p className="text-xl font-bold text-white">{formatPrice(stats.marketCap)}</p>
-                    <p className="text-[11px] text-neutral-500">Market Cap</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-lg bg-emerald-500/10">
-                    <DollarSign className="h-5 w-5 text-emerald-400" />
-                  </div>
-                  <div>
-                    <p className="text-xl font-bold text-white">{formatPrice(stats.avgPrice)}</p>
-                    <p className="text-[11px] text-neutral-500">Avg Price</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-lg bg-blue-500/10">
-                    <ShoppingCart className="h-5 w-5 text-blue-400" />
-                  </div>
-                  <div>
-                    <p className="text-xl font-bold text-white">
-                      {stats.totalListings.toLocaleString()}
-                    </p>
-                    <p className="text-[11px] text-neutral-500">Active Listings</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-lg bg-amber-500/10">
-                    <Package className="h-5 w-5 text-amber-400" />
-                  </div>
-                  <div>
-                    <p className="text-xl font-bold text-white">{stats.totalItems}</p>
-                    <p className="text-[11px] text-neutral-500">Tracked Skins</p>
-                  </div>
-                </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-purple-500/10">
+                <BarChart3 className="h-5 w-5 text-purple-400" />
               </div>
-              {stats.lastUpdated && (
-                <div className="flex items-center justify-center gap-1.5 mt-4 text-[11px] text-neutral-500">
-                  <Clock className="h-3 w-3" />
-                  <span>Data last updated {formatRelativeTime(stats.lastUpdated)}</span>
-                </div>
-              )}
-            </>
-          ) : null}
+              <div>
+                <p className="text-xl font-bold text-white">{formatPrice(stats.marketCap)}</p>
+                <p className="text-[11px] text-neutral-500">Market Cap</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-emerald-500/10">
+                <DollarSign className="h-5 w-5 text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-white">{formatPrice(stats.avgPrice)}</p>
+                <p className="text-[11px] text-neutral-500">Avg Price</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-blue-500/10">
+                <ShoppingCart className="h-5 w-5 text-blue-400" />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-white">
+                  {stats.totalListings.toLocaleString()}
+                </p>
+                <p className="text-[11px] text-neutral-500">Active Listings</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-lg bg-amber-500/10">
+                <Package className="h-5 w-5 text-amber-400" />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-white">{stats.totalItems}</p>
+                <p className="text-[11px] text-neutral-500">Tracked Skins</p>
+              </div>
+            </div>
+          </div>
+          {stats.lastUpdated && (
+            <div className="flex items-center justify-center gap-1.5 mt-4 text-[11px] text-neutral-500">
+              <Clock className="h-3 w-3" />
+              <span>Data last updated {formatRelativeTime(stats.lastUpdated)}</span>
+            </div>
+          )}
         </div>
       </section>
 
@@ -364,9 +321,7 @@ export default function HomePage() {
                   </div>
                   <h3 className="text-base font-semibold text-white mb-1">
                     {cat.label}
-                    <span className="ml-2 text-xs text-neutral-500 font-normal">
-                      {count}
-                    </span>
+                    <span className="ml-2 text-xs text-neutral-500 font-normal">{count}</span>
                   </h3>
                   <p className="text-xs text-neutral-400 leading-snug">{cat.description}</p>
                   <ArrowRight className="absolute top-5 right-5 h-4 w-4 text-neutral-600 group-hover:text-white transition" />
@@ -385,7 +340,9 @@ export default function HomePage() {
             </div>
             <div>
               <h2 className="text-xl font-bold text-white">Trending Now</h2>
-              <p className="text-xs text-neutral-500">Biggest S&box skin price gains in the last 24h</p>
+              <p className="text-xs text-neutral-500">
+                Biggest S&box skin price gains in the last 24h
+              </p>
             </div>
           </div>
           <Link href="/items?sort=change-desc">
@@ -394,24 +351,11 @@ export default function HomePage() {
             </Button>
           </Link>
         </div>
-
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="rounded-xl border border-neutral-800 p-4">
-                <Skeleton className="h-32 w-full mb-4 rounded-lg" />
-                <Skeleton className="h-4 w-3/4 mb-2" />
-                <Skeleton className="h-6 w-1/2" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            {trending.map((item) => (
-              <ItemCard key={item.id} item={item} />
-            ))}
-          </div>
-        )}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {trending.map((item) => (
+            <ItemCard key={item.id} item={item} />
+          ))}
+        </div>
       </section>
 
       {/* Biggest Movers: Gainers + Losers side by side */}
@@ -437,19 +381,11 @@ export default function HomePage() {
                 View all →
               </Link>
             </div>
-            {loading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {trending.slice(0, 5).map((item) => (
-                  <MoverRow key={item.id} item={item} />
-                ))}
-              </div>
-            )}
+            <div className="space-y-1.5">
+              {trending.slice(0, 5).map((item) => (
+                <MoverRow key={item.id} item={item} />
+              ))}
+            </div>
           </div>
           {/* Top Losers */}
           <div className="rounded-xl border border-red-500/20 bg-red-500/[0.03] p-5">
@@ -465,19 +401,11 @@ export default function HomePage() {
                 View all →
               </Link>
             </div>
-            {loading ? (
-              <div className="space-y-2">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-12 rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-1.5">
-                {losers.slice(0, 5).map((item) => (
-                  <MoverRow key={item.id} item={item} />
-                ))}
-              </div>
-            )}
+            <div className="space-y-1.5">
+              {losers.slice(0, 5).map((item) => (
+                <MoverRow key={item.id} item={item} />
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -500,28 +428,15 @@ export default function HomePage() {
             </Button>
           </Link>
         </div>
-
-        {loading ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="rounded-xl border border-neutral-800 p-4">
-                <Skeleton className="h-32 w-full mb-4 rounded-lg" />
-                <Skeleton className="h-4 w-3/4 mb-2" />
-                <Skeleton className="h-6 w-1/2" />
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-            {expensive.map((item) => (
-              <ItemCard key={item.id} item={item} />
-            ))}
-          </div>
-        )}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          {expensive.map((item) => (
+            <ItemCard key={item.id} item={item} />
+          ))}
+        </div>
       </section>
 
       {/* Rarest Items */}
-      {!loading && rarest.length > 0 && (
+      {rarest.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -550,7 +465,7 @@ export default function HomePage() {
       )}
 
       {/* Limited Edition */}
-      {!loading && limited.length > 0 && (
+      {limited.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
@@ -670,7 +585,7 @@ export default function HomePage() {
   );
 }
 
-/** Compact row for the Biggest Movers section. */
+/** Compact row for the Biggest Movers section — server component, no interactivity. */
 function MoverRow({ item }: { item: Item }) {
   const change = item.priceChange24h ?? 0;
   const isUp = change > 0;
@@ -703,11 +618,7 @@ function MoverRow({ item }: { item: Item }) {
         <div className="text-sm font-semibold text-white">
           {item.currentPrice != null ? formatPrice(item.currentPrice) : "—"}
         </div>
-        <div
-          className={`text-[11px] font-medium ${
-            isUp ? "text-emerald-400" : "text-red-400"
-          }`}
-        >
+        <div className={`text-[11px] font-medium ${isUp ? "text-emerald-400" : "text-red-400"}`}>
           {isUp ? "+" : ""}
           {change.toFixed(1)}%
         </div>
