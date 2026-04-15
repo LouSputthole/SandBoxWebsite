@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { ItemDetail } from "@/components/items/item-detail";
 import { ItemCard } from "@/components/items/item-card";
 import { formatPrice } from "@/lib/utils";
+
+// Force dynamic rendering so notFound() returns a proper HTTP 404
+// (instead of a soft 200 + noindex that Google keeps in Crawled-not-indexed).
+export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -39,7 +42,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const item = await getItem(slug);
 
   if (!item) {
-    return { title: "Item Not Found - S&box Skins" };
+    return {
+      title: "Item Not Found - S&box Skins",
+      robots: { index: false, follow: false },
+    };
   }
 
   const price = item.currentPrice != null ? formatPrice(item.currentPrice) : "N/A";

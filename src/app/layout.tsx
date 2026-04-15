@@ -10,22 +10,55 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "sboxskins.gg - S&box Marketplace & Price Tracker",
+    default: "sboxskins.gg — S&box Skin Prices, Market Trends & Order Books",
     template: "%s | sboxskins.gg",
   },
   description:
-    "Browse, search, and track prices for S&box (sbox/sandbox) skins on the Steam Community Market. View price history, trends, and find the best deals on sbox skins.",
+    "The dedicated S&box skin price tracker. Live prices, real-time order books, 24h changes, total supply counts, and historical charts for every S&box skin on the Steam Community Market. Updated every 15–30 minutes.",
   metadataBase: new URL("https://sboxskins.gg"),
   keywords: [
     "sbox skins", "s&box skins", "sandbox skins", "s box skins",
     "sbox marketplace", "s&box marketplace", "sbox skin prices",
     "s&box price tracker", "sbox trading", "steam market sbox",
     "facepunch sbox", "sbox cosmetics", "sandbox game skins",
+    "sbox order book", "sbox skin supply", "sbox market tracker",
+    "s&box steam market", "sboxskins",
   ],
   alternates: { canonical: "/" },
   openGraph: {
     siteName: "sboxskins.gg",
+    title: "sboxskins.gg — S&box Skin Prices & Market Tracker",
+    description:
+      "Live S&box skin prices, order books, supply data, and market trends from the Steam Community Market. Track every S&box skin in one place.",
     type: "website",
+    url: "https://sboxskins.gg",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "sboxskins.gg — S&box Skin Prices & Market Tracker",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "sboxskins.gg — S&box Skin Prices & Market Tracker",
+    description:
+      "Live S&box skin prices, order books, supply data, and market trends. Track every S&box skin on the Steam Community Market.",
+    images: ["/opengraph-image"],
+    site: "@SboxSkinsgg",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-snippet": -1,
+      "max-image-preview": "large",
+      "max-video-preview": -1,
+    },
   },
 };
 
