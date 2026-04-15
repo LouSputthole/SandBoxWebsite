@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { pickScheduledTweet } from "@/lib/twitter/content";
 import { postTweet } from "@/lib/twitter/client";
+import { prisma } from "@/lib/db";
 
 /**
  * GET /api/cron/tweet — Scheduled tweet poster (Vercel Cron entry point).
@@ -42,6 +43,20 @@ export async function GET(request: NextRequest) {
 
   if (result.success) {
     console.log(`[cron:tweet] Posted! ${result.tweetUrl}`);
+    if (result.tweetId) {
+      try {
+        await prisma.sentTweet.create({
+          data: {
+            tweetId: result.tweetId,
+            text: draft.text,
+            kind: draft.kind,
+            itemSlug: draft.itemSlug ?? null,
+          },
+        });
+      } catch (err) {
+        console.error("[cron:tweet] Failed to log:", err);
+      }
+    }
   } else {
     console.error(`[cron:tweet] Failed: ${result.error}`);
   }

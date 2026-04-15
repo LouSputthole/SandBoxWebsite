@@ -138,6 +138,19 @@ model PageView {
   @@index([sessionId])
 }
 
+model SentTweet {
+  id              String   @id @default(cuid())
+  tweetId         String   @unique // X's numeric tweet ID
+  text            String
+  kind            String?  // top-gainer, top-loser, rarest, market-cap, item-spotlight, limited-edition, reply, custom
+  itemSlug        String?  // item referenced in tweet (for click attribution)
+  inReplyToTweetId String? // for replies
+  sentAt          DateTime @default(now())
+
+  @@index([sentAt])
+  @@index([itemSlug])
+}
+
 model DailyStats {
   id          String   @id @default(cuid())
   date        DateTime @unique // one row per day

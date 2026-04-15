@@ -12,7 +12,9 @@ import {
   Loader2,
   MessageCircle,
   Megaphone,
+  BarChart3,
 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -267,22 +269,30 @@ export default function TweetAdminPage() {
             For @SboxSkinsgg. Post generated drafts or reply to recent S&box mentions.
           </p>
         </div>
-        {activeTab === "drafts" ? (
-          <Button onClick={fetchDrafts} disabled={loading} variant="outline" className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Regenerate
-          </Button>
-        ) : (
-          <Button
-            onClick={fetchMentions}
-            disabled={mentionsLoading}
-            variant="outline"
-            className="gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${mentionsLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <Link href="/admin/tweet/stats">
+            <Button variant="outline" className="gap-2">
+              <BarChart3 className="h-4 w-4" />
+              Stats
+            </Button>
+          </Link>
+          {activeTab === "drafts" ? (
+            <Button onClick={fetchDrafts} disabled={loading} variant="outline" className="gap-2">
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Regenerate
+            </Button>
+          ) : (
+            <Button
+              onClick={fetchMentions}
+              disabled={mentionsLoading}
+              variant="outline"
+              className="gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${mentionsLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}

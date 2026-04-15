@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { generateDrafts, generateTweet, type TweetKind } from "@/lib/twitter/content";
 import { postTweet } from "@/lib/twitter/client";
+import { prisma } from "@/lib/db";
+
+/** Extract the first /items/<slug> URL from a tweet body, if any. */
+function extractItemSlug(text: string): string | null {
+  const match = text.match(/sboxskins\.gg\/items\/([a-z0-9-]+)/);
+  return match ? match[1] : null;
+}
 
 /**
  * GET  /api/admin/tweet?key=<ANALYTICS_KEY>            — returns draft variations
@@ -70,6 +77,23 @@ export async function POST(request: NextRequest) {
   }
 
   const result = await postTweet(body.text);
+
+  // Log successful tweets so we can show performance later
+  if (result.success && result.tweetId) {
+    try {
+      await prisma.sentTweet.create({
+        data: {
+          tweetId: result.tweetId,
+          text: body.text,
+          kind: "custom",
+          itemSlug: extractItemSlug(body.text),
+        },
+      });
+    } catch (err) {
+      console.error("[tweet-log] Failed to log sent tweet:", err);
+    }
+  }
+
   const status = result.success ? 200 : 500;
   return NextResponse.json(result, { status });
 }
