@@ -1,5 +1,4 @@
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import {
   BarChart3,
   DollarSign,
@@ -12,14 +11,9 @@ import {
 import { ItemImage } from "@/components/items/item-image";
 import { TrendsChartSection } from "@/components/trends/trends-chart-section";
 import { PeriodSwitcher } from "@/components/trends/period-switcher";
+import { TypePieChartWrapper } from "@/components/trends/type-pie-chart-wrapper";
 import { getTrendsData, type TrendsPeriod } from "@/lib/services/trends";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
-
-// Lazy-loaded recharts wrapper for the small type-pie chart
-const TypePieChart = dynamic(
-  () => import("@/components/trends/type-pie-chart"),
-  { ssr: false },
-);
 
 // ISR — regenerate every 5 minutes so search engines get cached HTML
 export const revalidate = 300;
@@ -160,7 +154,7 @@ export default async function TrendsPage({ searchParams }: PageProps) {
             <h2 className="text-sm font-medium text-white mb-4">By Type</h2>
             <div className="flex items-center gap-4">
               <div className="w-24 h-24">
-                <TypePieChart data={typeChartData} colors={TYPE_COLORS} />
+                <TypePieChartWrapper data={typeChartData} colors={TYPE_COLORS} />
               </div>
               <div className="flex-1 space-y-1.5">
                 {typeChartData.map((entry) => (
