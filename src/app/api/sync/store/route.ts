@@ -39,49 +39,51 @@ export async function POST(request: NextRequest) {
     dbItems.filter((i) => i.steamMarketId).map((i) => [i.steamMarketId!.toLowerCase(), i]),
   );
 
-  // Track which DB items are found in the store
+  // First pass: resolve matches and collect update operations
   const foundIds = new Set<string>();
-  let matched = 0;
+  const availableUpdates: { id: string; storePrice?: number }[] = [];
   let unmatched = 0;
   const unmatchedNames: string[] = [];
 
   for (const { name, storePrice } of body.items) {
     if (!name) continue;
-
-    const item =
-      byName.get(name.toLowerCase()) ?? byMarketId.get(name.toLowerCase());
-
+    const item = byName.get(name.toLowerCase()) ?? byMarketId.get(name.toLowerCase());
     if (item) {
       foundIds.add(item.id);
-      await prisma.item.update({
-        where: { id: item.id },
-        data: {
-          storeStatus: "available",
-          delistedAt: null,
-          ...(storePrice != null ? { storePrice } : {}),
-        },
-      });
-      matched++;
+      availableUpdates.push({ id: item.id, storePrice });
     } else {
       unmatched++;
       unmatchedNames.push(name);
     }
   }
 
-  // Mark previously-available items as delisted if they're no longer in the store
-  let delisted = 0;
-  for (const item of dbItems) {
-    if (item.storeStatus === "available" && !foundIds.has(item.id)) {
-      await prisma.item.update({
-        where: { id: item.id },
-        data: {
-          storeStatus: "delisted",
-          delistedAt: new Date(),
-        },
-      });
-      delisted++;
-    }
-  }
+  // Previously-available items not in the store this run are now delisted
+  const now = new Date();
+  const delistedIds = dbItems
+    .filter((i) => i.storeStatus === "available" && !foundIds.has(i.id))
+    .map((i) => i.id);
+
+  // Run all updates in parallel — single roundtrip per update instead of serial waits
+  const availablePromises = availableUpdates.map((u) =>
+    prisma.item.update({
+      where: { id: u.id },
+      data: {
+        storeStatus: "available",
+        delistedAt: null,
+        ...(u.storePrice != null ? { storePrice: u.storePrice } : {}),
+      },
+    }),
+  );
+  const delistedPromises = delistedIds.map((id) =>
+    prisma.item.update({
+      where: { id },
+      data: { storeStatus: "delisted", delistedAt: now },
+    }),
+  );
+  await Promise.all([...availablePromises, ...delistedPromises]);
+
+  const matched = availableUpdates.length;
+  const delisted = delistedIds.length;
 
   return NextResponse.json({
     success: true,

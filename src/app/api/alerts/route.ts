@@ -106,20 +106,31 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * DELETE /api/alerts?id=... — Delete a specific alert.
+ * DELETE /api/alerts?id=...&email=... — Delete a specific alert.
+ *
+ * Requires both the alert ID and the email that created it. Prevents drive-by
+ * deletion of other users' alerts by anyone who can guess/scrape alert UUIDs.
  */
 export async function DELETE(request: NextRequest) {
   const id = request.nextUrl.searchParams.get("id");
+  const email = request.nextUrl.searchParams.get("email");
 
   if (!id) {
-    return NextResponse.json(
-      { error: "id query parameter required" },
-      { status: 400 }
-    );
+    return NextResponse.json({ error: "id query parameter required" }, { status: 400 });
+  }
+  if (!email) {
+    return NextResponse.json({ error: "email query parameter required" }, { status: 400 });
   }
 
   try {
-    await prisma.priceAlert.delete({ where: { id } });
+    // deleteMany returns a count; if 0, the alert either doesn't exist OR the
+    // email doesn't match — either way we 404 without leaking which it was.
+    const result = await prisma.priceAlert.deleteMany({
+      where: { id, email },
+    });
+    if (result.count === 0) {
+      return NextResponse.json({ error: "Alert not found" }, { status: 404 });
+    }
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[alerts] Delete error:", error);

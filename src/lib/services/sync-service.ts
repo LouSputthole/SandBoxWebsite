@@ -111,15 +111,31 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
       console.log(`[sync]   - "${item.name}" (hash: ${item.hash_name}, price: $${(item.sell_price / 100).toFixed(2)}, listings: ${item.sell_listings})`);
     }
 
+    // Accumulate price points to write in one batch at the end (avoids N+1)
+    const pendingPricePoints: { itemId: string; price: number; volume: number }[] = [];
+
     for (const steamItem of steamItems) {
       try {
-        await upsertItem(steamItem, result);
+        const itemId = await upsertItem(steamItem, result);
+        if (itemId) {
+          pendingPricePoints.push({
+            itemId,
+            price: steamItem.sell_price / 100,
+            volume: steamItem.sell_listings,
+          });
+        }
         result.itemsProcessed++;
       } catch (error) {
         const msg = `Failed to process item "${steamItem.name}": ${error}`;
         console.error(`[sync] ${msg}`);
         result.errors.push(msg);
       }
+    }
+
+    // Flush price points in one batch — single DB roundtrip instead of N
+    if (pendingPricePoints.length > 0) {
+      await prisma.pricePoint.createMany({ data: pendingPricePoints });
+      result.pricePointsCreated = pendingPricePoints.length;
     }
 
     // Optionally fetch detailed price overview for each item
@@ -218,11 +234,15 @@ function generateDescription(
 /**
  * Upsert a single item from Steam search results into the database.
  * Uses steamMarketId (hash_name) as the unique key.
+ *
+ * Returns the item ID so callers can batch price-point writes afterward.
+ * Single findUnique + single create/update = 2 DB roundtrips per item
+ * (previously 3 + an extra create call for price points).
  */
 async function upsertItem(
   steamItem: SteamSearchResult,
   result: SyncResult
-): Promise<void> {
+): Promise<string | null> {
   const hashName = steamItem.hash_name;
   const slug = slugify(hashName);
   const priceInDollars = steamItem.sell_price / 100; // sell_price is in cents
@@ -231,10 +251,17 @@ async function upsertItem(
     ? getSteamImageUrl(steamItem.asset_description.icon_url)
     : null;
 
-  // Pull the existing isLimited flag so we can include it in the generated blurb
-  const existingForDescription = await prisma.item.findUnique({
+  // Single query for everything we need about the existing row
+  const existing = await prisma.item.findUnique({
     where: { steamMarketId: hashName },
-    select: { isLimited: true },
+    select: {
+      id: true,
+      name: true,
+      isLimited: true,
+      currentPrice: true,
+      description: true,
+      imageUrl: true,
+    },
   });
 
   const generatedDescription = generateDescription(
@@ -242,7 +269,7 @@ async function upsertItem(
     itemType,
     steamItem.asset_description?.type || "",
     priceInDollars,
-    existingForDescription?.isLimited ?? false,
+    existing?.isLimited ?? false,
   );
 
   const data = {
@@ -257,52 +284,39 @@ async function upsertItem(
     volume: steamItem.sell_listings,
   };
 
-  const existing = await prisma.item.findUnique({
-    where: { steamMarketId: hashName },
-  });
-
   if (existing) {
-    // Calculate 24h price change
     const priceChange =
       existing.currentPrice && existing.currentPrice > 0
         ? ((priceInDollars - existing.currentPrice) / existing.currentPrice) * 100
         : 0;
 
-    // Detect an auto-generated description so we can refresh it when the
-    // generator changes. Hand-edited descriptions (that don't match either
-    // the old "X is a..." or new "X — ..." patterns) are preserved.
+    // Detect auto-generated descriptions so we can refresh them when the
+    // generator changes. Hand-edited descriptions are preserved.
     const isGeneratedDescription =
       !existing.description ||
       existing.description.startsWith(`${existing.name} is a`) ||
       existing.description.startsWith(`${existing.name} — `);
 
     await prisma.item.update({
-      where: { steamMarketId: hashName },
+      where: { id: existing.id },
       data: {
         ...data,
         priceChange24h: Math.round(priceChange * 100) / 100,
         description: isGeneratedDescription ? generatedDescription : existing.description,
-        imageUrl: iconUrl || existing.imageUrl, // Prefer fresh Steam image, keep existing if none
+        imageUrl: iconUrl || existing.imageUrl, // prefer fresh Steam image
       },
     });
     result.itemsUpdated++;
+    return existing.id;
   } else {
-    await prisma.item.create({ data });
+    // create returns the new row — no need for a second findUnique to get ID
+    const created = await prisma.item.create({
+      data,
+      select: { id: true },
+    });
     result.itemsCreated++;
+    return created.id;
   }
-
-  // Record a price point
-  const itemId = existing?.id
-    || (await prisma.item.findUnique({ where: { steamMarketId: hashName } }))!.id;
-
-  await prisma.pricePoint.create({
-    data: {
-      itemId,
-      price: priceInDollars,
-      volume: steamItem.sell_listings,
-    },
-  });
-  result.pricePointsCreated++;
 }
 
 /**

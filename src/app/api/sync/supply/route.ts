@@ -58,11 +58,17 @@ export async function POST(request: NextRequest) {
   );
   const bySlug = new Map(dbItems.map((i) => [i.slug, i]));
   const byNormalized = new Map(dbItems.map((i) => [normalize(i.name), i]));
+  // Pre-compute normalized names once for substring strategy (avoids re-running
+  // normalize() inside a nested loop on every incoming item)
+  const dbNormCache = dbItems.map((dbItem) => ({
+    item: dbItem,
+    norm: normalize(dbItem.name),
+  }));
 
-  let matched = 0;
-  let unmatched = 0;
   const unmatchedNames: string[] = [];
   const matchLog: { scraped: string; dbName: string; method: string }[] = [];
+  // Collect pending updates so we can Promise.all them at the end
+  const pendingUpdates: { id: string; supply: number }[] = [];
 
   for (const { name, supply } of body.items) {
     if (!name || supply == null) continue;
@@ -96,11 +102,9 @@ export async function POST(request: NextRequest) {
       method = "normalized";
     }
 
-    // Strategy 5: Substring/contains match
+    // Strategy 5: Substring/contains match — uses the precomputed norm cache
     if (!item) {
-      // Check if scraped name is contained within any DB item name, or vice versa
-      for (const dbItem of dbItems) {
-        const dbNorm = normalize(dbItem.name);
+      for (const { item: dbItem, norm: dbNorm } of dbNormCache) {
         if (
           (normName.length >= 4 && dbNorm.includes(normName)) ||
           (dbNorm.length >= 4 && normName.includes(dbNorm))
@@ -113,17 +117,25 @@ export async function POST(request: NextRequest) {
     }
 
     if (item) {
-      await prisma.item.update({
-        where: { id: item.id },
-        data: { totalSupply: supply },
-      });
-      matched++;
+      pendingUpdates.push({ id: item.id, supply });
       matchLog.push({ scraped: name, dbName: item.name, method });
     } else {
-      unmatched++;
       unmatchedNames.push(name);
     }
   }
+
+  // Run all item updates in parallel
+  await Promise.all(
+    pendingUpdates.map((u) =>
+      prisma.item.update({
+        where: { id: u.id },
+        data: { totalSupply: u.supply },
+      }),
+    ),
+  );
+
+  const matched = pendingUpdates.length;
+  const unmatched = unmatchedNames.length;
 
   console.log(`[supply] Matched ${matched}, unmatched ${unmatched}`);
   for (const m of matchLog) {

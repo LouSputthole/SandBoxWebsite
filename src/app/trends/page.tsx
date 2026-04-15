@@ -14,21 +14,29 @@ import {
   ArrowDown,
   Minus,
 } from "lucide-react";
-import {
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  Area,
-  AreaChart,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ItemImage } from "@/components/items/item-image";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
+
+// Lazy-load recharts so the ~180KB bundle isn't in the initial JS payload.
+// The page is fully usable before the charts hydrate.
+const MarketAreaChart = dynamic(
+  () => import("@/components/trends/market-area-chart"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-full w-full flex items-center justify-center text-xs text-neutral-600">
+        Loading chart...
+      </div>
+    ),
+  },
+);
+const TypePieChart = dynamic(
+  () => import("@/components/trends/type-pie-chart"),
+  { ssr: false },
+);
 
 interface Snapshot {
   timestamp: string;
@@ -271,52 +279,11 @@ export default function TrendsPage() {
               No historical data yet. Snapshots are captured each sync cycle.
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={metricConfig[chartMetric].color} stopOpacity={0.3} />
-                    <stop offset="100%" stopColor={metricConfig[chartMetric].color} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis
-                  dataKey="date"
-                  stroke="#525252"
-                  tick={{ fill: "#737373", fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  interval="preserveStartEnd"
-                  minTickGap={40}
-                />
-                <YAxis
-                  stroke="#525252"
-                  tick={{ fill: "#737373", fontSize: 11 }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(v) => metricConfig[chartMetric].format(v)}
-                  width={80}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#1a1a2e",
-                    border: "1px solid #333",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                  }}
-                  labelStyle={{ color: "#999" }}
-                  formatter={(value) => [metricConfig[chartMetric].format(Number(value)), metricConfig[chartMetric].label]}
-                />
-                <Area
-                  type="monotone"
-                  dataKey={chartMetric}
-                  stroke={metricConfig[chartMetric].color}
-                  strokeWidth={2}
-                  fill="url(#trendGrad)"
-                  dot={false}
-                  activeDot={{ r: 4, stroke: "#fff", strokeWidth: 2 }}
-                />
-              </AreaChart>
-            </ResponsiveContainer>
+            <MarketAreaChart
+              data={chartData}
+              metric={chartMetric}
+              metricConfig={metricConfig}
+            />
           )}
         </div>
       </div>
@@ -364,23 +331,7 @@ export default function TrendsPage() {
             <h2 className="text-sm font-medium text-white mb-4">By Type</h2>
             <div className="flex items-center gap-4">
               <div className="w-24 h-24">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={typeChartData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={25}
-                      outerRadius={40}
-                      paddingAngle={2}
-                      dataKey="value"
-                    >
-                      {typeChartData.map((entry) => (
-                        <Cell key={entry.name} fill={TYPE_COLORS[entry.name] || "#525252"} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
+                <TypePieChart data={typeChartData} colors={TYPE_COLORS} />
               </div>
               <div className="flex-1 space-y-1.5">
                 {typeChartData.map((entry) => (

@@ -97,7 +97,9 @@ export default function TweetAdminPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/admin/tweet?key=${encodeURIComponent(key)}`);
+      const res = await fetch("/api/admin/tweet", {
+        headers: { Authorization: `Bearer ${key}` },
+      });
       if (res.status === 401) {
         setError("Wrong admin key");
         setAuthed(false);
@@ -176,7 +178,9 @@ export default function TweetAdminPage() {
     setMentionsLoading(true);
     setMentionsError(null);
     try {
-      const res = await fetch(`/api/admin/tweet/mentions?key=${encodeURIComponent(key)}`);
+      const res = await fetch("/api/admin/tweet/mentions", {
+        headers: { Authorization: `Bearer ${key}` },
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${res.status}`);

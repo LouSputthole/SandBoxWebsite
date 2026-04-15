@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { ItemDetail } from "@/components/items/item-detail";
@@ -13,8 +14,10 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
-async function getItem(slug: string) {
-  return prisma.item.findFirst({
+// React cache() de-dupes within a single request — generateMetadata and the
+// page component both call getItem(slug), but only one DB query fires.
+const getItem = cache(async (slug: string) =>
+  prisma.item.findFirst({
     where: {
       OR: [{ id: slug }, { slug }],
     },
@@ -23,8 +26,8 @@ async function getItem(slug: string) {
         orderBy: { timestamp: "asc" },
       },
     },
-  });
-}
+  }),
+);
 
 async function getRelatedItems(item: { id: string; type: string }) {
   return prisma.item.findMany({

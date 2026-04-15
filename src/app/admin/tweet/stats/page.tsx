@@ -82,9 +82,9 @@ export default function TweetStatsPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(
-        `/api/admin/tweet/stats?key=${encodeURIComponent(key)}&period=${p}`,
-      );
+      const res = await fetch(`/api/admin/tweet/stats?period=${p}`, {
+        headers: { Authorization: `Bearer ${key}` },
+      });
       if (res.status === 401) {
         setAuthed(false);
         setError("Wrong admin key");

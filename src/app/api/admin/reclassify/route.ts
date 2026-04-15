@@ -24,22 +24,25 @@ export async function POST(request: NextRequest) {
     select: { id: true, name: true, type: true },
   });
 
-  const changes: { name: string; from: string; to: string }[] = [];
-  let updated = 0;
+  const changes: { id: string; name: string; from: string; to: string }[] = [];
 
+  // We don't have the original Steam type string stored — use the name only.
+  // inferItemType accepts empty steamType.
   for (const item of items) {
-    // We don't have the original Steam type string stored — use the name only.
-    // This still works because our improved inferItemType accepts empty steamType.
     const newType = inferItemType("", item.name);
     if (newType !== item.type) {
-      await prisma.item.update({
-        where: { id: item.id },
-        data: { type: newType },
-      });
-      changes.push({ name: item.name, from: item.type, to: newType });
-      updated++;
+      changes.push({ id: item.id, name: item.name, from: item.type, to: newType });
     }
   }
+
+  // Run all updates in parallel instead of serially
+  await Promise.all(
+    changes.map((c) =>
+      prisma.item.update({ where: { id: c.id }, data: { type: c.to } }),
+    ),
+  );
+
+  const updated = changes.length;
 
   // Group changes by type for the report
   const byNewType: Record<string, string[]> = {};

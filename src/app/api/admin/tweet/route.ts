@@ -23,6 +23,10 @@ function extractItemSlug(text: string): string | null {
 function checkAdminKey(request: NextRequest): boolean {
   const adminKey = process.env.ANALYTICS_KEY;
   if (!adminKey) return false;
+  // Prefer Authorization header (doesn't leak into URLs/logs). Keep URL
+  // query as a transitional fallback while UIs are migrated.
+  const authHeader = request.headers.get("authorization");
+  if (authHeader === `Bearer ${adminKey}`) return true;
   return request.nextUrl.searchParams.get("key") === adminKey;
 }
 

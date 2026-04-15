@@ -57,7 +57,7 @@ export default function AnalyticsDashboard() {
 
       try {
         const res = await fetch(
-          `/api/analytics/dashboard?key=${encodeURIComponent(key)}&period=${p}`,
+          `/api/analytics/dashboard?period=${p}`, { headers: { Authorization: `Bearer ${key}` } },
         );
         if (res.status === 401) {
           setError("Invalid key");

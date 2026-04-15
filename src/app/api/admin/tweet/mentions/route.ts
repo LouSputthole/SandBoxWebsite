@@ -10,7 +10,14 @@ import { draftReply } from "@/lib/twitter/reply";
  */
 export async function GET(request: NextRequest) {
   const adminKey = process.env.ANALYTICS_KEY;
-  if (!adminKey || request.nextUrl.searchParams.get("key") !== adminKey) {
+  if (!adminKey) {
+    return NextResponse.json({ error: "Admin key not configured" }, { status: 500 });
+  }
+  const authHeader = request.headers.get("authorization");
+  const queryKey = request.nextUrl.searchParams.get("key");
+  const authorized =
+    authHeader === `Bearer ${adminKey}` || queryKey === adminKey;
+  if (!authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

@@ -38,7 +38,9 @@ interface PageProps {
   params: Promise<{ type: string }>;
 }
 
-export const dynamic = "force-dynamic";
+// ISR: regenerate category pages every 5 minutes. Matches the homepage —
+// keeps data fresh without re-running the DB query on every request.
+export const revalidate = 300;
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { type } = await params;
@@ -63,9 +65,23 @@ export default async function TypePage({ params }: PageProps) {
   }
 
   const info = typeDescriptions[type];
+  // Only select what ItemCard needs — avoids shipping description, storeStatus,
+  // steamMarketId, sboxFullIdent, etc. that aren't used on this page.
   const items = await prisma.item.findMany({
     where: { type },
     orderBy: { currentPrice: "desc" },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      type: true,
+      imageUrl: true,
+      currentPrice: true,
+      priceChange24h: true,
+      volume: true,
+      totalSupply: true,
+      isLimited: true,
+    },
   });
 
   const jsonLd = {

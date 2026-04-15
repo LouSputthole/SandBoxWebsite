@@ -8,10 +8,16 @@ import { prisma } from "@/lib/db";
  * Protected by ADMIN_KEY query param (set in env as ANALYTICS_KEY).
  */
 export async function GET(request: NextRequest) {
-  const key = request.nextUrl.searchParams.get("key");
   const analyticsKey = process.env.ANALYTICS_KEY;
-
-  if (!analyticsKey || key !== analyticsKey) {
+  if (!analyticsKey) {
+    return NextResponse.json({ error: "Admin key not configured" }, { status: 500 });
+  }
+  // Prefer Authorization header so the key doesn't appear in URLs/access logs.
+  const authHeader = request.headers.get("authorization");
+  const queryKey = request.nextUrl.searchParams.get("key");
+  const authorized =
+    authHeader === `Bearer ${analyticsKey}` || queryKey === analyticsKey;
+  if (!authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
