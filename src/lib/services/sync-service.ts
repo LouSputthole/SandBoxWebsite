@@ -112,12 +112,30 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
       debug(`[sync]   - "${item.name}" (hash: ${item.hash_name}, price: $${(item.sell_price / 100).toFixed(2)}, listings: ${item.sell_listings})`);
     }
 
+    // Batched lookup of each item's price ~24h ago.
+    // We query a 4-hour window ending 24h ago, then keep the newest point
+    // per item within that window. This gives us a true 24h baseline for
+    // priceChange24h instead of comparing to the previous sync's price
+    // (which was only ~15-30 min ago and made 24h changes always look tiny).
+    const windowEnd = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const windowStart = new Date(Date.now() - 28 * 60 * 60 * 1000);
+    const pointsFrom24hAgo = await prisma.pricePoint.findMany({
+      where: { timestamp: { gte: windowStart, lte: windowEnd } },
+      orderBy: { timestamp: "desc" },
+      select: { itemId: true, price: true },
+    });
+    const priceAt24hAgo = new Map<string, number>();
+    for (const p of pointsFrom24hAgo) {
+      if (!priceAt24hAgo.has(p.itemId)) priceAt24hAgo.set(p.itemId, p.price);
+    }
+    debug(`[sync] Loaded ${priceAt24hAgo.size} 24h-ago price points for change calc`);
+
     // Accumulate price points to write in one batch at the end (avoids N+1)
     const pendingPricePoints: { itemId: string; price: number; volume: number }[] = [];
 
     for (const steamItem of steamItems) {
       try {
-        const itemId = await upsertItem(steamItem, result);
+        const itemId = await upsertItem(steamItem, result, priceAt24hAgo);
         if (itemId) {
           pendingPricePoints.push({
             itemId,
@@ -239,10 +257,16 @@ function generateDescription(
  * Returns the item ID so callers can batch price-point writes afterward.
  * Single findUnique + single create/update = 2 DB roundtrips per item
  * (previously 3 + an extra create call for price points).
+ *
+ * @param priceAt24hAgo Map of itemId -> price ~24 hours ago, used for
+ * accurate priceChange24h calculation. If undefined or an item is missing,
+ * falls back to comparing against the previous sync (not ideal but better
+ * than nothing when we have < 24h of history).
  */
 async function upsertItem(
   steamItem: SteamSearchResult,
-  result: SyncResult
+  result: SyncResult,
+  priceAt24hAgo?: Map<string, number>,
 ): Promise<string | null> {
   const hashName = steamItem.hash_name;
   const slug = slugify(hashName);
@@ -286,9 +310,18 @@ async function upsertItem(
   };
 
   if (existing) {
+    // Prefer the actual 24h-ago price when we have it. Only fall back to the
+    // previous sync's price (which is typically ~15-30 min old) if we don't.
+    const baseline24h = priceAt24hAgo?.get(existing.id);
+    const baselinePrice =
+      baseline24h !== undefined && baseline24h > 0
+        ? baseline24h
+        : existing.currentPrice && existing.currentPrice > 0
+          ? existing.currentPrice
+          : null;
     const priceChange =
-      existing.currentPrice && existing.currentPrice > 0
-        ? ((priceInDollars - existing.currentPrice) / existing.currentPrice) * 100
+      baselinePrice !== null
+        ? ((priceInDollars - baselinePrice) / baselinePrice) * 100
         : 0;
 
     // Detect auto-generated descriptions so we can refresh them when the
