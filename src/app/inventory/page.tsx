@@ -116,10 +116,11 @@ export default function InventoryPage() {
 
       console.log("[inventory] Using SteamID64:", steamid64);
 
-      // 2. Fetch inventory directly from Steam client-side.
-      // Browser fetches use the user's IP, bypassing data-center IP blocks.
-      const invUrl = `https://steamcommunity.com/inventory/${steamid64}/590830/2?l=english&count=5000`;
-      console.log("[inventory] Fetching inventory from Steam:", invUrl);
+      // 2. Fetch inventory via our server-side proxy.
+      // Steam's inventory endpoint doesn't set CORS headers, so direct
+      // browser fetches are blocked. /api/inventory/fetch runs server-side
+      // (no CORS issues) and Steam's JSON endpoints accept Vercel IPs fine.
+      const invUrl = `/api/inventory/fetch?steamid=${steamid64}`;
       let inv: {
         assets?: Array<{ classid: string; instanceid: string; amount: string }>;
         descriptions?: Array<{
@@ -136,28 +137,20 @@ export default function InventoryPage() {
       };
       try {
         const invRes = await fetch(invUrl);
-        console.log("[inventory] Steam response status:", invRes.status);
-        if (invRes.status === 403) {
+        if (!invRes.ok) {
+          // The proxy returns helpful error messages in the body for common cases
+          const errBody = await invRes.json().catch(() => ({}));
           setError(
-            "Steam returned 403 (Forbidden). Please verify ALL three privacy settings are PUBLIC on Steam: 1) My Profile, 2) Game Details, 3) Inventory. Go to Edit Profile → Privacy Settings."
+            errBody.error ||
+              `Failed to fetch inventory (HTTP ${invRes.status}). Try again in a minute.`,
           );
           return;
         }
-        if (!invRes.ok) {
-          setError(`Steam returned HTTP ${invRes.status}. Try again in a minute.`);
-          return;
-        }
         inv = await invRes.json();
-        console.log("[inventory] Steam inventory response:", {
-          success: inv.success,
-          assets: inv.assets?.length ?? 0,
-          error: inv.error,
-        });
       } catch (err) {
-        // CORS errors and network failures both land here
-        console.error("[inventory] Steam fetch error:", err);
+        console.error("[inventory] Fetch error:", err);
         setError(
-          "Could not load inventory from Steam. This is likely a browser CORS restriction. Try using a direct /profiles/ URL instead, or check the developer console (F12) for details."
+          "Could not load inventory. Check your internet connection and try again.",
         );
         return;
       }
