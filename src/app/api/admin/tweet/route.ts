@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { generateDrafts, generateTweet, type TweetKind } from "@/lib/twitter/content";
 import { postTweet } from "@/lib/twitter/client";
 import { prisma } from "@/lib/db";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /** Extract the first /items/<slug> URL from a tweet body, if any. */
 function extractItemSlug(text: string): string | null {
@@ -14,21 +15,11 @@ function extractItemSlug(text: string): string | null {
  * GET  /api/admin/tweet?key=...&kind=top-gainer        — returns one specific draft
  * POST /api/admin/tweet                                 — posts a tweet (auth header + body { text })
  *
- * The GET side is gated by the same ANALYTICS_KEY used for the analytics
- * dashboard so it can be used from the /admin/tweet page without a real auth
- * system. POST requires the stricter CRON_SECRET bearer token to prevent
- * drive-by tweet posting.
+ * Both endpoints go through guardAdminRoute, which adds per-IP brute-force
+ * rate limiting to the bearer check. GET accepts only ANALYTICS_KEY; POST
+ * accepts ANALYTICS_KEY or CRON_SECRET (so automated cron posts + manual
+ * posts from the /admin/tweet UI both work).
  */
-
-function checkAdminKey(request: NextRequest): boolean {
-  const adminKey = process.env.ANALYTICS_KEY;
-  if (!adminKey) return false;
-  // Prefer Authorization header (doesn't leak into URLs/logs). Keep URL
-  // query as a transitional fallback while UIs are migrated.
-  const authHeader = request.headers.get("authorization");
-  if (authHeader === `Bearer ${adminKey}`) return true;
-  return request.nextUrl.searchParams.get("key") === adminKey;
-}
 
 /**
  * Report the freshest moment any item in the catalog was touched by a sync
@@ -46,9 +37,8 @@ async function getDataFreshness(): Promise<string | null> {
 }
 
 export async function GET(request: NextRequest) {
-  if (!checkAdminKey(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request, { allowedKeys: ["analytics"] });
+  if (!guard.ok) return guard.response;
 
   const kind = request.nextUrl.searchParams.get("kind") as TweetKind | null;
   const dataUpdatedAt = await getDataFreshness();
@@ -69,17 +59,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  // Accept either CRON_SECRET (for automated/cron posts) or ANALYTICS_KEY
-  // (for manual posts from the admin UI — that's what users type in)
-  const cronSecret = process.env.CRON_SECRET;
-  const adminKey = process.env.ANALYTICS_KEY;
-  const authHeader = request.headers.get("authorization");
-  const validAuth =
-    (cronSecret && authHeader === `Bearer ${cronSecret}`) ||
-    (adminKey && authHeader === `Bearer ${adminKey}`);
-  if (!validAuth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request);
+  if (!guard.ok) return guard.response;
 
   let body: { text?: string };
   try {

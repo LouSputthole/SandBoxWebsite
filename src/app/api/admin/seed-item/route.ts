@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { searchMarketByQuery } from "@/lib/steam/client";
 import { upsertItem } from "@/lib/services/sync-service";
 import type { SyncResult } from "@/lib/steam/types";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
  * POST /api/admin/seed-item
@@ -21,14 +22,8 @@ import type { SyncResult } from "@/lib/steam/types";
  * Protected by CRON_SECRET header.
  */
 export async function POST(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request, { allowedKeys: ["cron"] });
+  if (!guard.ok) return guard.response;
 
   let body: { marketHashName?: string };
   try {
