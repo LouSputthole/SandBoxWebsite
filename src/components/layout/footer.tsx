@@ -11,7 +11,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm">
               <li><Link href="/items" className="text-neutral-500 hover:text-white transition-colors">All Skins</Link></li>
               <li><Link href="/leaderboard" className="text-neutral-500 hover:text-white transition-colors">Leaderboard</Link></li>
-              <li><Link href="/holders" className="text-neutral-500 hover:text-white transition-colors">Top Holders</Link></li>
+              <li><Link href="/whales" className="text-neutral-500 hover:text-white transition-colors">Whales</Link></li>
               <li><Link href="/compare" className="text-neutral-500 hover:text-white transition-colors">Compare Skins</Link></li>
             </ul>
           </div>
