@@ -10,26 +10,36 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "sboxskins.gg — S&box Skin Prices, Market Trends & Order Books",
+    default:
+      "sboxskins.gg — S&box Cosmetics & Skin Market Tracker | Prices, Trends, Order Books",
     template: "%s | sboxskins.gg",
   },
   description:
-    "The dedicated S&box skin price tracker. Live prices, real-time order books, 24h changes, total supply counts, and historical charts for every S&box skin on the Steam Community Market. Updated every 15–30 minutes.",
+    "The dedicated S&box cosmetics market tracker. Live prices, real-time order books, 24h/7d changes, total supply counts, and historical charts for every S&box skin on the Steam Community Market. Updated every 15–30 minutes.",
   metadataBase: new URL("https://sboxskins.gg"),
   keywords: [
+    // Core product — "skins" and "cosmetics" both hit
     "sbox skins", "s&box skins", "sandbox skins", "s box skins",
-    "sbox marketplace", "s&box marketplace", "sbox skin prices",
-    "s&box price tracker", "sbox trading", "steam market sbox",
-    "facepunch sbox", "sbox cosmetics", "sandbox game skins",
-    "sbox order book", "sbox skin supply", "sbox market tracker",
-    "s&box steam market", "sboxskins",
+    "sbox cosmetics", "s&box cosmetics", "sandbox cosmetics", "s&box cosmetics market",
+    // Market / marketplace variants
+    "sbox market", "s&box market", "sbox marketplace", "s&box marketplace",
+    "sbox cosmetics market", "sbox skin market", "s&box skin market",
+    "sbox steam market", "s&box steam market",
+    // Price + tracker
+    "sbox skin prices", "s&box skin prices", "sbox cosmetics prices",
+    "s&box price tracker", "sbox market tracker", "sbox cosmetics tracker",
+    // Trading / flipping
+    "sbox trading", "s&box trading", "sbox skin trading",
+    // Misc discovery
+    "steam market sbox", "facepunch sbox", "sandbox game skins",
+    "sbox order book", "sbox skin supply", "sboxskins", "sbox charts",
   ],
   alternates: { canonical: "/" },
   openGraph: {
     siteName: "sboxskins.gg",
-    title: "sboxskins.gg — S&box Skin Prices & Market Tracker",
+    title: "sboxskins.gg — S&box Cosmetics & Skin Market Tracker",
     description:
-      "Live S&box skin prices, order books, supply data, and market trends from the Steam Community Market. Track every S&box skin in one place.",
+      "Live S&box cosmetics market data — prices, order books, supply, and trends from the Steam Community Market. The go-to tracker for every S&box skin.",
     type: "website",
     url: "https://sboxskins.gg",
     images: [
@@ -37,15 +47,15 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "sboxskins.gg — S&box Skin Prices & Market Tracker",
+        alt: "sboxskins.gg — S&box Cosmetics & Skin Market Tracker",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "sboxskins.gg — S&box Skin Prices & Market Tracker",
+    title: "sboxskins.gg — S&box Cosmetics & Skin Market Tracker",
     description:
-      "Live S&box skin prices, order books, supply data, and market trends. Track every S&box skin on the Steam Community Market.",
+      "Live S&box cosmetics market data — prices, order books, supply, and trends. The go-to S&box skin market tracker.",
     images: ["/opengraph-image"],
     site: "@SboxSkinsgg",
   },
@@ -72,7 +82,8 @@ export default function RootLayout({
     "@type": "WebSite",
     name: "sboxskins.gg",
     url: "https://sboxskins.gg",
-    description: "Browse, search, and track prices for S&box (sbox/sandbox) skins on the Steam Community Market.",
+    description:
+      "Browse, search, and track prices for S&box (sbox / sandbox) cosmetics and skins on the Steam Community Market. Live market data, order books, supply counts, and historical charts.",
     potentialAction: {
       "@type": "SearchAction",
       target: "https://sboxskins.gg/items?q={search_term_string}",
