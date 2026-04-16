@@ -30,12 +30,28 @@ function checkAdminKey(request: NextRequest): boolean {
   return request.nextUrl.searchParams.get("key") === adminKey;
 }
 
+/**
+ * Report the freshest moment any item in the catalog was touched by a sync
+ * — used by the admin UI to show "data X ago" so the user knows whether
+ * these drafts are based on stale numbers. `updatedAt` bumps on every
+ * Prisma update, so this reflects both Steam price syncs and sbox.dev
+ * enrichment.
+ */
+async function getDataFreshness(): Promise<string | null> {
+  const latest = await prisma.item.findFirst({
+    orderBy: { updatedAt: "desc" },
+    select: { updatedAt: true },
+  });
+  return latest?.updatedAt.toISOString() ?? null;
+}
+
 export async function GET(request: NextRequest) {
   if (!checkAdminKey(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const kind = request.nextUrl.searchParams.get("kind") as TweetKind | null;
+  const dataUpdatedAt = await getDataFreshness();
 
   if (kind) {
     const draft = await generateTweet(kind);
@@ -45,11 +61,11 @@ export async function GET(request: NextRequest) {
         { status: 404 },
       );
     }
-    return NextResponse.json({ drafts: [draft] });
+    return NextResponse.json({ drafts: [draft], dataUpdatedAt });
   }
 
   const drafts = await generateDrafts();
-  return NextResponse.json({ drafts });
+  return NextResponse.json({ drafts, dataUpdatedAt });
 }
 
 export async function POST(request: NextRequest) {
