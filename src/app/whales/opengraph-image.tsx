@@ -3,7 +3,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 
 export const runtime = "nodejs";
-export const alt = "Top S&box Skin Holders";
+export const alt = "S&box Skin Whales — Biggest Collectors";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -13,20 +13,20 @@ export default async function OGImage() {
     select: { currentPrice: true, topHolders: true },
   });
 
-  const byHolder = new Map<string, { name: string; total: number }>();
+  const byWhale = new Map<string, { name: string; total: number }>();
   for (const item of items) {
     if (!Array.isArray(item.topHolders)) continue;
     const price = item.currentPrice ?? 0;
     if (price <= 0) continue;
     for (const h of item.topHolders as unknown as Array<{ steamId: string; name: string; quantity: number }>) {
       if (!h.steamId) continue;
-      const existing = byHolder.get(h.steamId) ?? { name: h.name, total: 0 };
+      const existing = byWhale.get(h.steamId) ?? { name: h.name, total: 0 };
       existing.total += price * h.quantity;
-      byHolder.set(h.steamId, existing);
+      byWhale.set(h.steamId, existing);
     }
   }
 
-  const top5 = Array.from(byHolder.values())
+  const top5 = Array.from(byWhale.values())
     .sort((a, b) => b.total - a.total)
     .slice(0, 5);
 
@@ -51,7 +51,7 @@ export default async function OGImage() {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "30px" }}>
           <span style={{ fontSize: 32, color: "#a78bfa", fontWeight: 700 }}>sboxskins.gg</span>
           <span style={{ fontSize: 18, color: "#525252", textTransform: "uppercase", letterSpacing: "2px" }}>
-            Top Holders
+            Whales
           </span>
         </div>
 

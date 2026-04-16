@@ -85,10 +85,10 @@ export function Navbar() {
               Leaderboard
             </Link>
             <Link
-              href="/holders"
+              href="/whales"
               className="text-sm text-neutral-400 hover:text-white transition-colors"
             >
-              Holders
+              Whales
             </Link>
             <Link
               href="/blog"
@@ -261,11 +261,11 @@ export function Navbar() {
               Leaderboard
             </Link>
             <Link
-              href="/holders"
+              href="/whales"
               className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Top Holders
+              Whales
             </Link>
             <Link
               href="/blog"

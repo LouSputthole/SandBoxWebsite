@@ -70,7 +70,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     },
     {
-      url: "https://sboxskins.gg/holders",
+      url: "https://sboxskins.gg/whales",
       lastModified: latestUpdate,
       changeFrequency: "daily",
       priority: 0.8,
