@@ -111,6 +111,33 @@ export async function searchMarketItems(
 }
 
 /**
+ * Search Steam Market by query string. Used for the manual seed-item
+ * admin path when our paginated catalog sync misses an item (Steam's
+ * pagination is occasionally lossy and we have no alternative listing
+ * source). Returns up to `count` matches; caller picks the right one
+ * by exact hash_name match.
+ */
+export async function searchMarketByQuery(
+  query: string,
+  count = 20,
+): Promise<SteamSearchResponse | null> {
+  const params = new URLSearchParams({
+    query,
+    start: "0",
+    count: count.toString(),
+    search_descriptions: "0",
+    sort_by: "quantity",
+    sort_dir: "desc",
+    appid: STEAM_APPID.toString(),
+    norender: "1",
+  });
+
+  return steamFetch<SteamSearchResponse>(
+    `${STEAM_MARKET_BASE}/search/render/?${params}`,
+  );
+}
+
+/**
  * Get current price overview for a specific item.
  * Returns lowest price, median price, and volume.
  */

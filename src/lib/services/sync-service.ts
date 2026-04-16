@@ -264,7 +264,7 @@ function generateDescription(
  * falls back to comparing against the previous sync (not ideal but better
  * than nothing when we have < 24h of history).
  */
-async function upsertItem(
+export async function upsertItem(
   steamItem: SteamSearchResult,
   result: SyncResult,
   priceAt24hAgo?: Map<string, number>,
