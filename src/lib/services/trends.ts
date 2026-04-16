@@ -56,6 +56,19 @@ export interface TrendsData {
     priceChange24h: number | null;
     volume: number | null;
   }[];
+  topGainers7d: WeeklyMover[];
+  topLosers7d: WeeklyMover[];
+}
+
+export interface WeeklyMover {
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+  type: string;
+  currentPrice: number | null;
+  weeklyChangePct: number;
+  weekAgoPrice: number;
+  volume: number | null;
 }
 
 export function periodDays(period: TrendsPeriod): number {
@@ -180,6 +193,71 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
     ceiling: sortedPrices.length > 0 ? sortedPrices[sortedPrices.length - 1] : 0,
   };
 
+  // 7-day movers — compute from PricePoint timeseries, NOT the stale
+  // priceChange24h column. Uses a centered ±12h window around 7-days-ago
+  // and picks the closest point per item for an accurate weekly baseline.
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const baselineStart = new Date(weekAgo.getTime() - 12 * 60 * 60 * 1000);
+  const baselineEnd = new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000);
+
+  const [itemsWithImages, weekAgoPoints] = await Promise.all([
+    prisma.item.findMany({
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        imageUrl: true,
+        type: true,
+        currentPrice: true,
+        volume: true,
+      },
+    }),
+    prisma.pricePoint.findMany({
+      where: { timestamp: { gte: baselineStart, lte: baselineEnd } },
+      select: { itemId: true, price: true, timestamp: true },
+    }),
+  ]);
+
+  const targetTime = weekAgo.getTime();
+  const priceWeekAgo = new Map<string, number>();
+  const bestDelta = new Map<string, number>();
+  for (const p of weekAgoPoints) {
+    const delta = Math.abs(p.timestamp.getTime() - targetTime);
+    const prev = bestDelta.get(p.itemId);
+    if (prev === undefined || delta < prev) {
+      priceWeekAgo.set(p.itemId, p.price);
+      bestDelta.set(p.itemId, delta);
+    }
+  }
+
+  const weeklyMovers: WeeklyMover[] = itemsWithImages
+    .map((i) => {
+      const baseline = priceWeekAgo.get(i.id);
+      const current = i.currentPrice ?? 0;
+      if (!baseline || baseline <= 0 || current <= 0) return null;
+      const weeklyChangePct = ((current - baseline) / baseline) * 100;
+      return {
+        name: i.name,
+        slug: i.slug,
+        imageUrl: i.imageUrl,
+        type: i.type,
+        currentPrice: i.currentPrice,
+        volume: i.volume,
+        weeklyChangePct,
+        weekAgoPrice: baseline,
+      };
+    })
+    .filter((x): x is WeeklyMover => x !== null);
+
+  const topGainers7d = weeklyMovers
+    .filter((m) => m.weeklyChangePct > 0)
+    .sort((a, b) => b.weeklyChangePct - a.weeklyChangePct)
+    .slice(0, 10);
+  const topLosers7d = weeklyMovers
+    .filter((m) => m.weeklyChangePct < 0)
+    .sort((a, b) => a.weeklyChangePct - b.weeklyChangePct)
+    .slice(0, 10);
+
   return {
     currentStats,
     snapshots,
@@ -187,5 +265,7 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
     storeStatusCounts,
     topGainers,
     topLosers,
+    topGainers7d,
+    topLosers7d,
   };
 }

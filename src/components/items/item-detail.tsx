@@ -150,12 +150,6 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                   <span>{item.itemSubType}</span>
                 </>
               )}
-              {item.releaseDate && (
-                <>
-                  <span className="text-neutral-700">·</span>
-                  <span>Released {new Date(item.releaseDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</span>
-                </>
-              )}
             </div>
             <h1 className="text-3xl font-bold text-white">{item.name}</h1>
           </div>
@@ -274,20 +268,36 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
             <Card className="bg-neutral-900/80">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <Clock className="h-3.5 w-3.5 text-neutral-500" />
-                  <span className="text-xs text-neutral-500">Tradable</span>
+                  <Calendar className="h-3.5 w-3.5 text-neutral-500" />
+                  <span className="text-xs text-neutral-500">Released</span>
                 </div>
-                <span className="text-sm font-semibold text-white">Yes</span>
+                <span className="text-sm font-semibold text-white">
+                  {item.releaseDate
+                    ? new Date(item.releaseDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                    : "N/A"}
+                </span>
+                {item.releaseDate && (
+                  <span className="text-[10px] text-neutral-500 block mt-0.5">
+                    {formatReleaseAge(item.releaseDate)}
+                  </span>
+                )}
               </CardContent>
             </Card>
             <Card className="bg-neutral-900/80">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <Calendar className="h-3.5 w-3.5 text-neutral-500" />
-                  <span className="text-xs text-neutral-500">Total Sales</span>
+                  <Clock className="h-3.5 w-3.5 text-neutral-500" />
+                  <span className="text-xs text-neutral-500">Spread</span>
+                  <Tooltip
+                    asIcon
+                    content="Difference between the current price (from Steam's search feed) and the lowest listed price (from Steam's priceoverview). Big gaps can mean the market's moving fast or one endpoint is cached behind the other."
+                  />
                 </div>
                 <span className="text-sm font-semibold text-white">
-                  {item.totalSales?.toLocaleString() ?? "N/A"}
+                  {formatSpread(item.currentPrice, item.lowestPrice)}
+                </span>
+                <span className="text-[10px] text-neutral-500 block mt-0.5">
+                  {formatSpreadPct(item.currentPrice, item.lowestPrice)}
                 </span>
               </CardContent>
             </Card>
@@ -434,4 +444,28 @@ function formatTimeLeft(dateStr: string): string {
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   if (days > 0) return `in ${days}d ${hours}h`;
   return `in ${hours}h`;
+}
+
+function formatReleaseAge(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days < 7) return `${days}d ago`;
+  if (days < 60) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  const years = (days / 365).toFixed(1);
+  return `${years}y ago`;
+}
+
+function formatSpread(current: number | null, lowest: number | null): string {
+  if (current == null || lowest == null) return "N/A";
+  const diff = current - lowest;
+  const sign = diff > 0 ? "+" : "";
+  return `${sign}$${diff.toFixed(2)}`;
+}
+
+function formatSpreadPct(current: number | null, lowest: number | null): string {
+  if (current == null || lowest == null || lowest === 0) return "—";
+  const pct = ((current - lowest) / lowest) * 100;
+  const sign = pct > 0 ? "+" : "";
+  return `${sign}${pct.toFixed(2)}% vs lowest`;
 }

@@ -191,6 +191,45 @@ export default async function TrendsPage({ searchParams }: PageProps) {
           </div>
         </div>
       </div>
+
+      {/* 7-day movers */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Flame className="h-4 w-4 text-emerald-400" />
+            <h2 className="text-sm font-medium text-white">Top Gainers (7d)</h2>
+          </div>
+          {data.topGainers7d.length === 0 ? (
+            <p className="text-xs text-neutral-600 text-center py-4">
+              Not enough 7-day price history yet
+            </p>
+          ) : (
+            <div className="space-y-0.5">
+              {data.topGainers7d.slice(0, 8).map((item, i) => (
+                <WeeklyMoverRow key={item.slug} item={item} rank={i + 1} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <ArrowDown className="h-4 w-4 text-red-400" />
+            <h2 className="text-sm font-medium text-white">Top Losers (7d)</h2>
+          </div>
+          {data.topLosers7d.length === 0 ? (
+            <p className="text-xs text-neutral-600 text-center py-4">
+              Not enough 7-day price history yet
+            </p>
+          ) : (
+            <div className="space-y-0.5">
+              {data.topLosers7d.slice(0, 8).map((item, i) => (
+                <WeeklyMoverRow key={item.slug} item={item} rank={i + 1} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -229,6 +268,47 @@ function MoverRow({ item, rank }: { item: MoverItem; rank: number }) {
         <p className={`text-xs font-medium ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
           {formatPriceChange(change)}
         </p>
+      </div>
+    </Link>
+  );
+}
+
+interface WeeklyMoverItem {
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+  type: string;
+  currentPrice: number | null;
+  weeklyChangePct: number;
+  weekAgoPrice: number;
+}
+
+function WeeklyMoverRow({ item, rank }: { item: WeeklyMoverItem; rank: number }) {
+  const isPositive = item.weeklyChangePct > 0;
+  return (
+    <Link
+      href={`/items/${item.slug}`}
+      className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-neutral-800/50 transition-colors"
+    >
+      <span className="text-xs text-neutral-600 w-5 text-right">{rank}</span>
+      <ItemImage
+        src={item.imageUrl}
+        name={item.name}
+        type={item.type}
+        size="sm"
+        className="h-8 w-8 rounded-md border border-neutral-700/50 shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-neutral-100 truncate">{item.name}</p>
+        <p className="text-[10px] text-neutral-500">
+          {formatPrice(item.weekAgoPrice)} → {formatPrice(item.currentPrice ?? 0)}
+        </p>
+      </div>
+      <div className="text-right">
+        <p className={`text-sm font-medium ${isPositive ? "text-emerald-400" : "text-red-400"}`}>
+          {isPositive ? "+" : ""}{item.weeklyChangePct.toFixed(1)}%
+        </p>
+        <p className="text-[10px] text-neutral-500">7d</p>
       </div>
     </Link>
   );
