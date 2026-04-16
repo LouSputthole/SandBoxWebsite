@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { ItemImage } from "@/components/items/item-image";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
 import { GitCompare } from "lucide-react";
+import { ItemSelect } from "./item-select";
 
 export const revalidate = 300;
 
@@ -93,22 +94,13 @@ function ItemSelector({
           </div>
         </div>
       )}
-      <form method="get" action="/compare">
-        {otherValue && <input type="hidden" name={otherParam} value={otherValue} />}
-        <select
-          name={param}
-          defaultValue={selected ?? ""}
-          className="w-full bg-neutral-900 border border-neutral-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:border-cyan-500"
-          onChange={(e) => e.currentTarget.form?.submit()}
-        >
-          <option value="">— Select an item —</option>
-          {options.map((it) => (
-            <option key={it.slug} value={it.slug}>
-              {it.name} {it.currentPrice ? `· ${formatPrice(it.currentPrice)}` : ""}
-            </option>
-          ))}
-        </select>
-      </form>
+      <ItemSelect
+        name={param}
+        defaultValue={selected ?? ""}
+        otherParamName={otherParam}
+        otherParamValue={otherValue}
+        options={options}
+      />
     </div>
   );
 }
