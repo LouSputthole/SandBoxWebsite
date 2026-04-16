@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchMarketByQuery } from "@/lib/steam/client";
-import { upsertItem } from "@/lib/services/sync-service";
+import { seedItemByHashName } from "@/lib/services/sync-service";
 import type { SyncResult } from "@/lib/steam/types";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
@@ -46,32 +45,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const search = await searchMarketByQuery(hashName, 20);
-  if (!search || !search.success) {
-    return NextResponse.json(
-      { error: "Steam search failed or returned no results" },
-      { status: 502 },
-    );
-  }
-
-  // Exact hash_name match — avoids pulling in "Hard Hat 2026" if we asked
-  // for "Hard Hat". Case-insensitive comparison because Steam's own hash
-  // names are occasionally inconsistent.
-  const match = search.results.find(
-    (r) => r.hash_name.toLowerCase() === hashName.toLowerCase(),
-  );
-  if (!match) {
-    return NextResponse.json(
-      {
-        error: `No exact match for "${hashName}" in Steam search. First few results: ${search.results
-          .slice(0, 5)
-          .map((r) => r.hash_name)
-          .join(", ")}`,
-      },
-      { status: 404 },
-    );
-  }
-
   const result: SyncResult = {
     success: true,
     itemsProcessed: 0,
@@ -82,11 +55,14 @@ export async function POST(request: NextRequest) {
     duration: 0,
   };
 
-  const itemId = await upsertItem(match, result);
+  const { itemId, matchedName } = await seedItemByHashName(hashName, result);
   if (!itemId) {
     return NextResponse.json(
-      { error: "Upsert failed", detail: result.errors },
-      { status: 500 },
+      {
+        error: `No exact match for "${hashName}" in Steam search, or upsert failed.`,
+        detail: result.errors,
+      },
+      { status: 404 },
     );
   }
 
@@ -95,7 +71,7 @@ export async function POST(request: NextRequest) {
     itemId,
     created: result.itemsCreated === 1,
     updated: result.itemsUpdated === 1,
-    name: match.name,
-    hashName: match.hash_name,
+    name: matchedName,
+    hashName,
   });
 }
