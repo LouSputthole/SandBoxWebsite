@@ -15,6 +15,7 @@ import {
   LogIn,
   LogOut,
   User as UserIcon,
+  ArrowRightLeft,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,13 @@ export function Navbar() {
               className="text-sm text-neutral-400 hover:text-white transition-colors"
             >
               Leaderboard
+            </Link>
+            <Link
+              href="/trade"
+              className="text-sm text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              Trade
             </Link>
             <Link
               href="/whales"
@@ -259,6 +267,13 @@ export function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               Leaderboard
+            </Link>
+            <Link
+              href="/trade"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Trading Board
             </Link>
             <Link
               href="/whales"

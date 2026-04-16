@@ -51,6 +51,7 @@ model Item {
   scarcityScore       Float?     // 0-100 composite score: distribution + liquidity + momentum
 
   supplySnapshots SupplySnapshot[]
+  tradeListingItems TradeListingItem[]
 
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -146,12 +147,20 @@ model User {
   username  String?
   avatarUrl String?
   profileUrl String?
+  // Full Steam trade-offer URL (the form
+  // "https://steamcommunity.com/tradeoffer/new/?partner=<accountID32>&token=<token>").
+  // Required before the user can post a trade listing — the token portion
+  // lets non-friends initiate trades. Cached here so users only paste it
+  // once. Validated on write to ensure the partner derives from this user's
+  // own steamId (prevents spoofing someone else's trade URL).
+  steamTradeUrl String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   sessions       Session[]
   watchlistItems WatchlistItem[]
   priceAlerts    PriceAlert[]
+  tradeListings  TradeListing[]
 }
 
 model Session {
@@ -236,4 +245,56 @@ model DailyStats {
   topCountries Json?   // [{ country, count }]
 
   @@index([date])
+}
+
+// ---------------------------------------------------------------------------
+// Trade bulletin board — bulletin-style listings, no escrow, no custody.
+// We just match users + deep-link to a Steam trade. See /trade pages.
+// ---------------------------------------------------------------------------
+
+model TradeListing {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "selling" = offering items, accepting cash/keys/anything
+  // "buying"  = wanting items, paying with cash/keys/other items
+  // "both"    = item-for-item trade with stuff on both sides
+  side        String
+  // Freeform description (e.g. "make an offer", "Trading for Rust Skins").
+  description String
+  // active → completed (owner mark) | cancelled (owner cancel) | expired (cron)
+  status      String   @default("active")
+  viewCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  // Default 14d, max 30d (enforced at the API layer). Cron flips status to
+  // "expired" once now() > expiresAt.
+  expiresAt   DateTime
+
+  items TradeListingItem[]
+
+  @@index([status, createdAt])
+  @@index([status, expiresAt])
+  @@index([userId, status])
+  @@index([side, status])
+}
+
+model TradeListingItem {
+  id         String   @id @default(cuid())
+  listingId  String
+  listing    TradeListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  // "offering" = on the poster's side / "wanting" = what they want in return
+  slot       String
+  // For in-catalog items, link to Item; otherwise customName captures
+  // off-catalog stuff like "TF2 keys", "Rust skins", "$50 PayPal".
+  itemId     String?
+  item       Item?    @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  customName String?
+  quantity   Int      @default(1)
+  // Preserve the listing-time price so old listings don't quietly re-value
+  // when an item moves on the market. Optional — only set for catalog items
+  // that had a price at create time.
+  unitPriceAtListing Float?
+
+  @@index([listingId])
+  @@index([itemId])
 }
