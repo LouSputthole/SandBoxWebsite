@@ -34,6 +34,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing 'items' array" }, { status: 400 });
   }
 
+  // Steam inventories top out around a few hundred unique hash names even
+  // for whales. 2000 is a generous ceiling that also protects against a
+  // caller shoving an enormous `IN (...)` into Prisma.
+  if (body.items.length > 2000) {
+    return NextResponse.json(
+      { error: `Too many items (${body.items.length}). Max 2000.` },
+      { status: 400 },
+    );
+  }
+
   const hashNames = body.items.map((i) => i.hashName).filter(Boolean);
 
   const dbItems = await prisma.item.findMany({

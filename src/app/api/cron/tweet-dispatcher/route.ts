@@ -39,45 +39,72 @@ export async function GET(request: NextRequest) {
   const results: { id: string; status: string; tweetId?: string; error?: string }[] = [];
 
   for (const t of due) {
-    const result = t.inReplyToTweetId
-      ? await postReply(t.text, t.inReplyToTweetId)
-      : await postTweet(t.text);
+    // Atomically claim the row before calling Twitter. If the claim fails
+    // (count=0), another dispatch beat us to it — skip. Writing attemptedAt
+    // up front also means a mid-flight crash won't leave the row "pending"
+    // and cause a double-post on the next dispatch. Twitter has no
+    // idempotency key, so that matters.
+    const claim = await prisma.scheduledTweet.updateMany({
+      where: { id: t.id, status: "pending" },
+      data: { attemptedAt: now },
+    });
+    if (claim.count === 0) continue;
 
-    if (result.success && result.tweetId) {
-      // Mark scheduled row as posted, link to the new SentTweet, both in one
-      // transaction so analytics stay consistent
-      await prisma.$transaction([
-        prisma.scheduledTweet.update({
+    // Each iteration is fully isolated — one throwing tweet can't take out
+    // the rest of the batch.
+    try {
+      const result = t.inReplyToTweetId
+        ? await postReply(t.text, t.inReplyToTweetId)
+        : await postTweet(t.text);
+
+      if (result.success && result.tweetId) {
+        // Mark scheduled row as posted, link to the new SentTweet, both in one
+        // transaction so analytics stay consistent
+        await prisma.$transaction([
+          prisma.scheduledTweet.update({
+            where: { id: t.id },
+            data: {
+              status: "posted",
+              postedTweetId: result.tweetId,
+              attemptedAt: now,
+            },
+          }),
+          prisma.sentTweet.create({
+            data: {
+              tweetId: result.tweetId,
+              text: t.text,
+              kind: t.kind ?? "scheduled",
+              itemSlug: t.itemSlug,
+              inReplyToTweetId: t.inReplyToTweetId,
+            },
+          }),
+        ]);
+        posted++;
+        results.push({ id: t.id, status: "posted", tweetId: result.tweetId });
+      } else {
+        await prisma.scheduledTweet.update({
           where: { id: t.id },
           data: {
-            status: "posted",
-            postedTweetId: result.tweetId,
+            status: "failed",
+            failureReason: result.error ?? "unknown error",
             attemptedAt: now,
           },
-        }),
-        prisma.sentTweet.create({
-          data: {
-            tweetId: result.tweetId,
-            text: t.text,
-            kind: t.kind ?? "scheduled",
-            itemSlug: t.itemSlug,
-            inReplyToTweetId: t.inReplyToTweetId,
-          },
-        }),
-      ]);
-      posted++;
-      results.push({ id: t.id, status: "posted", tweetId: result.tweetId });
-    } else {
-      await prisma.scheduledTweet.update({
-        where: { id: t.id },
-        data: {
-          status: "failed",
-          failureReason: result.error ?? "unknown error",
-          attemptedAt: now,
-        },
-      });
+        });
+        failed++;
+        results.push({ id: t.id, status: "failed", error: result.error });
+      }
+    } catch (err) {
+      // Hard failure (network, Twitter 5xx, DB error, …). Mark failed so we
+      // don't spin-retry the same row next dispatch.
+      const reason = err instanceof Error ? err.message : String(err);
+      await prisma.scheduledTweet
+        .update({
+          where: { id: t.id },
+          data: { status: "failed", failureReason: reason, attemptedAt: now },
+        })
+        .catch(() => {});
       failed++;
-      results.push({ id: t.id, status: "failed", error: result.error });
+      results.push({ id: t.id, status: "failed", error: reason });
     }
   }
 

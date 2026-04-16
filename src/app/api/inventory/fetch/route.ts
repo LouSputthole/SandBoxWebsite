@@ -68,9 +68,8 @@ export async function GET(request: NextRequest) {
   let res: Response;
   try {
     res = await fetch(upstream, {
+      // No custom User-Agent — blend into Vercel's default traffic (AGENTS.md #1).
       headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         Accept: "application/json, text/javascript, */*; q=0.01",
       },
       signal: AbortSignal.timeout(15000),

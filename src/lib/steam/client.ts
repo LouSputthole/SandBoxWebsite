@@ -4,12 +4,13 @@ import { debug, debugWarn } from "@/lib/debug";
 const STEAM_APPID = 590830;
 const STEAM_MARKET_BASE = "https://steamcommunity.com/market";
 
+// Deliberately minimal headers — no User-Agent, no Referer, no Accept-Language.
+// A custom UA + datacenter IP is a uniquely fingerprint-able combination that
+// invites a targeted ban. Vanilla fetch() from Vercel blends into the broader
+// Vercel IP pool, so a ban would have to hit everyone on Vercel — much higher
+// bar. See AGENTS.md convention #1.
 const HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   Accept: "application/json, text/javascript, */*; q=0.01",
-  "Accept-Language": "en-US,en;q=0.9",
-  Referer: `${STEAM_MARKET_BASE}/search?appid=${STEAM_APPID}`,
 };
 
 // Rate limiter: serializes requests with minimum delay between them.
