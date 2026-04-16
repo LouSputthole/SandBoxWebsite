@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   Lock,
   RefreshCw,
@@ -87,11 +87,60 @@ function formatTweetTime(iso: string): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+/**
+ * Little pill that shows how stale the underlying market data is. Green up
+ * to 45 min (sync runs every 15-30 min, so anything that old is a missed
+ * run), amber up to 3h, red past that — at which point the drafts are
+ * quoting prices that might not match reality. Full ISO timestamp is in
+ * the title attribute for hover. Re-ticks every 30s so the label stays
+ * live without needing a page refresh.
+ */
+function DataFreshness({ iso }: { iso: string }) {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    // Mount + interval tick — the set-state-in-effect rule is over-eager
+    // for time-based UI refreshes.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  // SSR-safe: render a neutral pill until the client ticks once.
+  if (now === null) {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium bg-neutral-800 text-neutral-400 border-neutral-700">
+        <RefreshCw className="h-3 w-3" />
+        Data …
+      </span>
+    );
+  }
+  const ageMin = (now - new Date(iso).getTime()) / 60_000;
+  const tone =
+    ageMin < 45
+      ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+      : ageMin < 180
+        ? "bg-amber-500/10 text-amber-300 border-amber-500/30"
+        : "bg-red-500/10 text-red-300 border-red-500/40";
+  return (
+    <span
+      title={`Last sync: ${new Date(iso).toLocaleString()}`}
+      className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-xs font-medium ${tone}`}
+    >
+      <RefreshCw className="h-3 w-3" />
+      Data {formatTweetTime(iso)}
+    </span>
+  );
+}
+
 export default function TweetAdminPage() {
   const [key, setKey] = useState("");
   const [authed, setAuthed] = useState(false);
   const [activeTab, setActiveTab] = useState<"drafts" | "mentions" | "scheduled">("drafts");
   const [drafts, setDrafts] = useState<Draft[]>([]);
+  // ISO timestamp of the freshest item.updatedAt in the DB — shown in the
+  // header so you can tell at a glance whether these drafts are built from
+  // fresh sync data or something stale.
+  const [dataUpdatedAt, setDataUpdatedAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [postingIndex, setPostingIndex] = useState<number | null>(null);
@@ -136,6 +185,7 @@ export default function TweetAdminPage() {
       }
       const data = await res.json();
       setDrafts(data.drafts ?? []);
+      setDataUpdatedAt(data.dataUpdatedAt ?? null);
       setAuthed(true);
       setResults({});
     } catch (err) {
@@ -427,10 +477,15 @@ export default function TweetAdminPage() {
             </Button>
           </Link>
           {activeTab === "drafts" && (
-            <Button onClick={fetchDrafts} disabled={loading} variant="outline" className="gap-2">
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-              Regenerate
-            </Button>
+            <>
+              {dataUpdatedAt && (
+                <DataFreshness iso={dataUpdatedAt} />
+              )}
+              <Button onClick={fetchDrafts} disabled={loading} variant="outline" className="gap-2">
+                <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                Regenerate
+              </Button>
+            </>
           )}
           {activeTab === "mentions" && (
             <Button
