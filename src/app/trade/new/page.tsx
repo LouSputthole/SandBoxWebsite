@@ -17,11 +17,9 @@ export const metadata: Metadata = {
 export default async function NewTradeListingPage() {
   const user = await getCurrentUser();
   if (!user) {
-    // Send unauthed users through Steam login. The callback currently
-    // always redirects home (?auth=success) — once they're back, they can
-    // re-navigate here. (Adding a post-login bounce target is a separate
-    // change to api/auth/steam + callback; out of scope for this PR.)
-    redirect(`/api/auth/steam`);
+    // Pass next= so the Steam callback bounces them right back here after
+    // login — otherwise they'd have to click "New listing" a second time.
+    redirect(`/api/auth/steam?next=${encodeURIComponent("/trade/new")}`);
   }
 
   // Slim catalog payload for the autocomplete picker. 1.6KB per 100 items
