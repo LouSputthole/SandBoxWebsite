@@ -22,9 +22,15 @@ export async function generateAndSaveWeeklyReport(): Promise<{
   }
 
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const [items, oldSnap, newestSnap, gainers, losers] = await Promise.all([
+
+  // Centered ±12h window around 7-day-ago — gives us tolerance for sync gaps
+  const baselineStart = new Date(weekAgo.getTime() - 12 * 60 * 60 * 1000);
+  const baselineEnd = new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000);
+
+  const [items, oldSnap, newestSnap, weekAgoPoints] = await Promise.all([
     prisma.item.findMany({
       select: {
+        id: true,
         name: true,
         slug: true,
         currentPrice: true,
@@ -36,25 +42,51 @@ export async function generateAndSaveWeeklyReport(): Promise<{
       },
     }),
     prisma.marketSnapshot.findFirst({
-      where: { timestamp: { lte: new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000) } },
+      where: { timestamp: { lte: baselineEnd } },
       orderBy: { timestamp: "desc" },
     }),
-    prisma.marketSnapshot.findFirst({
-      orderBy: { timestamp: "desc" },
-    }),
-    prisma.item.findMany({
-      where: { priceChange24h: { gt: 0 } },
-      orderBy: { priceChange24h: "desc" },
-      take: 5,
-      select: { name: true, slug: true, currentPrice: true, priceChange24h: true },
-    }),
-    prisma.item.findMany({
-      where: { priceChange24h: { lt: 0 } },
-      orderBy: { priceChange24h: "asc" },
-      take: 5,
-      select: { name: true, slug: true, currentPrice: true, priceChange24h: true },
+    prisma.marketSnapshot.findFirst({ orderBy: { timestamp: "desc" } }),
+    // Pull every price point in the ±12h window and keep the one closest
+    // to exactly 7 days ago per item. This gives us real week-over-week
+    // changes instead of the stale 24h column (which misses Mon→Fri moves).
+    prisma.pricePoint.findMany({
+      where: { timestamp: { gte: baselineStart, lte: baselineEnd } },
+      select: { itemId: true, price: true, timestamp: true },
     }),
   ]);
+
+  // Pick the price point closest to exactly 7 days ago per item
+  const targetTime = weekAgo.getTime();
+  const priceWeekAgo = new Map<string, number>();
+  const bestDelta = new Map<string, number>();
+  for (const p of weekAgoPoints) {
+    const delta = Math.abs(p.timestamp.getTime() - targetTime);
+    const prev = bestDelta.get(p.itemId);
+    if (prev === undefined || delta < prev) {
+      priceWeekAgo.set(p.itemId, p.price);
+      bestDelta.set(p.itemId, delta);
+    }
+  }
+
+  // Compute 7-day change for each item that has both current + baseline
+  const withWeeklyChange = items
+    .map((i) => {
+      const baseline = priceWeekAgo.get(i.id);
+      const current = i.currentPrice ?? 0;
+      if (!baseline || baseline <= 0 || current <= 0) return null;
+      const changePct = ((current - baseline) / baseline) * 100;
+      return { ...i, weeklyChangePct: changePct, weekAgoPrice: baseline };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null);
+
+  const gainers = withWeeklyChange
+    .filter((i) => i.weeklyChangePct > 0)
+    .sort((a, b) => b.weeklyChangePct - a.weeklyChangePct)
+    .slice(0, 5);
+  const losers = withWeeklyChange
+    .filter((i) => i.weeklyChangePct < 0)
+    .sort((a, b) => a.weeklyChangePct - b.weeklyChangePct)
+    .slice(0, 5);
 
   const currentListings = items.reduce(
     (s, i) => s + (i.currentPrice ?? 0) * (i.volume ?? 0),
@@ -100,31 +132,40 @@ export async function generateAndSaveWeeklyReport(): Promise<{
   return { created: true, slug: post.slug, title: post.title };
 }
 
+interface WeeklyMover {
+  name: string;
+  slug: string;
+  currentPrice: number | null;
+  weeklyChangePct: number;
+  weekAgoPrice: number;
+}
+
 function buildMarkdown(data: {
   week: number;
   year: number;
   totalItems: number;
   currentListings: number;
   capChange: number | null;
-  gainers: Array<{ name: string; slug: string; currentPrice: number | null; priceChange24h: number | null }>;
-  losers: Array<{ name: string; slug: string; currentPrice: number | null; priceChange24h: number | null }>;
+  gainers: WeeklyMover[];
+  losers: WeeklyMover[];
   rarestItems: Array<{ name: string; slug: string; currentPrice: number | null; scarcityScore: number | null }>;
 }): string {
   const capLine = data.capChange != null
     ? `The total listings value of the S&box skin market is **${formatPrice(data.currentListings)}**, a ${data.capChange >= 0 ? "gain" : "drop"} of **${data.capChange.toFixed(1)}%** week-over-week.`
     : `The total listings value of the S&box skin market is **${formatPrice(data.currentListings)}**.`;
 
-  const gainerLines = data.gainers
-    .map((g, i) => `${i + 1}. [${g.name}](/items/${g.slug}) — ${formatPrice(g.currentPrice ?? 0)} (${g.priceChange24h! >= 0 ? "+" : ""}${g.priceChange24h?.toFixed(1)}%)`)
-    .join("\n");
+  const moverLine = (m: WeeklyMover, i: number): string => {
+    const sign = m.weeklyChangePct >= 0 ? "+" : "";
+    return `${i + 1}. [${m.name}](/items/${m.slug}) — ${formatPrice(m.weekAgoPrice)} → ${formatPrice(m.currentPrice ?? 0)} (${sign}${m.weeklyChangePct.toFixed(1)}%)`;
+  };
 
-  const loserLines = data.losers
-    .map((l, i) => `${i + 1}. [${l.name}](/items/${l.slug}) — ${formatPrice(l.currentPrice ?? 0)} (${l.priceChange24h?.toFixed(1)}%)`)
-    .join("\n");
-
+  const gainerLines = data.gainers.map(moverLine).join("\n");
+  const loserLines = data.losers.map(moverLine).join("\n");
   const rarestLines = data.rarestItems
     .map((r, i) => `${i + 1}. [${r.name}](/items/${r.slug}) — scarcity ${r.scarcityScore?.toFixed(0)}/100 · ${formatPrice(r.currentPrice ?? 0)}`)
     .join("\n");
+
+  const emptyNote = "_Not enough 7-day price history yet — we'll fill this section once more data accumulates._";
 
   return `## Market Overview
 
@@ -132,13 +173,13 @@ ${capLine}
 
 We're tracking **${data.totalItems}** unique S&box skins this week across the Steam Community Market.
 
-## Top Gainers (24h)
+## Top Gainers This Week
 
-${gainerLines || "_No items posted gains in the last 24h._"}
+${gainerLines || emptyNote}
 
-## Top Losers (24h)
+## Top Losers This Week
 
-${loserLines || "_No items posted losses in the last 24h._"}
+${loserLines || emptyNote}
 
 ## Rarest Skins by Scarcity Score
 
