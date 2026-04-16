@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { postReply } from "@/lib/twitter/client";
 import { prisma } from "@/lib/db";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 function extractItemSlug(text: string): string | null {
   const match = text.match(/sboxskins\.gg\/items\/([a-z0-9-]+)/);
@@ -10,22 +11,14 @@ function extractItemSlug(text: string): string | null {
 /**
  * POST /api/admin/tweet/reply
  * Body: { text: string, inReplyToTweetId: string }
- * Auth: Bearer ${CRON_SECRET}
  *
- * Posts a reply to a specific tweet. Separated from the main tweet POST so
- * the UI can differentiate reply vs standalone tweet actions.
+ * Posts a reply to a specific tweet. Accepts either CRON_SECRET or
+ * ANALYTICS_KEY (admin UI uses the latter). Guarded by per-IP brute-
+ * force rate limiting.
  */
 export async function POST(request: NextRequest) {
-  // Accept either CRON_SECRET or ANALYTICS_KEY (for the admin UI)
-  const cronSecret = process.env.CRON_SECRET;
-  const adminKey = process.env.ANALYTICS_KEY;
-  const authHeader = request.headers.get("authorization");
-  const validAuth =
-    (cronSecret && authHeader === `Bearer ${cronSecret}`) ||
-    (adminKey && authHeader === `Bearer ${adminKey}`);
-  if (!validAuth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request);
+  if (!guard.ok) return guard.response;
 
   let body: { text?: string; inReplyToTweetId?: string };
   try {

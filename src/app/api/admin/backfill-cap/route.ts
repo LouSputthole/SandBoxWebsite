@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
  * Backfill historical estMarketCap on MarketSnapshot rows using real data.
@@ -21,14 +22,8 @@ import { prisma } from "@/lib/db";
  * POST /api/admin/backfill-cap — requires CRON_SECRET or ANALYTICS_KEY auth.
  */
 export async function POST(request: NextRequest) {
-  const key =
-    request.headers.get("Authorization")?.replace("Bearer ", "") ?? "";
-  if (
-    key !== process.env.CRON_SECRET &&
-    key !== process.env.ANALYTICS_KEY
-  ) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request);
+  if (!guard.ok) return guard.response;
 
   const now = Date.now();
 

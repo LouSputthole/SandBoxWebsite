@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
  * POST /api/admin/link-sbox
@@ -75,14 +76,8 @@ function pickBestMatch(itemName: string, packages: FacepunchPackage[]): Facepunc
 }
 
 export async function POST(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request, { allowedKeys: ["cron"] });
+  if (!guard.ok) return guard.response;
 
   const url = new URL(request.url);
   const force = url.searchParams.get("force") === "true";

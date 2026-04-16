@@ -1,24 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
  * GET    /api/admin/tweet/schedule        — list pending scheduled tweets
  * POST   /api/admin/tweet/schedule        — create a new scheduled tweet
  * DELETE /api/admin/tweet/schedule?id=... — cancel a scheduled tweet
  *
- * All endpoints accept either CRON_SECRET or ANALYTICS_KEY as a Bearer token.
- * The admin UI sends the user's typed admin key.
+ * All endpoints accept either CRON_SECRET or ANALYTICS_KEY as a Bearer
+ * token (the admin UI sends the user's typed admin key). Guarded by
+ * per-IP brute-force rate limiting.
  */
-
-function isAuthorized(request: NextRequest): boolean {
-  const cronSecret = process.env.CRON_SECRET;
-  const adminKey = process.env.ANALYTICS_KEY;
-  const authHeader = request.headers.get("authorization");
-  return (
-    (cronSecret != null && authHeader === `Bearer ${cronSecret}`) ||
-    (adminKey != null && authHeader === `Bearer ${adminKey}`)
-  );
-}
 
 function extractItemSlug(text: string): string | null {
   const match = text.match(/sboxskins\.gg\/items\/([a-z0-9-]+)/);
@@ -26,9 +18,8 @@ function extractItemSlug(text: string): string | null {
 }
 
 export async function GET(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request);
+  if (!guard.ok) return guard.response;
 
   // Return upcoming pending tweets and recent activity (last 7 days)
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -54,9 +45,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request);
+  if (!guard.ok) return guard.response;
 
   let body: { text?: string; scheduledFor?: string; kind?: string; inReplyToTweetId?: string };
   try {
@@ -111,9 +101,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request);
+  if (!guard.ok) return guard.response;
 
   const id = request.nextUrl.searchParams.get("id");
   if (!id) {
