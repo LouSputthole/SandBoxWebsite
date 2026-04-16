@@ -32,6 +32,7 @@ interface TweetResult {
   success: boolean;
   tweetUrl?: string;
   error?: string;
+  scheduledFor?: string; // ISO timestamp if this was scheduled instead of posted
 }
 
 interface Mention {
@@ -195,6 +196,46 @@ export default function TweetAdminPage() {
       setTimeout(() => setCopiedIndex(null), 1500);
     } catch {
       // ignore
+    }
+  };
+
+  /**
+   * Quick-schedule a draft for N hours from now. Used by the "+1h" / "+4h"
+   * shortcut buttons so you can line up a few posts without opening a date
+   * picker every time.
+   */
+  const scheduleDraftInHours = async (index: number, draft: Draft, hours: number) => {
+    setPostingIndex(index);
+    try {
+      const scheduledFor = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+      const res = await fetch("/api/admin/tweet/schedule", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          text: draft.text,
+          scheduledFor,
+          kind: draft.kind,
+          itemSlug: draft.itemSlug,
+        }),
+      });
+      const data = await res.json();
+      setResults((prev) => ({
+        ...prev,
+        [index]: res.ok
+          ? { success: true, scheduledFor: scheduledFor }
+          : { success: false, error: data.error || "Failed to schedule" },
+      }));
+      if (res.ok && scheduled.length > 0) fetchScheduled();
+    } catch (err) {
+      setResults((prev) => ({
+        ...prev,
+        [index]: { success: false, error: err instanceof Error ? err.message : "Failed" },
+      }));
+    } finally {
+      setPostingIndex(null);
     }
   };
 
@@ -516,21 +557,34 @@ export default function TweetAdminPage() {
 
               {results[index] ? (
                 results[index].success ? (
-                  <div className="flex items-center gap-2 text-sm text-emerald-400">
-                    <Check className="h-4 w-4" />
-                    Posted!
-                    {results[index].tweetUrl && (
-                      <a
-                        href={results[index].tweetUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-emerald-300 hover:underline"
-                      >
-                        View on X
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    )}
-                  </div>
+                  results[index].scheduledFor ? (
+                    <div className="flex items-center gap-2 text-sm text-cyan-400">
+                      <Clock className="h-4 w-4" />
+                      Scheduled for{" "}
+                      {new Date(results[index].scheduledFor!).toLocaleString(undefined, {
+                        month: "short",
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-sm text-emerald-400">
+                      <Check className="h-4 w-4" />
+                      Posted!
+                      {results[index].tweetUrl && (
+                        <a
+                          href={results[index].tweetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-emerald-300 hover:underline"
+                        >
+                          View on X
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  )
                 ) : (
                   <div className="flex items-start gap-2 text-sm text-red-400">
                     <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
@@ -538,19 +592,41 @@ export default function TweetAdminPage() {
                   </div>
                 )
               ) : (
-                <Button
-                  onClick={() => postDraft(index, draft.text)}
-                  disabled={postingIndex === index || draft.approxLength > 280}
-                  className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
-                  size="sm"
-                >
-                  {postingIndex === index ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
-                  Post to @SboxSkinsgg
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    onClick={() => postDraft(index, draft.text)}
+                    disabled={postingIndex === index || draft.approxLength > 280}
+                    className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
+                    size="sm"
+                  >
+                    {postingIndex === index ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                    Post now
+                  </Button>
+                  <Button
+                    onClick={() => scheduleDraftInHours(index, draft, 1)}
+                    disabled={postingIndex === index || draft.approxLength > 280}
+                    variant="outline"
+                    className="gap-2 border-neutral-700 text-neutral-300 hover:text-white"
+                    size="sm"
+                  >
+                    <Clock className="h-4 w-4" />
+                    +1h
+                  </Button>
+                  <Button
+                    onClick={() => scheduleDraftInHours(index, draft, 4)}
+                    disabled={postingIndex === index || draft.approxLength > 280}
+                    variant="outline"
+                    className="gap-2 border-neutral-700 text-neutral-300 hover:text-white"
+                    size="sm"
+                  >
+                    <Clock className="h-4 w-4" />
+                    +4h
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
