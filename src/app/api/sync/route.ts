@@ -39,7 +39,8 @@ export async function POST(request: NextRequest) {
       const batchSize = parseInt(searchParams.get("batchSize") || "30");
       result = await syncPriceBatch(batchSize);
     } else if (mode === "sbox") {
-      const sboxResult = await syncSboxData();
+      const force = searchParams.get("force") === "true";
+      const sboxResult = await syncSboxData({ force });
       result = {
         success: true,
         itemsProcessed: sboxResult.updated,

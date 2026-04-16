@@ -47,6 +47,7 @@ model Item {
   priceChange6hPercent Float?    // 6-hour price delta %
   iconBackgroundColor String?    // Suggested background color for item icon
   topHolders          Json?      // Top 10 holders from supply-sources endpoint
+  sboxSyncedAt        DateTime?  // When we last successfully pulled sbox.dev data for this item
 
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt

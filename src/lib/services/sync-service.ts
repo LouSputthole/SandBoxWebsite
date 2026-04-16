@@ -624,31 +624,63 @@ async function fetchSboxSupply(slug: string): Promise<SboxSupplyData | null> {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// Items whose sbox.dev data was refreshed within this window are skipped.
+const SBOX_SYNC_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+
 /**
- * Enrich all items with data from the sbox.dev API.
- * Hits /v1/skins/{slug} and /v1/skins/{slug}/supply-sources for each item.
- * Safe to run every sync cycle — only updates, never creates items.
+ * Enrich items with data from the sbox.dev API.
+ *
+ * Design choices (defensive — our data pipeline depends on this staying up):
+ *  - Serial with randomized 50-150ms jitter between requests → looks like
+ *    organic page loads, not a burst-scraper.
+ *  - Skip items synced within the last hour → cuts our request volume ~4x
+ *    and keeps us under the radar.
+ *  - No custom User-Agent → blends into Vercel traffic; a targeted ban would
+ *    need to block the whole Vercel IP range.
+ *  - On fetch failure, keep existing DB data → stale numbers beat "N/A".
  */
-export async function syncSboxData(): Promise<{ updated: number; errors: string[] }> {
+export async function syncSboxData(
+  opts: { force?: boolean } = {},
+): Promise<{ updated: number; skipped: number; errors: string[] }> {
+  const cooldownCutoff = new Date(Date.now() - SBOX_SYNC_COOLDOWN_MS);
   const items = await prisma.item.findMany({
+    where: opts.force
+      ? undefined
+      : {
+          OR: [{ sboxSyncedAt: null }, { sboxSyncedAt: { lt: cooldownCutoff } }],
+        },
     select: { id: true, slug: true, name: true },
   });
 
-  debug(`[sbox] Enriching ${items.length} items from sbox.dev API...`);
+  const skippedCount = opts.force
+    ? 0
+    : await prisma.item.count({
+        where: { sboxSyncedAt: { gte: cooldownCutoff } },
+      });
+
+  debug(
+    `[sbox] Enriching ${items.length} items from sbox.dev (skipping ${skippedCount} synced <1h ago)...`,
+  );
   let updated = 0;
   const errors: string[] = [];
 
   for (const item of items) {
     try {
-      const [skin, supply] = await Promise.all([
-        fetchSboxSkin(item.slug),
-        fetchSboxSupply(item.slug),
-      ]);
-
+      const skin = await fetchSboxSkin(item.slug);
       if (!skin) {
-        debug(`[sbox] No data for "${item.name}" (${item.slug})`);
+        // Keep existing data; just note the gap. No sboxSyncedAt bump.
+        debug(`[sbox] No data for "${item.name}" (${item.slug}) — keeping stale data`);
+        await sleep(50 + Math.random() * 100);
         continue;
       }
+
+      // Small pause before the second request to the same host
+      await sleep(50 + Math.random() * 100);
+      const supply = await fetchSboxSupply(item.slug);
 
       const topHolders = supply?.topHolders?.map((h) => ({
         name: h.profile.name,
@@ -680,14 +712,20 @@ export async function syncSboxData(): Promise<{ updated: number; errors: string[
           iconBackgroundColor: skin.iconBackgroundColor,
           topHolders: topHolders ?? Prisma.JsonNull,
           storeStatus: skin.isActiveStoreItem ? "available" : "delisted",
+          sboxSyncedAt: new Date(),
         },
       });
       updated++;
+
+      // Jitter between items — spread the burst, look organic
+      await sleep(50 + Math.random() * 100);
     } catch (err) {
       errors.push(`sbox sync "${item.name}": ${err}`);
     }
   }
 
-  debug(`[sbox] Done: ${updated}/${items.length} items enriched, ${errors.length} errors`);
-  return { updated, errors };
+  debug(
+    `[sbox] Done: ${updated}/${items.length} enriched, ${skippedCount} skipped, ${errors.length} errors`,
+  );
+  return { updated, skipped: skippedCount, errors };
 }
