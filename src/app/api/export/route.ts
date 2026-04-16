@@ -78,9 +78,16 @@ export async function GET() {
           const v = (item as Record<string, unknown>)[col];
           if (v == null) return "";
           if (v instanceof Date) return v.toISOString();
-          const s = String(v);
-          // Quote if contains comma, quote, or newline
-          if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+          let s = String(v);
+          // CSV formula injection defense: Excel/Sheets execute any cell
+          // starting with =, @, +, -, \t, \r as a formula. We prefix with a
+          // single quote (Excel convention to force text). The prefix is
+          // then included in the quoted field so it survives escaping.
+          if (/^[=@+\-\t\r]/.test(s)) {
+            s = `'${s}`;
+          }
+          // Quote if contains comma, quote, or newline (or was prefixed above)
+          if (s.includes(",") || s.includes('"') || s.includes("\n") || s.startsWith("'")) {
             return `"${s.replace(/"/g, '""')}"`;
           }
           return s;

@@ -35,6 +35,45 @@ const getItem = cache(async (slug: string) =>
   }),
 );
 
+interface TopHolder {
+  name: string;
+  steamId: string;
+  avatarUrl: string;
+  quantity: number;
+  sharePercent: number;
+}
+
+/**
+ * Validate the topHolders JSON column. The DB is trusted but the column is
+ * JSON — if anything ever writes a malformed row we'd rather drop it than
+ * ship garbage to the client. Returns null if the shape doesn't match.
+ */
+function parseTopHolders(raw: unknown): TopHolder[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: TopHolder[] = [];
+  for (const entry of raw) {
+    if (!entry || typeof entry !== "object") return null;
+    const e = entry as Record<string, unknown>;
+    if (
+      typeof e.name !== "string" ||
+      typeof e.steamId !== "string" ||
+      typeof e.avatarUrl !== "string" ||
+      typeof e.quantity !== "number" ||
+      typeof e.sharePercent !== "number"
+    ) {
+      return null;
+    }
+    out.push({
+      name: e.name,
+      steamId: e.steamId,
+      avatarUrl: e.avatarUrl,
+      quantity: e.quantity,
+      sharePercent: e.sharePercent,
+    });
+  }
+  return out;
+}
+
 async function getRelatedItems(item: { id: string; type: string }) {
   return prisma.item.findMany({
     where: {
@@ -87,7 +126,7 @@ export default async function ItemDetailPage({ params }: PageProps) {
     delistedAt: item.delistedAt?.toISOString() ?? null,
     releaseDate: item.releaseDate?.toISOString() ?? null,
     leavingStoreAt: item.leavingStoreAt?.toISOString() ?? null,
-    topHolders: (item.topHolders as Array<{ name: string; steamId: string; avatarUrl: string; quantity: number; sharePercent: number }>) ?? null,
+    topHolders: parseTopHolders(item.topHolders),
     priceHistory: item.priceHistory.map((p) => ({
       ...p,
       timestamp: p.timestamp.toISOString(),

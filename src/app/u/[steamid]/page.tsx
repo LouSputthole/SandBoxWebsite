@@ -42,10 +42,8 @@ async function fetchInventory(steamid64: string): Promise<SteamInventory | null>
     const res = await fetch(
       `https://steamcommunity.com/inventory/${steamid64}/${STEAM_APPID}/2?l=english&count=2000`,
       {
-        headers: {
-          "User-Agent": "Mozilla/5.0",
-          Accept: "application/json",
-        },
+        // No custom User-Agent — AGENTS.md #1.
+        headers: { Accept: "application/json" },
         next: { revalidate: 600 },
         signal: AbortSignal.timeout(10000),
       },

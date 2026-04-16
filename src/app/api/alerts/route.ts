@@ -102,7 +102,22 @@ export async function POST(request: NextRequest) {
 
 /**
  * GET /api/alerts?email=... — List alerts for an email.
+ *
+ * Only requires knowing the email address (no auth). To prevent leaking
+ * sensitive bearer secrets, we NEVER return the raw discordWebhook URL —
+ * it's a bearer token that lets the holder POST messages into a channel.
+ * We expose a boolean + redacted preview so users can still identify which
+ * webhook an alert is pointing at without leaking the secret portion.
  */
+function redactWebhook(url: string | null): string | null {
+  if (!url) return null;
+  // Discord webhook URL: .../webhooks/<id>/<secret_token>
+  // Keep the id so the user can tell two alerts apart; redact the token.
+  const match = url.match(/\/webhooks\/(\d+)\/[\w-]+$/);
+  if (!match) return "configured";
+  return `…/webhooks/${match[1]}/***`;
+}
+
 export async function GET(request: NextRequest) {
   const email = request.nextUrl.searchParams.get("email");
 
@@ -116,7 +131,18 @@ export async function GET(request: NextRequest) {
   try {
     const alerts = await prisma.priceAlert.findMany({
       where: { email },
-      include: {
+      // Explicit select — NEVER return raw discordWebhook.
+      select: {
+        id: true,
+        email: true,
+        discordWebhook: true,
+        itemId: true,
+        targetPrice: true,
+        direction: true,
+        active: true,
+        triggered: true,
+        triggeredAt: true,
+        createdAt: true,
         item: {
           select: { id: true, name: true, slug: true, currentPrice: true, imageUrl: true },
         },
@@ -124,7 +150,13 @@ export async function GET(request: NextRequest) {
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json(alerts);
+    const redacted = alerts.map((a) => ({
+      ...a,
+      discordWebhook: redactWebhook(a.discordWebhook),
+      hasDiscordWebhook: a.discordWebhook !== null,
+    }));
+
+    return NextResponse.json(redacted);
   } catch (error) {
     console.error("[alerts] List error:", error);
     return NextResponse.json(

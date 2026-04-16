@@ -682,13 +682,20 @@ export async function syncSboxData(
       await sleep(50 + Math.random() * 100);
       const supply = await fetchSboxSupply(item.slug);
 
-      const topHolders = supply?.topHolders?.map((h) => ({
-        name: h.profile.name,
-        steamId: h.profile.steamId,
-        avatarUrl: h.profile.avatarUrl,
-        quantity: h.quantity,
-        sharePercent: h.inventoryValueSharePercent,
-      })) ?? null;
+      // Only rebuild topHolders when the supply fetch succeeded. If it failed,
+      // we keep the last-known topHolders in the DB (AGENTS.md #2 — stale
+      // beats null). Supply fetches fail independently of skin fetches, so
+      // without this guard, any sbox.dev hiccup would wipe holder data for
+      // the whole catalog over a single sync pass.
+      const topHolders = supply
+        ? supply.topHolders?.map((h) => ({
+            name: h.profile.name,
+            steamId: h.profile.steamId,
+            avatarUrl: h.profile.avatarUrl,
+            quantity: h.quantity,
+            sharePercent: h.inventoryValueSharePercent,
+          })) ?? null
+        : undefined;
 
       // Compute scarcity score from the freshest data
       const scarcityScore = computeScarcityScore({
@@ -699,6 +706,16 @@ export async function syncSboxData(
         price: skin.price,
         priceChange24hPercent: skin.priceChange24hPercent,
       });
+
+      // Guard isActiveStoreItem: if the API ever omits this bool (not typed
+      // as optional, but APIs lie), treat as "unknown" and keep the existing
+      // storeStatus rather than flipping active items to "delisted".
+      const storeStatus =
+        skin.isActiveStoreItem === true
+          ? "available"
+          : skin.isActiveStoreItem === false
+            ? "delisted"
+            : undefined;
 
       await prisma.item.update({
         where: { id: item.id },
@@ -720,8 +737,12 @@ export async function syncSboxData(
           priceChange6h: skin.priceChange6h,
           priceChange6hPercent: skin.priceChange6hPercent,
           iconBackgroundColor: skin.iconBackgroundColor,
-          topHolders: topHolders ?? Prisma.JsonNull,
-          storeStatus: skin.isActiveStoreItem ? "available" : "delisted",
+          // Only include topHolders when supply fetch succeeded (see above).
+          ...(topHolders !== undefined
+            ? { topHolders: topHolders ?? Prisma.JsonNull }
+            : {}),
+          // Only include storeStatus when the upstream bool was defined.
+          ...(storeStatus !== undefined ? { storeStatus } : {}),
           sboxSyncedAt: new Date(),
           scarcityScore,
         },
@@ -774,9 +795,11 @@ export function computeScarcityScore(input: {
   let concentration = 50;
   if (input.totalSupply && input.uniqueOwners && input.uniqueOwners > 0) {
     const perOwner = input.totalSupply / input.uniqueOwners;
-    // 1.0 per-owner → concentration = 0 (broadly distributed)
-    // 10+ per-owner → concentration = 100 (whale-dominated)
-    concentration = Math.max(0, Math.min(100, (perOwner - 1) * 15));
+    // Linear map: 1.0 per-owner → 0 (broadly distributed)
+    //            10.0 per-owner → 100 (whale-dominated)
+    // Previous multiplier (15) hit 100 at 7.67 per-owner, drifting from the
+    // documented range. 100/9 ≈ 11.11 gives us the full 1-10 runway.
+    concentration = Math.max(0, Math.min(100, (perOwner - 1) * (100 / 9)));
   }
 
   let illiquidity = 50;
