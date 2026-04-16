@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Flame, TrendingUp, TrendingDown } from "lucide-react";
 import { ItemImage } from "@/components/items/item-image";
-import { LeaderboardTabSwitcher, tabs, type LeaderboardTab } from "@/components/leaderboard/tab-switcher";
+import { LeaderboardTabSwitcher } from "@/components/leaderboard/tab-switcher";
+import { tabs, type LeaderboardTab } from "@/components/leaderboard/tabs";
 import { prisma } from "@/lib/db";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
 import type { Prisma } from "@/generated/prisma/client";
