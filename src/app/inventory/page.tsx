@@ -10,6 +10,11 @@ import {
   AlertCircle,
   ExternalLink,
   Backpack,
+  TrendingUp,
+  LayoutGrid,
+  Lock,
+  HelpCircle,
+  Shield,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -273,6 +278,77 @@ export default function InventoryPage() {
         </p>
       </form>
 
+      {/* Feature cards + FAQ — only shown when the user hasn't run a
+          lookup yet. Once they see results or an error, these become
+          noise; we hide them to keep the results view focused. */}
+      {!loading && !error && !result && (
+        <div className="max-w-3xl mx-auto space-y-4 mb-10">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FeatureCard
+              icon={<TrendingUp className="h-5 w-5 text-emerald-400" />}
+              tint="bg-emerald-500/10"
+              title="Real-time Valuation"
+              body="Every item priced against live Steam Community Market data, re-synced every 15–30 minutes."
+            />
+            <FeatureCard
+              icon={<LayoutGrid className="h-5 w-5 text-purple-400" />}
+              tint="bg-purple-500/10"
+              title="Per-Item Deep Dive"
+              body="Click any item to see its full price chart, order book, supply, and scarcity score."
+            />
+            <FeatureCard
+              icon={<Lock className="h-5 w-5 text-blue-400" />}
+              tint="bg-blue-500/10"
+              title="Public, No Login"
+              body="We only read your public inventory. No Steam password, no OAuth, nothing stored."
+            />
+          </div>
+
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 space-y-5">
+            <FaqItem
+              icon={<HelpCircle className="h-5 w-5 text-neutral-500" />}
+              question="How does it work?"
+              answer={
+                <>
+                  Paste a Steam profile URL or 17-digit SteamID. We fetch that account&apos;s public inventory from Steam, match every S&amp;box item against our live price database, and total it up. Nothing about your visit is stored.
+                </>
+              }
+            />
+            <FaqItem
+              icon={<Shield className="h-5 w-5 text-neutral-500" />}
+              question="Is my data safe?"
+              answer={
+                <>
+                  We only read publicly-visible inventory data. We can&apos;t see your password, can&apos;t trade, and can&apos;t modify anything. If your profile is set to Friends-Only or Private, Steam won&apos;t return the inventory at all — we never see it either.
+                </>
+              }
+            />
+            <FaqItem
+              icon={<HelpCircle className="h-5 w-5 text-neutral-500" />}
+              question="Why doesn't my item show a price?"
+              answer={
+                <>
+                  Either the item is brand new and we haven&apos;t picked it up on the next sync yet, or it isn&apos;t marketable on the Steam Community Market (tradable cosmetics only). Drop us a note on the{" "}
+                  <Link href="/contact" className="text-purple-400 hover:text-purple-300 underline">
+                    contact page
+                  </Link>{" "}
+                  if something looks wrong.
+                </>
+              }
+            />
+            <FaqItem
+              icon={<HelpCircle className="h-5 w-5 text-neutral-500" />}
+              question="How do I make my inventory public?"
+              answer={
+                <>
+                  On Steam: click your name → Edit Profile → Privacy Settings. Set <strong className="text-neutral-300">My Profile</strong>, <strong className="text-neutral-300">Game Details</strong>, <em>and</em> <strong className="text-neutral-300">Inventory</strong> all to Public, then hit Save. It can take a minute for Steam&apos;s cache to catch up.
+                </>
+              }
+            />
+          </div>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="max-w-2xl mx-auto mb-8 p-4 rounded-xl border border-red-500/30 bg-red-500/5 flex items-start gap-3">
@@ -412,6 +488,48 @@ export default function InventoryPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function FeatureCard({
+  icon,
+  tint,
+  title,
+  body,
+}: {
+  icon: React.ReactNode;
+  tint: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-5 text-center">
+      <div className={`inline-flex items-center justify-center h-10 w-10 rounded-lg ${tint} mb-3`}>
+        {icon}
+      </div>
+      <h3 className="text-sm font-semibold text-white mb-1">{title}</h3>
+      <p className="text-xs text-neutral-400 leading-relaxed">{body}</p>
+    </div>
+  );
+}
+
+function FaqItem({
+  icon,
+  question,
+  answer,
+}: {
+  icon: React.ReactNode;
+  question: string;
+  answer: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div className="shrink-0 mt-0.5">{icon}</div>
+      <div>
+        <h4 className="text-sm font-semibold text-white mb-1">{question}</h4>
+        <p className="text-sm text-neutral-400 leading-relaxed">{answer}</p>
+      </div>
     </div>
   );
 }
