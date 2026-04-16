@@ -1,18 +1,18 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
 export const revalidate = 600;
 
 /**
- * GET /api/export?format=csv — full item dataset as CSV.
- * GET /api/export?format=json — full item dataset as JSON (minus heavy fields).
+ * GET /api/export — full item dataset as CSV for download.
  *
- * Designed for power users, analysts, and anyone who wants raw data for
- * their own charts / Reddit posts / spreadsheets.
+ * Deliberately CSV-only. No JSON endpoint here — we don't want competitors
+ * trivially harvesting our derived metrics (scarcity score, etc.) via a
+ * poll-friendly API. CSV is download-once-a-day behavior, JSON invites
+ * hourly polling. Add a JSON endpoint later if we actively want third-party
+ * integrators, gated behind an API key.
  */
-export async function GET(request: NextRequest) {
-  const format = request.nextUrl.searchParams.get("format") ?? "csv";
-
+export async function GET() {
   const items = await prisma.item.findMany({
     orderBy: { currentPrice: "desc" },
     select: {
@@ -43,22 +43,6 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  if (format === "json") {
-    return NextResponse.json(
-      {
-        generatedAt: new Date().toISOString(),
-        count: items.length,
-        items,
-      },
-      {
-        headers: {
-          "Cache-Control": "public, max-age=600, s-maxage=600",
-        },
-      },
-    );
-  }
-
-  // CSV
   const columns = [
     "name",
     "slug",

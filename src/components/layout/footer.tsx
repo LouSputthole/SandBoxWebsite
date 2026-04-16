@@ -30,7 +30,7 @@ export function Footer() {
               <li><Link href="/inventory" className="text-neutral-500 hover:text-white transition-colors">Inventory Checker</Link></li>
               <li><Link href="/portfolio" className="text-neutral-500 hover:text-white transition-colors">Watchlist</Link></li>
               <li><Link href="/blog" className="text-neutral-500 hover:text-white transition-colors">Market Reports</Link></li>
-              <li><a href="/api/export?format=csv" className="text-neutral-500 hover:text-white transition-colors">Export Data (CSV)</a></li>
+              <li><a href="/api/export" className="text-neutral-500 hover:text-white transition-colors">Export Data (CSV)</a></li>
             </ul>
           </div>
           <div>
@@ -38,7 +38,6 @@ export function Footer() {
             <ul className="space-y-2 text-sm">
               <li><Link href="/faq" className="text-neutral-500 hover:text-white transition-colors">FAQ</Link></li>
               <li><Link href="/contact" className="text-neutral-500 hover:text-white transition-colors">Contact</Link></li>
-              <li><a href="/api/export?format=json" className="text-neutral-500 hover:text-white transition-colors">Public JSON API</a></li>
             </ul>
           </div>
         </div>
