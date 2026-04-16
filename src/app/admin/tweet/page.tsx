@@ -672,6 +672,16 @@ export default function TweetAdminPage() {
                     +1h
                   </Button>
                   <Button
+                    onClick={() => scheduleDraftInHours(index, draft, 2)}
+                    disabled={postingIndex === index || draft.approxLength > 280}
+                    variant="outline"
+                    className="gap-2 border-neutral-700 text-neutral-300 hover:text-white"
+                    size="sm"
+                  >
+                    <Clock className="h-4 w-4" />
+                    +2h
+                  </Button>
+                  <Button
                     onClick={() => scheduleDraftInHours(index, draft, 4)}
                     disabled={postingIndex === index || draft.approxLength > 280}
                     variant="outline"
