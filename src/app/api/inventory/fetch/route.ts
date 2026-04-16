@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const upstream = `https://steamcommunity.com/inventory/${steamid}/${STEAM_APPID}/2?l=english&count=5000`;
+  // count=5000 is rejected by Steam with HTTP 400. Steam's documented max is 2000.
+  const upstream = `https://steamcommunity.com/inventory/${steamid}/${STEAM_APPID}/2?l=english&count=2000`;
 
   let res: Response;
   try {

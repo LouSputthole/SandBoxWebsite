@@ -5,10 +5,8 @@ name: Scrape S&box Supply Data
 # POST the scraped supply data to the deployed app's sync endpoint.
 
 on:
-  # Daily at 08:00 UTC
-  schedule:
-    - cron: "0 8 * * *"
-  # Manual trigger
+  # Scheduled cron disabled — sbox.dev API sync replaces scraping.
+  # workflow_dispatch kept so we can manually re-run as fallback.
   workflow_dispatch:
     inputs:
       dry_run:
