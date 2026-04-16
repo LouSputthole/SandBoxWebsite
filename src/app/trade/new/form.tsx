@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Plus,
@@ -10,6 +10,7 @@ import {
   AlertCircle,
   ExternalLink,
   Check,
+  Backpack,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,26 @@ interface CatalogItem {
   type: string;
   currentPrice: number | null;
 }
+
+/** Shape returned by /api/inventory/match — one entry per hash_name the
+ * user owns, with our DB's current catalog metadata (or null if the item
+ * isn't in our catalog yet). */
+interface InventoryItem {
+  name: string;
+  slug: string | null;
+  type: string;
+  imageUrl: string | null;
+  quantity: number;
+  unitPrice: number | null;
+  totalPrice: number | null;
+  marketable: boolean;
+}
+
+type InventoryState =
+  | { status: "loading" }
+  | { status: "empty"; reason: string }
+  | { status: "failed"; reason: string }
+  | { status: "loaded"; items: InventoryItem[] };
 
 type Side = "selling" | "buying" | "both";
 
@@ -47,10 +68,12 @@ const newKey = () => `${Date.now()}-${++nextKey}`;
 
 export function NewListingForm({
   catalog,
+  steamId,
   hasTradeUrl,
   existingTradeUrl,
 }: {
   catalog: CatalogItem[];
+  steamId: string;
   hasTradeUrl: boolean;
   existingTradeUrl: string | null;
 }) {
@@ -64,6 +87,136 @@ export function NewListingForm({
   const [wanting, setWanting] = useState<DraftLineItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [inventory, setInventory] = useState<InventoryState>({ status: "loading" });
+
+  // Fetch the signed-in user's Steam inventory once on mount. Runs the
+  // same two-step flow as the /inventory page: Steam → match API. Non-
+  // blocking for the rest of the form; while this loads, the Offering
+  // picker shows a spinner but the user can still fill in description,
+  // wanting, etc.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadInventory() {
+      try {
+        const invRes = await fetch(`/api/inventory/fetch?steamid=${steamId}`);
+        if (!invRes.ok) {
+          if (cancelled) return;
+          const body = await invRes.json().catch(() => ({}));
+          setInventory({
+            status: "failed",
+            reason:
+              body.error ??
+              `Couldn't load your inventory (HTTP ${invRes.status}).`,
+          });
+          return;
+        }
+        const inv = await invRes.json();
+        if (cancelled) return;
+
+        if (inv.success === false || inv.success === 0) {
+          setInventory({
+            status: "failed",
+            reason:
+              inv.error ??
+              "Steam returned an error — inventory may be private.",
+          });
+          return;
+        }
+
+        if (!inv.assets || inv.assets.length === 0) {
+          setInventory({
+            status: "empty",
+            reason: "Your inventory is empty or has no S&box items.",
+          });
+          return;
+        }
+
+        // Aggregate raw Steam assets by market_hash_name (same pattern as
+        // the /inventory page). We POST the aggregated list to our match
+        // endpoint to enrich with catalog slug/price data.
+        type InvDesc = NonNullable<typeof inv.descriptions>[number];
+        const descMap = new Map<string, InvDesc>();
+        if (inv.descriptions) {
+          for (const d of inv.descriptions) {
+            descMap.set(`${d.classid}_${d.instanceid}`, d);
+          }
+        }
+        const counts = new Map<
+          string,
+          {
+            hashName: string;
+            quantity: number;
+            name: string;
+            type: string;
+            iconUrl?: string;
+            marketable: number;
+          }
+        >();
+        for (const asset of inv.assets) {
+          const desc = descMap.get(`${asset.classid}_${asset.instanceid}`);
+          if (!desc) continue;
+          const qty = parseInt(asset.amount, 10) || 1;
+          const existing = counts.get(desc.market_hash_name);
+          if (existing) {
+            existing.quantity += qty;
+          } else {
+            counts.set(desc.market_hash_name, {
+              hashName: desc.market_hash_name,
+              quantity: qty,
+              name: desc.name,
+              type: desc.type ?? "unknown",
+              iconUrl: desc.icon_url,
+              marketable: desc.marketable,
+            });
+          }
+        }
+
+        const matchRes = await fetch("/api/inventory/match", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ items: Array.from(counts.values()) }),
+        });
+        if (cancelled) return;
+        if (!matchRes.ok) {
+          const body = await matchRes.json().catch(() => ({}));
+          setInventory({
+            status: "failed",
+            reason: body.error ?? "Couldn't match inventory against catalog.",
+          });
+          return;
+        }
+        const matchData = await matchRes.json();
+        if (cancelled) return;
+
+        // Filter to catalog-matched items — we need a slug to build a
+        // valid listing line item. Items without a slug (brand new, not
+        // yet in our DB) would have to use the custom-name path, which
+        // is fine but not the picker's job; they can still free-text it.
+        const owned: InventoryItem[] = (matchData.items ?? []).filter(
+          (it: InventoryItem) => it.slug != null,
+        );
+        if (owned.length === 0) {
+          setInventory({
+            status: "empty",
+            reason:
+              "No S&box items in your inventory match our catalog yet.",
+          });
+          return;
+        }
+        setInventory({ status: "loaded", items: owned });
+      } catch (err) {
+        if (cancelled) return;
+        setInventory({
+          status: "failed",
+          reason: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    }
+    loadInventory();
+    return () => {
+      cancelled = true;
+    };
+  }, [steamId]);
 
   const submit = async () => {
     setSubmitting(true);
@@ -152,13 +305,14 @@ export function NewListingForm({
         />
       </Field>
 
-      {/* Item lists */}
+      {/* Item lists — Offering pulls from the user's Steam inventory
+          (you can only offer what you own). Wanting stays on the full
+          catalog search since you can want anything. */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <ItemListEditor
-          label="Offering"
-          tone="emerald"
+        <OfferingPicker
           items={offering}
           setItems={setOffering}
+          inventory={inventory}
           catalog={catalog}
         />
         <ItemListEditor
@@ -542,5 +696,268 @@ function AddRow({
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Offering-side item picker. You can only offer items you own, so this
+ * pulls from the user's Steam inventory rather than the full catalog.
+ * Shows a grid of owned items you tap to add. Already-added items show
+ * a checkmark + let you tap again to remove. Also keeps the "add
+ * off-catalog" free-text path for offering TF2 keys / cash / etc.
+ *
+ * On inventory-fetch failure, falls back to the catalog autocomplete
+ * so a user with a private profile or a flaky Steam response can still
+ * create a listing.
+ */
+function OfferingPicker({
+  items,
+  setItems,
+  inventory,
+  catalog,
+}: {
+  items: DraftLineItem[];
+  setItems: (next: DraftLineItem[]) => void;
+  inventory: InventoryState;
+  catalog: CatalogItem[];
+}) {
+  const [addingCustom, setAddingCustom] = useState(false);
+  const [customName, setCustomName] = useState("");
+
+  const totalValue = items.reduce(
+    (sum, li) => sum + (li.catalogItem?.currentPrice ?? 0) * li.quantity,
+    0,
+  );
+
+  // Fast lookup: which catalog itemIds are already in the draft offering,
+  // so the grid can render a checkmark + let re-taps remove them.
+  const selectedItemIds = useMemo(
+    () => new Set(items.map((i) => i.itemId).filter((x): x is string => !!x)),
+    [items],
+  );
+
+  const addFromInventory = (inv: InventoryItem) => {
+    // Map inventory slug → catalog entry (the match endpoint gives us
+    // slug but not the full catalog row we need for DraftLineItem).
+    const cat = catalog.find((c) => c.slug === inv.slug);
+    if (!cat) return;
+    if (selectedItemIds.has(cat.id)) {
+      // Second tap — remove
+      setItems(items.filter((i) => i.itemId !== cat.id));
+      return;
+    }
+    setItems([
+      ...items,
+      {
+        key: newKey(),
+        itemId: cat.id,
+        catalogItem: cat,
+        quantity: 1,
+      },
+    ]);
+  };
+
+  const addCustom = () => {
+    const name = customName.trim();
+    if (!name) return;
+    setItems([...items, { key: newKey(), customName: name, quantity: 1 }]);
+    setCustomName("");
+    setAddingCustom(false);
+  };
+
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-400">
+          Offering
+        </div>
+        {totalValue > 0 && (
+          <span className="text-[11px] text-neutral-500">
+            ~{formatPrice(totalValue)}
+          </span>
+        )}
+      </div>
+
+      {/* Selected items */}
+      <div className="space-y-1.5 mb-3">
+        {items.map((li) => (
+          <DraftRow
+            key={li.key}
+            li={li}
+            onChange={(next) =>
+              setItems(items.map((x) => (x.key === li.key ? next : x)))
+            }
+            onRemove={() => setItems(items.filter((x) => x.key !== li.key))}
+          />
+        ))}
+      </div>
+
+      {/* Inventory grid */}
+      {inventory.status === "loading" && (
+        <div className="rounded-md border border-neutral-800 bg-neutral-950/50 px-3 py-6 text-center">
+          <Loader2 className="h-4 w-4 animate-spin mx-auto mb-2 text-neutral-500" />
+          <p className="text-xs text-neutral-500">Loading your Steam inventory…</p>
+        </div>
+      )}
+
+      {inventory.status === "loaded" && (
+        <>
+          <div className="flex items-center gap-1.5 mb-2">
+            <Backpack className="h-3 w-3 text-neutral-500" />
+            <span className="text-[10px] uppercase tracking-wider text-neutral-500">
+              From your inventory — tap to {items.length > 0 ? "add/remove" : "add"}
+            </span>
+          </div>
+          <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 mb-3 max-h-64 overflow-y-auto pr-1">
+            {inventory.items.map((inv) => {
+              const cat = catalog.find((c) => c.slug === inv.slug);
+              const selected = cat ? selectedItemIds.has(cat.id) : false;
+              return (
+                <button
+                  key={inv.slug}
+                  type="button"
+                  onClick={() => addFromInventory(inv)}
+                  disabled={!cat}
+                  className={`relative aspect-square rounded-md border overflow-hidden transition ${
+                    selected
+                      ? "border-emerald-500/60 bg-emerald-500/10"
+                      : "border-neutral-800 bg-neutral-950/50 hover:border-neutral-600"
+                  } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  title={`${inv.name}${inv.quantity > 1 ? ` ×${inv.quantity}` : ""}${inv.unitPrice != null ? ` · ${formatPrice(inv.unitPrice)}` : ""}`}
+                >
+                  <ItemImage
+                    src={inv.imageUrl}
+                    name={inv.name}
+                    type={inv.type}
+                    size="sm"
+                    className="h-full w-full"
+                  />
+                  {inv.quantity > 1 && (
+                    <span className="absolute top-0.5 right-0.5 text-[9px] font-semibold bg-black/70 text-white px-1 py-0.5 rounded">
+                      ×{inv.quantity}
+                    </span>
+                  )}
+                  {selected && (
+                    <span className="absolute inset-0 flex items-center justify-center bg-emerald-500/20">
+                      <Check className="h-5 w-5 text-emerald-300" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {(inventory.status === "empty" || inventory.status === "failed") && (
+        <div className="rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 mb-3">
+          <p className="text-[11px] text-amber-300/90 leading-relaxed">
+            {inventory.reason} You can still pick from the catalog below.
+          </p>
+        </div>
+      )}
+
+      {/* Catalog-search fallback — shown when inventory can't load.
+          Lets the user still pick from our catalog the same way the
+          Wanting picker works. Reuses the shared AddRow component. */}
+      {(inventory.status === "empty" || inventory.status === "failed") && (
+        <CatalogAddButton
+          items={items}
+          setItems={setItems}
+          catalog={catalog}
+        />
+      )}
+
+      {/* Off-catalog adder — TF2 keys, cash, etc. Always available; users
+          might offer a mix of owned items + cash. */}
+      {addingCustom ? (
+        <div className="rounded-md border border-neutral-700 bg-neutral-950 p-2 space-y-2">
+          <input
+            type="text"
+            autoFocus
+            placeholder="e.g. TF2 keys, $50 PayPal, Rust skins"
+            value={customName}
+            maxLength={100}
+            onChange={(e) => setCustomName(e.target.value)}
+            className="w-full px-2 py-1.5 rounded border border-neutral-800 bg-neutral-900 text-sm text-white placeholder:text-neutral-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500"
+          />
+          <div className="flex items-center justify-between text-[11px]">
+            <button
+              type="button"
+              onClick={() => {
+                setAddingCustom(false);
+                setCustomName("");
+              }}
+              className="text-neutral-500 hover:text-white transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={addCustom}
+              disabled={customName.trim().length === 0}
+              className="text-purple-300 hover:text-purple-200 transition disabled:text-neutral-600 disabled:cursor-not-allowed"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setAddingCustom(true)}
+          className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-neutral-400 hover:text-white border border-dashed border-neutral-800 hover:border-neutral-600 rounded-md py-2 transition"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Add off-catalog (TF2 keys, cash, etc.)
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Small wrapper around AddRow so the offering picker can reuse the
+ * same catalog-search UX as the wanting picker when inventory is
+ * unavailable. Manages its own open/closed state locally.
+ */
+function CatalogAddButton({
+  items,
+  setItems,
+  catalog,
+}: {
+  items: DraftLineItem[];
+  setItems: (next: DraftLineItem[]) => void;
+  catalog: CatalogItem[];
+}) {
+  const [adding, setAdding] = useState(false);
+  if (adding) {
+    return (
+      <div className="mb-2">
+        <AddRow
+          catalog={catalog}
+          existingIds={
+            new Set(
+              items.map((i) => i.itemId).filter((x): x is string => !!x),
+            )
+          }
+          onPick={(picked) => {
+            setItems([...items, picked]);
+            setAdding(false);
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      </div>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => setAdding(true)}
+      className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-neutral-400 hover:text-white border border-dashed border-neutral-800 hover:border-neutral-600 rounded-md py-2 mb-2 transition"
+    >
+      <Search className="h-3.5 w-3.5" />
+      Search catalog
+    </button>
   );
 }
