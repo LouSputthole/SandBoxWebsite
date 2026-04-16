@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
+import { redis } from "@/lib/redis/client";
 
 const STEAM_APPID = 590830;
+
+/**
+ * Simple IP-based rate limit via Redis. Falls open if Redis is down —
+ * we'd rather serve inventory checks than block legitimate users.
+ * Limit: 20 requests per IP per 10 minutes.
+ */
+async function rateLimit(ip: string): Promise<{ ok: boolean; remaining: number }> {
+  if (!redis) return { ok: true, remaining: 20 };
+  try {
+    const key = `rl:inv:${ip}`;
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, 600);
+    return { ok: count <= 20, remaining: Math.max(0, 20 - count) };
+  } catch {
+    return { ok: true, remaining: 20 };
+  }
+}
 
 /**
  * GET /api/inventory/fetch?steamid=76561198...
@@ -27,6 +45,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       { error: "steamid must be a 17-digit SteamID64" },
       { status: 400 },
+    );
+  }
+
+  // Rate limit per IP — prevent our proxy from being used as an open Steam
+  // relay. 20 inventory lookups per 10 min is generous for real users.
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0].trim() ??
+    request.headers.get("x-real-ip") ??
+    "unknown";
+  const limit = await rateLimit(ip);
+  if (!limit.ok) {
+    return NextResponse.json(
+      { error: "Too many requests. Try again in a few minutes." },
+      { status: 429, headers: { "Retry-After": "60" } },
     );
   }
 

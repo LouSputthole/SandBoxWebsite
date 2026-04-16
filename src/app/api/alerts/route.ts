@@ -61,14 +61,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
 
-    // Limit alerts per destination (prevent abuse)
+    // Rate limit per destination — prevents someone registering thousands of
+    // alerts pointing at one webhook and spamming it when prices move.
     if (email) {
-      const existingCount = await prisma.priceAlert.count({
+      const count = await prisma.priceAlert.count({
         where: { email, active: true },
       });
-      if (existingCount >= 20) {
+      if (count >= 20) {
         return NextResponse.json(
           { error: "Maximum 20 active alerts per email" },
+          { status: 429 }
+        );
+      }
+    }
+    if (discordWebhook) {
+      const count = await prisma.priceAlert.count({
+        where: { discordWebhook, active: true },
+      });
+      if (count >= 10) {
+        return NextResponse.json(
+          { error: "Maximum 10 active alerts per Discord webhook" },
           { status: 429 }
         );
       }

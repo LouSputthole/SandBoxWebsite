@@ -186,11 +186,24 @@ function renderInline(text: string): React.ReactNode {
     } else if (m[2] !== undefined) {
       parts.push(<em key={key++}>{m[2]}</em>);
     } else if (m[3] !== undefined && m[4] !== undefined) {
-      parts.push(
-        <Link key={key++} href={m[4]} className="text-cyan-400 hover:text-cyan-300">
-          {m[3]}
-        </Link>,
-      );
+      const href = m[4];
+      // Internal link → Next Link. External → plain <a> with rel safety.
+      // Anything else (javascript:, data:, mailto: without handling) → plain text.
+      if (href.startsWith("/")) {
+        parts.push(
+          <Link key={key++} href={href} className="text-cyan-400 hover:text-cyan-300">
+            {m[3]}
+          </Link>,
+        );
+      } else if (href.startsWith("https://") || href.startsWith("http://")) {
+        parts.push(
+          <a key={key++} href={href} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300">
+            {m[3]}
+          </a>,
+        );
+      } else {
+        parts.push(m[3]);
+      }
     }
     lastIndex = start + m[0].length;
   }

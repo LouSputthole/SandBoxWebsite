@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cache } from "react";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
@@ -64,21 +65,25 @@ async function fetchInventory(steamid64: string): Promise<SteamInventory | null>
   }
 }
 
-async function resolveSteamProfile(steamid64: string): Promise<{ name: string; avatar: string } | null> {
-  try {
-    const res = await fetch(
-      `https://steamcommunity.com/profiles/${steamid64}?xml=1`,
-      { next: { revalidate: 3600 } },
-    );
-    if (!res.ok) return null;
-    const xml = await res.text();
-    const name = xml.match(/<steamID><!\[CDATA\[(.+?)\]\]><\/steamID>/)?.[1] ?? "Unknown";
-    const avatar = xml.match(/<avatarFull><!\[CDATA\[(.+?)\]\]><\/avatarFull>/)?.[1] ?? "";
-    return { name, avatar };
-  } catch {
-    return null;
-  }
-}
+// React.cache() dedupes across generateMetadata + page component within a
+// single request — otherwise we'd hit Steam's XML endpoint twice per visit.
+const resolveSteamProfile = cache(
+  async (steamid64: string): Promise<{ name: string; avatar: string } | null> => {
+    try {
+      const res = await fetch(
+        `https://steamcommunity.com/profiles/${steamid64}?xml=1`,
+        { next: { revalidate: 3600 } },
+      );
+      if (!res.ok) return null;
+      const xml = await res.text();
+      const name = xml.match(/<steamID><!\[CDATA\[(.+?)\]\]><\/steamID>/)?.[1] ?? "Unknown";
+      const avatar = xml.match(/<avatarFull><!\[CDATA\[(.+?)\]\]><\/avatarFull>/)?.[1] ?? "";
+      return { name, avatar };
+    } catch {
+      return null;
+    }
+  },
+);
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { steamid } = await params;

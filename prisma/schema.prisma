@@ -61,6 +61,8 @@ model Item {
   @@index([currentPrice])
   @@index([storeStatus])
   @@index([isActiveStoreItem])
+  @@index([sboxSyncedAt])
+  @@index([scarcityScore])
 }
 
 model PricePoint {

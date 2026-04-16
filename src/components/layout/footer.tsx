@@ -5,14 +5,14 @@ export function Footer() {
   return (
     <footer className="border-t border-neutral-800 bg-[#0a0a0f] mt-auto">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-8 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-8">
           <div>
             <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Browse</h3>
             <ul className="space-y-2 text-sm">
               <li><Link href="/items" className="text-neutral-500 hover:text-white transition-colors">All Skins</Link></li>
               <li><Link href="/leaderboard" className="text-neutral-500 hover:text-white transition-colors">Leaderboard</Link></li>
-              <li><Link href="/inventory" className="text-neutral-500 hover:text-white transition-colors">Inventory Checker</Link></li>
-              <li><Link href="/items?sort=change-desc" className="text-neutral-500 hover:text-white transition-colors">Trending</Link></li>
+              <li><Link href="/holders" className="text-neutral-500 hover:text-white transition-colors">Top Holders</Link></li>
+              <li><Link href="/compare" className="text-neutral-500 hover:text-white transition-colors">Compare Skins</Link></li>
             </ul>
           </div>
           <div>
@@ -21,8 +21,16 @@ export function Footer() {
               <li><Link href="/items/type/clothing" className="text-neutral-500 hover:text-white transition-colors">Clothing</Link></li>
               <li><Link href="/items/type/accessory" className="text-neutral-500 hover:text-white transition-colors">Accessories</Link></li>
               <li><Link href="/items/type/character" className="text-neutral-500 hover:text-white transition-colors">Characters</Link></li>
-              <li><Link href="/portfolio" className="text-neutral-500 hover:text-white transition-colors">Watchlist</Link></li>
               <li><Link href="/trends" className="text-neutral-500 hover:text-white transition-colors">Market Trends</Link></li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Tools</h3>
+            <ul className="space-y-2 text-sm">
+              <li><Link href="/inventory" className="text-neutral-500 hover:text-white transition-colors">Inventory Checker</Link></li>
+              <li><Link href="/portfolio" className="text-neutral-500 hover:text-white transition-colors">Watchlist</Link></li>
+              <li><Link href="/blog" className="text-neutral-500 hover:text-white transition-colors">Market Reports</Link></li>
+              <li><a href="/api/export?format=csv" className="text-neutral-500 hover:text-white transition-colors">Export Data (CSV)</a></li>
             </ul>
           </div>
           <div>
@@ -30,6 +38,7 @@ export function Footer() {
             <ul className="space-y-2 text-sm">
               <li><Link href="/faq" className="text-neutral-500 hover:text-white transition-colors">FAQ</Link></li>
               <li><Link href="/contact" className="text-neutral-500 hover:text-white transition-colors">Contact</Link></li>
+              <li><a href="/api/export?format=json" className="text-neutral-500 hover:text-white transition-colors">Public JSON API</a></li>
             </ul>
           </div>
         </div>

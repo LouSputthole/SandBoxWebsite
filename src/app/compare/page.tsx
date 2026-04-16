@@ -27,6 +27,7 @@ export default async function ComparePage({ searchParams }: PageProps) {
     prisma.item.findMany({
       select: { slug: true, name: true, currentPrice: true },
       orderBy: { currentPrice: "desc" },
+      take: 500,
     }),
   ]);
 

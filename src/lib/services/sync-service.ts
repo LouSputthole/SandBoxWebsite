@@ -767,6 +767,10 @@ export function computeScarcityScore(input: {
   price: number | null;
   priceChange24hPercent: number | null;
 }): number {
+  // totalSupply === 0 is its own edge case (pre-release, delisted with
+  // no remaining supply). Treat as maximum scarcity rather than neutral.
+  if (input.totalSupply === 0) return 100;
+
   let concentration = 50;
   if (input.totalSupply && input.uniqueOwners && input.uniqueOwners > 0) {
     const perOwner = input.totalSupply / input.uniqueOwners;
@@ -781,9 +785,10 @@ export function computeScarcityScore(input: {
     input.supplyOnMarket != null &&
     input.totalSupply > 0
   ) {
-    const marketPct = (input.supplyOnMarket / input.totalSupply) * 100;
-    // 0% on market → illiquidity = 100 (no one selling)
-    // 20%+ on market → illiquidity = 0 (lots of liquidity)
+    // Clamp supplyOnMarket to totalSupply — sbox.dev data sometimes has
+    // pending-trade items counted on both sides, pushing the ratio >100%.
+    const onMarket = Math.min(input.supplyOnMarket, input.totalSupply);
+    const marketPct = (onMarket / input.totalSupply) * 100;
     illiquidity = Math.max(0, Math.min(100, 100 - marketPct * 5));
   }
 
