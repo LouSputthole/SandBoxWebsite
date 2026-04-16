@@ -12,6 +12,11 @@ import {
   DollarSign,
   Activity,
   Package,
+  Users,
+  ShoppingCart,
+  Clock,
+  Calendar,
+  Store,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +36,14 @@ interface PricePoint {
   price: number;
   volume: number | null;
   timestamp: string;
+}
+
+interface TopHolder {
+  name: string;
+  steamId: string;
+  avatarUrl: string;
+  quantity: number;
+  sharePercent: number;
 }
 
 export interface ItemDetailData {
@@ -54,6 +67,22 @@ export interface ItemDetailData {
   delistedAt: string | null;
   storePrice: number | null;
   priceHistory: PricePoint[];
+  // sbox.dev enrichment
+  releaseDate: string | null;
+  releasePrice: number | null;
+  uniqueOwners: number | null;
+  soldPast24h: number | null;
+  supplyOnMarket: number | null;
+  totalSales: number | null;
+  isActiveStoreItem: boolean;
+  isPermanentStoreItem: boolean;
+  leavingStoreAt: string | null;
+  itemDisplayName: string | null;
+  category: string | null;
+  itemSubType: string | null;
+  priceChange6h: number | null;
+  priceChange6hPercent: number | null;
+  topHolders: TopHolder[] | null;
 }
 
 export function ItemDetail({ item }: { item: ItemDetailData }) {
@@ -88,14 +117,23 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 Limited
               </div>
             )}
-            {item.storeStatus === "delisted" && (
-              <div className="flex items-center gap-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-full px-3 py-1 text-xs font-medium">
-                Delisted
-              </div>
-            )}
-            {item.storeStatus === "available" && (
+            {item.isActiveStoreItem ? (
               <div className="flex items-center gap-1.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-full px-3 py-1 text-xs font-medium">
-                In Store
+                <Store className="h-3 w-3" />
+                {item.leavingStoreAt
+                  ? `In Store · Leaves ${formatTimeLeft(item.leavingStoreAt)}`
+                  : item.isPermanentStoreItem
+                    ? "Permanent Store Item"
+                    : "In Store"}
+              </div>
+            ) : item.storeStatus === "delisted" ? (
+              <div className="flex items-center gap-1.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded-full px-3 py-1 text-xs font-medium">
+                Not In Store
+              </div>
+            ) : null}
+            {item.itemDisplayName && (
+              <div className="bg-neutral-800/80 text-neutral-300 border border-neutral-700/50 rounded-full px-3 py-1 text-xs font-medium">
+                {item.itemDisplayName}
               </div>
             )}
           </div>
@@ -104,7 +142,21 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
         {/* Info */}
         <div className="space-y-4">
           <div>
-            <span className="text-sm text-neutral-500 capitalize mb-2 block">{item.type}</span>
+            <div className="flex items-center gap-2 text-sm text-neutral-500 mb-2">
+              <span className="capitalize">{item.category ?? item.type}</span>
+              {item.itemSubType && (
+                <>
+                  <span className="text-neutral-700">·</span>
+                  <span>{item.itemSubType}</span>
+                </>
+              )}
+              {item.releaseDate && (
+                <>
+                  <span className="text-neutral-700">·</span>
+                  <span>Released {new Date(item.releaseDate).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</span>
+                </>
+              )}
+            </div>
             <h1 className="text-3xl font-bold text-white">{item.name}</h1>
           </div>
 
@@ -113,31 +165,43 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
           )}
 
           {/* Price */}
-          <div className="flex items-end gap-4">
+          <div className="flex items-end gap-4 flex-wrap">
             <span className="text-4xl font-bold text-white">
               {item.currentPrice != null ? formatPrice(item.currentPrice) : "N/A"}
             </span>
-            <div className="flex items-center gap-1 pb-1">
-              {change > 0 ? (
-                <TrendingUp className="h-4 w-4 text-emerald-400" />
-              ) : change < 0 ? (
-                <TrendingDown className="h-4 w-4 text-red-400" />
-              ) : (
-                <Minus className="h-4 w-4 text-neutral-500" />
+            <div className="flex items-center gap-3 pb-1">
+              <div className="flex items-center gap-1">
+                {change > 0 ? (
+                  <TrendingUp className="h-4 w-4 text-emerald-400" />
+                ) : change < 0 ? (
+                  <TrendingDown className="h-4 w-4 text-red-400" />
+                ) : (
+                  <Minus className="h-4 w-4 text-neutral-500" />
+                )}
+                <span
+                  className={`text-sm font-medium ${
+                    change > 0 ? "text-emerald-400" : change < 0 ? "text-red-400" : "text-neutral-500"
+                  }`}
+                >
+                  {formatPriceChange(change)} (24h)
+                </span>
+              </div>
+              {item.priceChange6hPercent != null && item.priceChange6hPercent !== 0 && (
+                <span
+                  className={`text-xs font-medium ${
+                    item.priceChange6hPercent > 0 ? "text-emerald-400/70" : "text-red-400/70"
+                  }`}
+                >
+                  {item.priceChange6hPercent > 0 ? "+" : ""}{item.priceChange6hPercent.toFixed(1)}% (6h)
+                </span>
               )}
-              <span
-                className={`text-sm font-medium ${
-                  change > 0 ? "text-emerald-400" : change < 0 ? "text-red-400" : "text-neutral-500"
-                }`}
-              >
-                {formatPriceChange(change)} (24h)
-              </span>
-              <Tooltip
-                asIcon
-                content="Percentage change in current price compared to 24 hours ago. Green = price went up, red = price went down. Calculated against the last-synced price from the previous day."
-              />
             </div>
           </div>
+          {item.releasePrice != null && (
+            <p className="text-xs text-neutral-500">
+              Store price: {formatPrice(item.releasePrice)}
+            </p>
+          )}
 
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -146,10 +210,6 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 <div className="flex items-center gap-2 mb-1">
                   <DollarSign className="h-3.5 w-3.5 text-neutral-500" />
                   <span className="text-xs text-neutral-500">Lowest</span>
-                  <Tooltip
-                    asIcon
-                    content="The cheapest currently available price on the Steam Market. This is what you'd pay if you bought right now using the lowest active listing."
-                  />
                 </div>
                 <span className="text-sm font-semibold text-white">
                   {item.lowestPrice != null ? formatPrice(item.lowestPrice) : "N/A"}
@@ -161,10 +221,6 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 <div className="flex items-center gap-2 mb-1">
                   <BarChart3 className="h-3.5 w-3.5 text-neutral-500" />
                   <span className="text-xs text-neutral-500">Median</span>
-                  <Tooltip
-                    asIcon
-                    content="Steam's reported median sale price — the middle price of recent sales on the Steam Community Market. Less skewed by outliers than the average, making it a better gauge of fair value."
-                  />
                 </div>
                 <span className="text-sm font-semibold text-white">
                   {item.medianPrice != null ? formatPrice(item.medianPrice) : "N/A"}
@@ -174,35 +230,64 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
             <Card className="bg-neutral-900/80">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <Activity className="h-3.5 w-3.5 text-neutral-500" />
-                  <span className="text-xs text-neutral-500">Listings</span>
-                  <Tooltip
-                    asIcon
-                    content={
-                      <>
-                        <span className="block mb-1 font-medium text-white">Active sell listings</span>
-                        Number of distinct seller entries on the Steam Market. One seller listing 10 items at the same price counts as 1 listing. See the Order Book for the actual total item count.
-                      </>
-                    }
-                  />
+                  <Package className="h-3.5 w-3.5 text-neutral-500" />
+                  <span className="text-xs text-neutral-500">Total Supply</span>
                 </div>
                 <span className="text-sm font-semibold text-white">
-                  {item.volume?.toLocaleString() ?? "N/A"}
+                  {item.totalSupply?.toLocaleString() ?? "N/A"}
                 </span>
               </CardContent>
             </Card>
             <Card className="bg-neutral-900/80">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <Package className="h-3.5 w-3.5 text-neutral-500" />
-                  <span className="text-xs text-neutral-500">Total Supply</span>
-                  <Tooltip
-                    asIcon
-                    content="Total number of this item minted across the entire S&box economy — tracked by sbox.game. Lower supply usually correlates with higher scarcity and price. Some items aren't tracked by sbox.game and will show N/A."
-                  />
+                  <Users className="h-3.5 w-3.5 text-neutral-500" />
+                  <span className="text-xs text-neutral-500">Owners</span>
                 </div>
                 <span className="text-sm font-semibold text-white">
-                  {item.totalSupply?.toLocaleString() ?? "N/A"}
+                  {item.uniqueOwners?.toLocaleString() ?? "N/A"}
+                </span>
+              </CardContent>
+            </Card>
+            <Card className="bg-neutral-900/80">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <ShoppingCart className="h-3.5 w-3.5 text-neutral-500" />
+                  <span className="text-xs text-neutral-500">Sold (24h)</span>
+                </div>
+                <span className="text-sm font-semibold text-white">
+                  {item.soldPast24h?.toLocaleString() ?? "N/A"}
+                </span>
+              </CardContent>
+            </Card>
+            <Card className="bg-neutral-900/80">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Activity className="h-3.5 w-3.5 text-neutral-500" />
+                  <span className="text-xs text-neutral-500">On Market</span>
+                </div>
+                <span className="text-sm font-semibold text-white">
+                  {item.supplyOnMarket?.toLocaleString() ?? "N/A"}
+                </span>
+              </CardContent>
+            </Card>
+            <Card className="bg-neutral-900/80">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Clock className="h-3.5 w-3.5 text-neutral-500" />
+                  <span className="text-xs text-neutral-500">Tradable</span>
+                </div>
+                <span className="text-sm font-semibold text-white">Yes</span>
+              </CardContent>
+            </Card>
+            <Card className="bg-neutral-900/80">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <Calendar className="h-3.5 w-3.5 text-neutral-500" />
+                  <span className="text-xs text-neutral-500">Total Sales</span>
+                </div>
+                <span className="text-sm font-semibold text-white">
+                  {item.totalSales?.toLocaleString() ?? "N/A"}
                 </span>
               </CardContent>
             </Card>
@@ -296,6 +381,57 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
           <OrderBook slug={item.slug} />
         </CardContent>
       </Card>
+
+      {/* Top Holders */}
+      {item.topHolders && item.topHolders.length > 0 && (
+        <Card className="bg-neutral-900/80 mt-6">
+          <CardContent className="p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Users className="h-4 w-4 text-neutral-400" />
+              <h3 className="text-sm font-medium text-neutral-300">Top Holders</h3>
+              <span className="text-xs text-neutral-600">
+                {item.uniqueOwners ? `${item.uniqueOwners} unique owners` : ""}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {item.topHolders.map((holder, i) => (
+                <a
+                  key={holder.steamId}
+                  href={`https://steamcommunity.com/profiles/${holder.steamId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-neutral-800/50 transition-colors"
+                >
+                  <span className="text-xs text-neutral-600 w-5 text-right">{i + 1}</span>
+                  <img
+                    src={holder.avatarUrl}
+                    alt=""
+                    className="h-8 w-8 rounded-full border border-neutral-700/50"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-neutral-100 truncate">{holder.name}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-white">{holder.quantity}×</p>
+                    <p className="text-[10px] text-neutral-500">
+                      {holder.sharePercent.toFixed(0)}% of inventory
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
+}
+
+function formatTimeLeft(dateStr: string): string {
+  const diff = new Date(dateStr).getTime() - Date.now();
+  if (diff <= 0) return "soon";
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  if (days > 0) return `in ${days}d ${hours}h`;
+  return `in ${hours}h`;
 }

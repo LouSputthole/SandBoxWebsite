@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   },
 };
 
-const EMAIL = "sboxskinsgg@gmail.com";
+const EMAIL = "sboxskins@gmail.com";
 const TWITTER = "SboxSkinsgg";
 
 const breadcrumbLd = {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncItems, syncPriceBatch, cleanupNonSteamItems, captureMarketSnapshot } from "@/lib/services/sync-service";
+import { syncItems, syncPriceBatch, cleanupNonSteamItems, captureMarketSnapshot, syncSboxData } from "@/lib/services/sync-service";
 import { checkPriceAlerts } from "@/lib/services/alert-service";
 import { invalidatePattern } from "@/lib/redis/cache";
 
@@ -38,6 +38,17 @@ export async function POST(request: NextRequest) {
     } else if (mode === "prices") {
       const batchSize = parseInt(searchParams.get("batchSize") || "30");
       result = await syncPriceBatch(batchSize);
+    } else if (mode === "sbox") {
+      const sboxResult = await syncSboxData();
+      result = {
+        success: true,
+        itemsProcessed: sboxResult.updated,
+        itemsCreated: 0,
+        itemsUpdated: sboxResult.updated,
+        pricePointsCreated: 0,
+        errors: sboxResult.errors,
+        duration: 0,
+      };
     } else {
       // "items" mode (default): sync from Steam API only — never falls back to mock data
       result = await syncItems(fetchPrices);
@@ -95,11 +106,15 @@ export async function GET(request: NextRequest) {
       // Process 40 at a time — the cron runs frequently enough to cycle through all items
       const priceResult = await syncPriceBatch(40);
 
+      // Step 3: Enrich with sbox.dev data (supply, store status, holders, etc.)
+      const sboxResult = await syncSboxData();
+
       const result = {
         ...itemResult,
         pricePointsCreated: itemResult.pricePointsCreated + priceResult.pricePointsCreated,
         priceBatchProcessed: priceResult.itemsProcessed,
-        errors: [...itemResult.errors, ...priceResult.errors],
+        sboxEnriched: sboxResult.updated,
+        errors: [...itemResult.errors, ...priceResult.errors, ...sboxResult.errors],
         duration: itemResult.duration + priceResult.duration,
       };
 

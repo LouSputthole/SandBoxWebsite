@@ -85,6 +85,9 @@ export default async function ItemDetailPage({ params }: PageProps) {
   const serialized = {
     ...item,
     delistedAt: item.delistedAt?.toISOString() ?? null,
+    releaseDate: item.releaseDate?.toISOString() ?? null,
+    leavingStoreAt: item.leavingStoreAt?.toISOString() ?? null,
+    topHolders: (item.topHolders as Array<{ name: string; steamId: string; avatarUrl: string; quantity: number; sharePercent: number }>) ?? null,
     priceHistory: item.priceHistory.map((p) => ({
       ...p,
       timestamp: p.timestamp.toISOString(),

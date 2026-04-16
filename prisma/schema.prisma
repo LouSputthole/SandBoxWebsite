@@ -28,6 +28,26 @@ model Item {
   totalSupply    Int?         // Total units in existence (from S&box metrics)
   priceChange24h Float?       @default(0)
   isLimited      Boolean      @default(false)
+
+  // --- sbox.dev enrichment ---
+  releaseDate         DateTime?  // When the skin was first released
+  releasePrice        Float?     // Original store price from sbox.dev
+  uniqueOwners        Int?       // Distinct Steam accounts holding this item
+  soldPast24h         Int?       // Units bought/sold in last 24h (from sbox.dev)
+  supplyOnMarket      Int?       // Currently listed on Steam Community Market
+  totalSales          Int?       // Lifetime total sales
+  isActiveStoreItem   Boolean    @default(false) // Currently purchasable in the S&box store
+  isPermanentStoreItem Boolean   @default(false) // Permanent (never rotates out)
+  leavingStoreAt      DateTime?  // When this item leaves the store rotation
+  itemDisplayName     String?    // Rarity/tier label (e.g. "Special", "Costume")
+  category            String?    // Broad category from sbox.dev (e.g. "Accessories")
+  itemSubType         String?    // Specific type from sbox.dev (e.g. "Hat", "Shirt")
+  workshopId          String?    // Steam Workshop file ID
+  priceChange6h       Float?     // 6-hour price delta
+  priceChange6hPercent Float?    // 6-hour price delta %
+  iconBackgroundColor String?    // Suggested background color for item icon
+  topHolders          Json?      // Top 10 holders from supply-sources endpoint
+
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   priceHistory   PricePoint[]
@@ -36,6 +56,7 @@ model Item {
   @@index([type])
   @@index([currentPrice])
   @@index([storeStatus])
+  @@index([isActiveStoreItem])
 }
 
 model PricePoint {

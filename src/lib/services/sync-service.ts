@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
 import {
   fetchAllMarketItems,
   getPriceOverview,
@@ -551,4 +552,142 @@ export async function captureMarketSnapshot(): Promise<void> {
   debug(
     `[sync] Market snapshot: ${items.length} items, listings value $${listingsValue.toFixed(2)}, est market cap ${estMarketCap ? `$${estMarketCap.toFixed(2)}` : "n/a"}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// sbox.dev API enrichment
+// ---------------------------------------------------------------------------
+
+interface SboxSkinData {
+  totalSupply: number;
+  priceChange24h: number;
+  priceChange24hPercent: number;
+  priceChange6h: number;
+  priceChange6hPercent: number;
+  uniqueOwners: number;
+  name: string;
+  slug: string;
+  tradable: boolean;
+  marketable: boolean;
+  price: number;
+  releasePrice: number | null;
+  release: string | null;
+  isActiveStoreItem: boolean;
+  isPermanentStoreItem: boolean;
+  leavingStoreAt: string | null;
+  boughtInTheLast24H: number;
+  soldPast24H: number;
+  supplyOnMarket: number;
+  sales: number;
+  itemDisplayName: string | null;
+  category: string | null;
+  itemType: string | null;
+  workshopId: string | null;
+  iconBackgroundColor: string | null;
+}
+
+interface SboxSupplyData {
+  trackedOwnerCount: number;
+  trackedQuantity: number;
+  communityMarketQuantity: number;
+  communityMarketValue: number;
+  topHolders: {
+    profile: { name: string; steamId: string; avatarUrl: string };
+    quantity: number;
+    inventoryValueSharePercent: number;
+  }[];
+}
+
+async function fetchSboxSkin(slug: string): Promise<SboxSkinData | null> {
+  try {
+    const res = await fetch(`https://api.sbox.dev/v1/skins/${slug}`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function fetchSboxSupply(slug: string): Promise<SboxSupplyData | null> {
+  try {
+    const res = await fetch(`https://api.sbox.dev/v1/skins/${slug}/supply-sources`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Enrich all items with data from the sbox.dev API.
+ * Hits /v1/skins/{slug} and /v1/skins/{slug}/supply-sources for each item.
+ * Safe to run every sync cycle — only updates, never creates items.
+ */
+export async function syncSboxData(): Promise<{ updated: number; errors: string[] }> {
+  const items = await prisma.item.findMany({
+    select: { id: true, slug: true, name: true },
+  });
+
+  debug(`[sbox] Enriching ${items.length} items from sbox.dev API...`);
+  let updated = 0;
+  const errors: string[] = [];
+
+  for (const item of items) {
+    try {
+      const [skin, supply] = await Promise.all([
+        fetchSboxSkin(item.slug),
+        fetchSboxSupply(item.slug),
+      ]);
+
+      if (!skin) {
+        debug(`[sbox] No data for "${item.name}" (${item.slug})`);
+        continue;
+      }
+
+      const topHolders = supply?.topHolders?.map((h) => ({
+        name: h.profile.name,
+        steamId: h.profile.steamId,
+        avatarUrl: h.profile.avatarUrl,
+        quantity: h.quantity,
+        sharePercent: h.inventoryValueSharePercent,
+      })) ?? null;
+
+      await prisma.item.update({
+        where: { id: item.id },
+        data: {
+          totalSupply: skin.totalSupply,
+          uniqueOwners: skin.uniqueOwners,
+          soldPast24h: skin.soldPast24H ?? skin.boughtInTheLast24H,
+          supplyOnMarket: skin.supplyOnMarket,
+          totalSales: skin.sales,
+          isActiveStoreItem: skin.isActiveStoreItem,
+          isPermanentStoreItem: skin.isPermanentStoreItem,
+          leavingStoreAt: skin.leavingStoreAt ? new Date(skin.leavingStoreAt) : null,
+          releaseDate: skin.release ? new Date(skin.release) : null,
+          releasePrice: skin.releasePrice,
+          itemDisplayName: skin.itemDisplayName,
+          category: skin.category,
+          itemSubType: skin.itemType,
+          workshopId: skin.workshopId,
+          priceChange6h: skin.priceChange6h,
+          priceChange6hPercent: skin.priceChange6hPercent,
+          iconBackgroundColor: skin.iconBackgroundColor,
+          topHolders: topHolders ?? Prisma.JsonNull,
+          storeStatus: skin.isActiveStoreItem ? "available" : "delisted",
+        },
+      });
+      updated++;
+    } catch (err) {
+      errors.push(`sbox sync "${item.name}": ${err}`);
+    }
+  }
+
+  debug(`[sbox] Done: ${updated}/${items.length} items enriched, ${errors.length} errors`);
+  return { updated, errors };
 }
