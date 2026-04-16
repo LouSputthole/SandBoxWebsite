@@ -27,6 +27,7 @@ export function Footer() {
           <div>
             <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Tools</h3>
             <ul className="space-y-2 text-sm">
+              <li><Link href="/trade" className="text-neutral-500 hover:text-white transition-colors">Trading Board</Link></li>
               <li><Link href="/inventory" className="text-neutral-500 hover:text-white transition-colors">Inventory Checker</Link></li>
               <li><Link href="/portfolio" className="text-neutral-500 hover:text-white transition-colors">Watchlist</Link></li>
               <li><Link href="/blog" className="text-neutral-500 hover:text-white transition-colors">Market Reports</Link></li>

@@ -32,6 +32,10 @@
     {
       "path": "/api/cron/supply-snapshot",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/trade-expire",
+      "schedule": "5 * * * *"
     }
   ]
 }
