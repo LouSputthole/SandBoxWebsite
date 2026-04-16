@@ -54,6 +54,7 @@ export default async function NewTradeListingPage() {
 
       <NewListingForm
         catalog={items}
+        steamId={user.steamId}
         hasTradeUrl={!!user.steamTradeUrl}
         existingTradeUrl={user.steamTradeUrl ?? null}
       />
