@@ -85,6 +85,18 @@ export function Navbar() {
               Leaderboard
             </Link>
             <Link
+              href="/holders"
+              className="text-sm text-neutral-400 hover:text-white transition-colors"
+            >
+              Holders
+            </Link>
+            <Link
+              href="/blog"
+              className="text-sm text-neutral-400 hover:text-white transition-colors"
+            >
+              Blog
+            </Link>
+            <Link
               href="/inventory"
               className="text-sm text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5"
             >
@@ -247,6 +259,27 @@ export function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               Leaderboard
+            </Link>
+            <Link
+              href="/holders"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Top Holders
+            </Link>
+            <Link
+              href="/blog"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Market Reports
+            </Link>
+            <Link
+              href="/compare"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Compare
             </Link>
             <Link
               href="/inventory"

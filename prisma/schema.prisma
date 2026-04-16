@@ -48,6 +48,9 @@ model Item {
   iconBackgroundColor String?    // Suggested background color for item icon
   topHolders          Json?      // Top 10 holders from supply-sources endpoint
   sboxSyncedAt        DateTime?  // When we last successfully pulled sbox.dev data for this item
+  scarcityScore       Float?     // 0-100 composite score: distribution + liquidity + momentum
+
+  supplySnapshots SupplySnapshot[]
 
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -72,22 +75,51 @@ model PricePoint {
 }
 
 model PriceAlert {
-  id          String   @id @default(cuid())
-  email       String
-  itemId      String
-  item        Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  userId      String?
-  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  targetPrice Float
-  direction   String   // "below" or "above"
-  active      Boolean  @default(true)
-  triggered   Boolean  @default(false)
-  triggeredAt DateTime?
-  createdAt   DateTime @default(now())
+  id             String   @id @default(cuid())
+  email          String?  // now optional — user may prefer only discord
+  discordWebhook String?  // optional Discord webhook URL
+  itemId         String
+  item           Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  targetPrice    Float
+  direction      String   // "below" or "above"
+  active         Boolean  @default(true)
+  triggered      Boolean  @default(false)
+  triggeredAt    DateTime?
+  createdAt      DateTime @default(now())
 
   @@index([itemId, active])
   @@index([email])
   @@index([userId])
+}
+
+model SupplySnapshot {
+  id           String   @id @default(cuid())
+  itemId       String
+  item         Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  totalSupply  Int
+  uniqueOwners Int?
+  price        Float?   // price at snapshot time, for context
+  timestamp    DateTime @default(now())
+
+  @@index([itemId, timestamp])
+}
+
+model BlogPost {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  title      String
+  excerpt    String
+  content    String   // markdown
+  kind       String?  // "weekly-report", "market-analysis", "announcement"
+  coverImage String?
+  publishedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([publishedAt])
+  @@index([kind])
 }
 
 model MarketSnapshot {

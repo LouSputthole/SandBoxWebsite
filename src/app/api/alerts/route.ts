@@ -8,11 +8,17 @@ import { prisma } from "@/lib/db";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { email, itemId, targetPrice, direction } = body;
+    const { email, discordWebhook, itemId, targetPrice, direction } = body;
 
-    if (!email || !itemId || targetPrice == null || !direction) {
+    if (!itemId || targetPrice == null || !direction) {
       return NextResponse.json(
-        { error: "Missing required fields: email, itemId, targetPrice, direction" },
+        { error: "Missing required fields: itemId, targetPrice, direction" },
+        { status: 400 }
+      );
+    }
+    if (!email && !discordWebhook) {
+      return NextResponse.json(
+        { error: "Provide at least one destination: email or discordWebhook" },
         { status: 400 }
       );
     }
@@ -31,13 +37,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { error: "Invalid email address" },
-        { status: 400 }
-      );
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return NextResponse.json({ error: "Invalid email address" }, { status: 400 });
+      }
+    }
+
+    if (discordWebhook) {
+      // Accept either discord.com or discordapp.com webhook URLs
+      const webhookRegex = /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\/\d+\/[\w-]+$/;
+      if (!webhookRegex.test(discordWebhook)) {
+        return NextResponse.json(
+          { error: "Invalid Discord webhook URL. Expected https://discord.com/api/webhooks/.../..." },
+          { status: 400 }
+        );
+      }
     }
 
     // Check item exists
@@ -46,19 +61,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Item not found" }, { status: 404 });
     }
 
-    // Limit alerts per email (prevent abuse)
-    const existingCount = await prisma.priceAlert.count({
-      where: { email, active: true },
-    });
-    if (existingCount >= 20) {
-      return NextResponse.json(
-        { error: "Maximum 20 active alerts per email" },
-        { status: 429 }
-      );
+    // Limit alerts per destination (prevent abuse)
+    if (email) {
+      const existingCount = await prisma.priceAlert.count({
+        where: { email, active: true },
+      });
+      if (existingCount >= 20) {
+        return NextResponse.json(
+          { error: "Maximum 20 active alerts per email" },
+          { status: 429 }
+        );
+      }
     }
 
     const alert = await prisma.priceAlert.create({
-      data: { email, itemId, targetPrice, direction },
+      data: { email: email ?? null, discordWebhook: discordWebhook ?? null, itemId, targetPrice, direction },
     });
 
     return NextResponse.json(alert, { status: 201 });

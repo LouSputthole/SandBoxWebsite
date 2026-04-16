@@ -6,12 +6,26 @@ import { prisma } from "@/lib/db";
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const items = await prisma.item.findMany({
-    select: { slug: true, type: true, updatedAt: true },
-    orderBy: { updatedAt: "desc" },
-  });
+  const [items, blogPosts] = await Promise.all([
+    prisma.item.findMany({
+      select: { slug: true, type: true, updatedAt: true },
+      orderBy: { updatedAt: "desc" },
+    }),
+    prisma.blogPost.findMany({
+      select: { slug: true, publishedAt: true, updatedAt: true },
+      orderBy: { publishedAt: "desc" },
+      take: 100,
+    }),
+  ]);
 
   const latestUpdate = items.length > 0 ? items[0].updatedAt : new Date();
+
+  const blogPages: MetadataRoute.Sitemap = blogPosts.map((p) => ({
+    url: `https://sboxskins.gg/blog/${p.slug}`,
+    lastModified: p.updatedAt,
+    changeFrequency: "weekly",
+    priority: 0.7,
+  }));
 
   const itemPages: MetadataRoute.Sitemap = items.map((item) => ({
     url: `https://sboxskins.gg/items/${item.slug}`,
@@ -56,6 +70,24 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
     },
     {
+      url: "https://sboxskins.gg/holders",
+      lastModified: latestUpdate,
+      changeFrequency: "daily",
+      priority: 0.8,
+    },
+    {
+      url: "https://sboxskins.gg/compare",
+      lastModified: latestUpdate,
+      changeFrequency: "weekly",
+      priority: 0.7,
+    },
+    {
+      url: "https://sboxskins.gg/blog",
+      lastModified: latestUpdate,
+      changeFrequency: "weekly",
+      priority: 0.8,
+    },
+    {
       url: "https://sboxskins.gg/portfolio",
       lastModified: latestUpdate,
       changeFrequency: "weekly",
@@ -81,5 +113,6 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
     ...typePages,
     ...itemPages,
+    ...blogPages,
   ];
 }

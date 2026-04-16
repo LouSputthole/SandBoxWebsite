@@ -7,9 +7,50 @@ export interface AlertCheckResult {
 }
 
 /**
+ * Post a triggered-alert message to a Discord webhook. Uses the Discord
+ * embed format so the notification looks polished in-channel.
+ */
+async function postToDiscord(
+  webhookUrl: string,
+  itemName: string,
+  itemSlug: string,
+  currentPrice: number,
+  targetPrice: number,
+  direction: "below" | "above",
+): Promise<void> {
+  const title = `${itemName} hit $${currentPrice.toFixed(2)}`;
+  const desc =
+    direction === "below"
+      ? `📉 Price dropped below your $${targetPrice.toFixed(2)} target.`
+      : `📈 Price climbed above your $${targetPrice.toFixed(2)} target.`;
+
+  try {
+    await fetch(webhookUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        embeds: [
+          {
+            title,
+            description: desc,
+            url: `https://sboxskins.gg/items/${itemSlug}`,
+            color: direction === "below" ? 0xef4444 : 0x22c55e,
+            footer: { text: "sboxskins.gg · price alert" },
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch (err) {
+    console.error(`[alerts] Discord webhook failed: ${err}`);
+  }
+}
+
+/**
  * Check all active price alerts against current item prices.
- * Marks matching alerts as triggered. In production, this would
- * also send email notifications via a service like Resend or SendGrid.
+ * On trigger, mark alert as triggered and fire Discord webhook if configured.
+ * (Email notifications still pending a proper provider integration.)
  */
 export async function checkPriceAlerts(): Promise<AlertCheckResult> {
   const result: AlertCheckResult = { checked: 0, triggered: 0, errors: [] };
@@ -38,11 +79,21 @@ export async function checkPriceAlerts(): Promise<AlertCheckResult> {
           data: { triggered: true, triggeredAt: new Date(), active: false },
         });
 
-        // Log the trigger — in production, send an email here
         console.log(
           `[alerts] Triggered: ${alert.item.name} is now $${price.toFixed(2)} ` +
-          `(target: ${alert.direction} $${alert.targetPrice.toFixed(2)}) → ${alert.email}`
+            `(target: ${alert.direction} $${alert.targetPrice.toFixed(2)}) → ${alert.email ?? "(no email)"}`,
         );
+
+        if (alert.discordWebhook) {
+          await postToDiscord(
+            alert.discordWebhook,
+            alert.item.name,
+            alert.item.slug,
+            price,
+            alert.targetPrice,
+            alert.direction as "below" | "above",
+          );
+        }
 
         result.triggered++;
       }

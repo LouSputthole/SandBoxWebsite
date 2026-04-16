@@ -15,6 +15,8 @@ interface PriceAlertFormProps {
 export function PriceAlertForm({ itemId, itemName, currentPrice }: PriceAlertFormProps) {
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
+  const [discordWebhook, setDiscordWebhook] = useState("");
+  const [showDiscord, setShowDiscord] = useState(false);
   const [targetPrice, setTargetPrice] = useState("");
   const [direction, setDirection] = useState<"below" | "above">("below");
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -29,7 +31,8 @@ export function PriceAlertForm({ itemId, itemName, currentPrice }: PriceAlertFor
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
+          email: email || undefined,
+          discordWebhook: discordWebhook || undefined,
           itemId,
           targetPrice: parseFloat(targetPrice),
           direction,
@@ -83,9 +86,32 @@ export function PriceAlertForm({ itemId, itemName, currentPrice }: PriceAlertFor
                 placeholder="you@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                required
+                required={!discordWebhook}
               />
             </div>
+
+            {!showDiscord ? (
+              <button
+                type="button"
+                onClick={() => setShowDiscord(true)}
+                className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+              >
+                + Also send to Discord (optional)
+              </button>
+            ) : (
+              <div>
+                <label className="text-xs text-neutral-500 mb-1 block">
+                  Discord Webhook URL
+                  <span className="text-neutral-600 ml-1">— Server Settings → Integrations → Webhooks</span>
+                </label>
+                <Input
+                  type="url"
+                  placeholder="https://discord.com/api/webhooks/..."
+                  value={discordWebhook}
+                  onChange={(e) => setDiscordWebhook(e.target.value)}
+                />
+              </div>
+            )}
 
             <div className="flex gap-2">
               <div className="flex-1">

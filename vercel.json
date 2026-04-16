@@ -24,6 +24,14 @@
     {
       "path": "/api/cron/tweet-dispatcher",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/weekly-report",
+      "schedule": "0 18 * * 5"
+    },
+    {
+      "path": "/api/cron/supply-snapshot",
+      "schedule": "0 9 * * *"
     }
   ]
 }

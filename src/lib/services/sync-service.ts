@@ -690,6 +690,16 @@ export async function syncSboxData(
         sharePercent: h.inventoryValueSharePercent,
       })) ?? null;
 
+      // Compute scarcity score from the freshest data
+      const scarcityScore = computeScarcityScore({
+        totalSupply: skin.totalSupply,
+        uniqueOwners: skin.uniqueOwners,
+        supplyOnMarket: skin.supplyOnMarket,
+        soldPast24h: skin.soldPast24H ?? skin.boughtInTheLast24H,
+        price: skin.price,
+        priceChange24hPercent: skin.priceChange24hPercent,
+      });
+
       await prisma.item.update({
         where: { id: item.id },
         data: {
@@ -713,6 +723,7 @@ export async function syncSboxData(
           topHolders: topHolders ?? Prisma.JsonNull,
           storeStatus: skin.isActiveStoreItem ? "available" : "delisted",
           sboxSyncedAt: new Date(),
+          scarcityScore,
         },
       });
       updated++;
@@ -728,4 +739,95 @@ export async function syncSboxData(
     `[sbox] Done: ${updated}/${items.length} enriched, ${skippedCount} skipped, ${errors.length} errors`,
   );
   return { updated, skipped: skippedCount, errors };
+}
+
+// ---------------------------------------------------------------------------
+// Scarcity score — our signature metric
+// ---------------------------------------------------------------------------
+
+/**
+ * Composite scarcity score (0-100). Higher = rarer/tighter market.
+ *
+ * Components:
+ *  - Concentration (40%): supply / uniqueOwners. Fewer owners per copy = tightly held.
+ *    1.0 owner/supply = perfectly distributed, low scarcity
+ *    3+ supply per owner = concentrated in whales
+ *  - Liquidity (40%): supplyOnMarket / totalSupply.
+ *    Low percent on market = holders aren't selling = scarce
+ *  - Momentum (20%): absolute 24h price change.
+ *    Big recent moves = active scarcity or oversupply events
+ *
+ * Missing inputs default to neutral (50) so items with partial data still rank.
+ */
+export function computeScarcityScore(input: {
+  totalSupply: number | null;
+  uniqueOwners: number | null;
+  supplyOnMarket: number | null;
+  soldPast24h: number | null;
+  price: number | null;
+  priceChange24hPercent: number | null;
+}): number {
+  let concentration = 50;
+  if (input.totalSupply && input.uniqueOwners && input.uniqueOwners > 0) {
+    const perOwner = input.totalSupply / input.uniqueOwners;
+    // 1.0 per-owner → concentration = 0 (broadly distributed)
+    // 10+ per-owner → concentration = 100 (whale-dominated)
+    concentration = Math.max(0, Math.min(100, (perOwner - 1) * 15));
+  }
+
+  let illiquidity = 50;
+  if (
+    input.totalSupply &&
+    input.supplyOnMarket != null &&
+    input.totalSupply > 0
+  ) {
+    const marketPct = (input.supplyOnMarket / input.totalSupply) * 100;
+    // 0% on market → illiquidity = 100 (no one selling)
+    // 20%+ on market → illiquidity = 0 (lots of liquidity)
+    illiquidity = Math.max(0, Math.min(100, 100 - marketPct * 5));
+  }
+
+  let momentum = 0;
+  if (input.priceChange24hPercent != null) {
+    momentum = Math.min(100, Math.abs(input.priceChange24hPercent) * 5);
+  }
+
+  return Math.round(
+    concentration * 0.4 + illiquidity * 0.4 + momentum * 0.2,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Supply history snapshots
+// ---------------------------------------------------------------------------
+
+/**
+ * Capture a point-in-time snapshot of every item's supply. Called by a daily
+ * cron — builds the "supply over time" timeseries that powers per-item
+ * supply-trajectory charts.
+ */
+export async function captureSupplySnapshots(): Promise<{ captured: number }> {
+  const items = await prisma.item.findMany({
+    where: { totalSupply: { not: null } },
+    select: {
+      id: true,
+      totalSupply: true,
+      uniqueOwners: true,
+      currentPrice: true,
+    },
+  });
+
+  if (items.length === 0) return { captured: 0 };
+
+  await prisma.supplySnapshot.createMany({
+    data: items.map((i) => ({
+      itemId: i.id,
+      totalSupply: i.totalSupply!,
+      uniqueOwners: i.uniqueOwners,
+      price: i.currentPrice,
+    })),
+  });
+
+  debug(`[supply-snapshot] Captured ${items.length} item snapshots`);
+  return { captured: items.length };
 }
