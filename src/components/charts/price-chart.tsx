@@ -26,6 +26,7 @@ interface PriceChartProps {
 }
 
 const periods = [
+  { label: "24H", value: "24h" },
   { label: "7D", value: "7d" },
   { label: "30D", value: "30d" },
   { label: "90D", value: "90d" },
@@ -34,6 +35,9 @@ const periods = [
 
 function formatDateLabel(dateStr: string, totalDays: number): string {
   const d = new Date(dateStr);
+  if (totalDays <= 1) {
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
   if (totalDays <= 7) {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric" });
   }

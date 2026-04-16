@@ -16,6 +16,9 @@ export async function GET(
     async () => {
       let daysBack = 30;
       switch (period) {
+        case "24h":
+          daysBack = 1;
+          break;
         case "7d":
           daysBack = 7;
           break;

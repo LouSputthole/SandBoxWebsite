@@ -76,7 +76,7 @@ export default async function TrendsPage({ searchParams }: PageProps) {
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="h-4 w-4 text-purple-400" />
@@ -85,12 +85,19 @@ export default async function TrendsPage({ searchParams }: PageProps) {
           <p className="text-xl font-bold text-white">
             {s.estMarketCap > 0 ? formatPrice(s.estMarketCap) : "—"}
           </p>
-          <p className="text-[10px] text-neutral-500">
-            {s.estMarketCap > 0 && s.estMarketCapItemCount < s.totalItems
-              ? `${s.estMarketCapItemCount}/${s.totalItems} w/ supply · `
-              : ""}
-            Listings: {formatPrice(s.listingsValue)}
-          </p>
+          {s.estMarketCap > 0 && s.estMarketCapItemCount < s.totalItems && (
+            <p className="text-[10px] text-neutral-500">
+              {s.estMarketCapItemCount}/{s.totalItems} w/ supply
+            </p>
+          )}
+        </div>
+        <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <DollarSign className="h-4 w-4 text-violet-400" />
+            <span className="text-[10px] uppercase tracking-wider text-neutral-500">Listings Value</span>
+          </div>
+          <p className="text-xl font-bold text-white">{formatPrice(s.listingsValue)}</p>
+          <p className="text-[10px] text-neutral-500">{s.totalVolume.toLocaleString()} active listings</p>
         </div>
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
           <div className="flex items-center gap-2 mb-2">
@@ -103,18 +110,19 @@ export default async function TrendsPage({ searchParams }: PageProps) {
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
           <div className="flex items-center gap-2 mb-2">
             <Layers className="h-4 w-4 text-blue-400" />
-            <span className="text-[10px] uppercase tracking-wider text-neutral-500">Total Listings</span>
+            <span className="text-[10px] uppercase tracking-wider text-neutral-500">Tracked Items</span>
           </div>
-          <p className="text-xl font-bold text-white">{s.totalVolume.toLocaleString()}</p>
-          <p className="text-[10px] text-neutral-500">{s.totalItems} unique items</p>
+          <p className="text-xl font-bold text-white">{s.totalItems.toLocaleString()}</p>
+          <p className="text-[10px] text-neutral-500">{s.totalSupply.toLocaleString()} total supply</p>
         </div>
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
           <div className="flex items-center gap-2 mb-2">
             <Package className="h-4 w-4 text-amber-400" />
             <span className="text-[10px] uppercase tracking-wider text-neutral-500">Price Range</span>
           </div>
-          <p className="text-xl font-bold text-white">{formatPrice(s.floor)}</p>
-          <p className="text-[10px] text-neutral-500">to {formatPrice(s.ceiling)}</p>
+          <p className="text-lg font-bold text-white">
+            {formatPrice(s.floor)} – {formatPrice(s.ceiling)}
+          </p>
         </div>
       </div>
 

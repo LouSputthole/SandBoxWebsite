@@ -70,14 +70,25 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!res.ok) {
+  // Steam sometimes returns non-200 (e.g. 400) but with valid inventory JSON.
+  // Always try to parse the body — only bail if it's not valid inventory data.
+  let data: unknown;
+  try {
+    data = await res.json();
+  } catch {
+    return NextResponse.json(
+      { error: `Steam returned HTTP ${res.status} with non-JSON body` },
+      { status: 502 },
+    );
+  }
+
+  const obj = data as Record<string, unknown>;
+  if (!res.ok && obj?.success !== 1 && obj?.success !== true) {
     return NextResponse.json(
       { error: `Steam returned HTTP ${res.status}` },
       { status: 502 },
     );
   }
 
-  // Steam sometimes returns { "success": false, "error": "..." } with 200 OK
-  const data = await res.json();
   return NextResponse.json(data);
 }
