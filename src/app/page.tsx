@@ -214,19 +214,19 @@ export default async function HomePage() {
           <div className="text-center max-w-3xl mx-auto">
             <div className="inline-flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-full px-4 py-1.5 mb-6">
               <Gamepad2 className="h-4 w-4 text-purple-400" />
-              <span className="text-sm text-purple-300">Live S&box Market Tracker</span>
+              <span className="text-sm text-purple-300">The S&box Cosmetics Market Tracker</span>
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 tracking-tight">
-              S&box Skins{" "}
+              S&box Cosmetics &{" "}
               <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                Marketplace
+                Skin Market
               </span>{" "}
-              & Price Tracker
+              Tracker
             </h1>
             <p className="text-lg text-neutral-400 mb-8 max-w-2xl mx-auto">
-              Every S&box skin on the Steam Community Market, with live prices, order books,
-              24-hour trends, and total supply data. Track the items you care about, spot
-              deals, and watch the market move in real time.
+              Every S&box cosmetic on the Steam Community Market — live prices, order books,
+              24-hour and 7-day trends, and total supply data. The go-to source for S&box skin
+              market data, updated every 15–30 minutes.
             </p>
             <div className="flex items-center justify-center gap-3 flex-wrap">
               <Link href="/items">
@@ -543,53 +543,77 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* About S&box Skins — SEO content */}
+      {/* About the S&box Cosmetics Market — SEO content */}
       <section className="border-t border-neutral-800 bg-neutral-950/50">
         <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8 py-16">
-          <h2 className="text-3xl font-bold text-white mb-3 text-center">About S&box Skins</h2>
+          <h2 className="text-3xl font-bold text-white mb-3 text-center">
+            About the S&box Cosmetics Market
+          </h2>
           <p className="text-center text-neutral-400 mb-10">
-            Everything you need to know about the S&box cosmetic economy.
+            Everything you need to know about S&box skins, cosmetics, and the Steam Market
+            economy that prices them.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-sm text-neutral-300 leading-relaxed">
             <div>
-              <h3 className="text-white font-semibold mb-2">What are S&box skins?</h3>
+              <h3 className="text-white font-semibold mb-2">What are S&box skins and cosmetics?</h3>
               <p className="text-neutral-400">
-                S&box skins are cosmetic items for S&box — the sandbox game from Facepunch Studios,
-                the studio behind Garry&apos;s Mod and Rust. Skins include hats, clothing, character
-                models, weapon reskins, and accessories that let players personalize their in-game avatar.
-                Every S&box skin is tradable through the Steam Community Market.
+                S&box skins (sometimes called S&box cosmetics) are customization items for
+                S&box — the sandbox game from Facepunch Studios, the studio behind Garry&apos;s
+                Mod and Rust. Cosmetics include hats, clothing, character models, weapon
+                reskins, and accessories that let players personalize their in-game avatar.
+                Every S&box cosmetic is tradable through the Steam Community Market.
               </p>
             </div>
             <div>
-              <h3 className="text-white font-semibold mb-2">Where do S&box skin prices come from?</h3>
+              <h3 className="text-white font-semibold mb-2">Where do S&box market prices come from?</h3>
               <p className="text-neutral-400">
-                We pull live prices and order book data directly from the Steam Community Market
-                every 15–30 minutes, 24/7. Total supply counts come from sbox.game&apos;s official
-                skin metrics page. Price history is stored over time so you can track value changes
-                across days, weeks, and months.
+                We pull live S&box market prices and order book data directly from the Steam
+                Community Market every 15–30 minutes, 24/7. Total supply counts come from
+                sbox.game&apos;s official skin metrics page. Price history is stored over time
+                so you can track S&box cosmetics values across days, weeks, and months.
               </p>
             </div>
             <div>
-              <h3 className="text-white font-semibold mb-2">How do I buy or sell S&box skins?</h3>
+              <h3 className="text-white font-semibold mb-2">How do I buy or sell S&box cosmetics?</h3>
               <p className="text-neutral-400">
-                All trading happens on the Steam Community Market. Find an item you want on
-                sboxskins.gg, click &ldquo;View on Steam Market&rdquo;, and complete the transaction
-                through Steam. To sell, open your Steam Inventory and list your S&box item — check
-                our order book first to price it competitively.
+                All S&box cosmetics trading happens on the Steam Community Market. Find an item
+                you want on sboxskins.gg, click &ldquo;View on Steam Market&rdquo;, and complete
+                the transaction through Steam. To sell, open your Steam Inventory and list your
+                S&box cosmetic — check our order book first to price it competitively.
               </p>
             </div>
             <div>
-              <h3 className="text-white font-semibold mb-2">What makes a skin valuable?</h3>
+              <h3 className="text-white font-semibold mb-2">What makes an S&box skin valuable?</h3>
               <p className="text-neutral-400">
-                Price is driven by scarcity and demand. Lower total supply, limited-edition status,
-                delisted store availability, and cosmetic appeal all push prices up. Our
+                S&box skin prices are driven by scarcity and demand. Lower total supply,
+                limited-edition status, delisted store availability, and cosmetic appeal all
+                push prices up on the S&box market. Our
                 <Link href="/trends" className="text-purple-400 hover:underline"> trends page</Link>{" "}
                 and{" "}
                 <Link href="/leaderboard" className="text-purple-400 hover:underline">
                   leaderboard
                 </Link>{" "}
-                track these signals in real time so you can spot the next big mover.
+                track these signals in real time so you can spot the next big S&box cosmetics
+                mover.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-white font-semibold mb-2">Is there an S&box marketplace?</h3>
+              <p className="text-neutral-400">
+                Yes — the Steam Community Market is the official S&box marketplace. We aggregate
+                every S&box cosmetic listed there, add supply and scarcity data, and make it
+                searchable, filterable, and comparable on one page. Think of sboxskins.gg as
+                the analytics layer on top of the S&box skin market.
+              </p>
+            </div>
+            <div>
+              <h3 className="text-white font-semibold mb-2">How big is the S&box cosmetics market?</h3>
+              <p className="text-neutral-400">
+                Thousands of active listings across every tracked S&box skin and cosmetic. Total
+                listings value and supply-based market cap are summarized on our{" "}
+                <Link href="/trends" className="text-purple-400 hover:underline">trends page</Link>
+                , recalculated on every sync so you always see the current S&box market size.
               </p>
             </div>
           </div>
