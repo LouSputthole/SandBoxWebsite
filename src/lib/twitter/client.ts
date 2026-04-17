@@ -120,8 +120,11 @@ export interface TweetWithAuthor {
  * Terms that indicate the tweet is about something OTHER than S&box even
  * though it matched our search keywords. "sbox" collides with xbox in
  * context; "sandbox" catches Minecraft, Roblox, The Sandbox crypto, etc.
- * If a candidate tweet contains any of these words AND lacks any positive
- * anchor (below), we drop it.
+ * The "Scream"/Ghostface cluster catches horror-movie tweets that
+ * occasionally tag #sbox or #sandbox ironically.
+ *
+ * If a candidate tweet contains any of these AND lacks a positive anchor
+ * (below), we drop it.
  */
 const FALSE_POSITIVE_TERMS: readonly RegExp[] = [
   /\bxbox\b/i,
@@ -131,9 +134,17 @@ const FALSE_POSITIVE_TERMS: readonly RegExp[] = [
   /\bplaystation\b/i,
   /\bthe\s+sandbox\b/i, // crypto token
   /\b\$sand\b/i, // Sandbox crypto ticker
-  /\bgarry'?s\s+mod\b/i, // Gmod posts sometimes mention sbox but aren't S&box market
+  /\bgarry'?s\s+mod\b/i,
   /\bunity\s+sandbox\b/i,
   /\bsandbox\s+(mode|game|world|build(er)?|minecraft|roblox)/i,
+  // Horror / movie-adjacent false positives — scream/ghostface tweets
+  // sometimes tag #sbox or #sandbox ironically.
+  /\bscream\s+(movie|vi|6|7|franchise|sequel)/i,
+  /\bghostface\b/i,
+  /#ScreamMovie\b/i,
+  /\bhorror\s+(movie|film)/i,
+  // "Sandbox" as generic gameplay descriptor in unrelated games
+  /\bsandbox\s+(rpg|mmo|shooter|survival)/i,
 ];
 
 /**
@@ -145,7 +156,7 @@ const FALSE_POSITIVE_TERMS: readonly RegExp[] = [
 const POSITIVE_ANCHORS: readonly RegExp[] = [
   /\bs&box\b/i,
   /\bs&\s?box\b/i,
-  /\bsbox\s+(skin|skins|cosmetic|cosmetics|market|trading|trade|hat|helmet|outfit)/i,
+  /\bsbox\s+(skin|skins|cosmetic|cosmetics|market|trading|trade|hat|helmet|outfit|item|items|inventory)/i,
   /\bfacepunch\b/i,
   /\bsboxgame\b/i,
   /\bsboxskins\b/i,
@@ -158,18 +169,18 @@ const POSITIVE_ANCHORS: readonly RegExp[] = [
  * Search recent tweets mentioning S&box-related keywords or our account.
  * Returns the last 24 hours, excluding retweets and our own tweets.
  *
- * Post-search we filter out tweets that matched a generic keyword (like
- * #sbox) but are actually about xbox/minecraft/roblox/the-sandbox-crypto.
- * This cuts the noise floor dramatically — we used to pull in anything
- * mentioning the word "sandbox" which is basically every game.
+ * Strategy is search-wide / filter-tight: we cast a wide net at Twitter
+ * (hashtags included so we don't miss any S&box-adjacent tweet) and
+ * then post-filter aggressively for false positives. Alternative —
+ * tighter search query — meant we missed legitimate mentions entirely.
  */
 export async function searchSboxMentions(maxResults = 20): Promise<TweetWithAuthor[]> {
   const client = getTwitterClient();
   if (!client) return [];
 
-  // Stricter keyword set — dropped #sbox (too often typos) and #sandbox
-  // (catches Minecraft + Roblox + crypto). Replaced with multi-word
-  // phrases that are almost never coincidental + our unique hashtags.
+  // Wide search — hashtags back in (user wanted them) plus multi-word
+  // phrases + our handle. The hashtag variants catch S&box community
+  // chatter that bare-word searches miss.
   const keywords = [
     '"s&box"',
     '"sbox skin"',
@@ -178,6 +189,8 @@ export async function searchSboxMentions(maxResults = 20): Promise<TweetWithAuth
     '"sbox cosmetics"',
     '"sbox market"',
     '"sbox trading"',
+    "#sbox",
+    "#sandbox",
     "#sboxgame",
     "#sboxskins",
     "#sboxcosmetics",
@@ -186,9 +199,8 @@ export async function searchSboxMentions(maxResults = 20): Promise<TweetWithAuth
   ];
   const query = `(${keywords.join(" OR ")}) -is:retweet -from:SboxSkinsgg lang:en`;
 
-  // Ask Twitter for more than we need so post-filter losses don't leave
-  // us thin on results.
-  const fetchCount = Math.min(100, Math.max(20, maxResults * 2));
+  // Over-fetch so post-filter rejections don't leave results thin.
+  const fetchCount = Math.min(100, Math.max(30, maxResults * 3));
 
   try {
     const res = await client.v2.search(query, {
@@ -205,13 +217,13 @@ export async function searchSboxMentions(maxResults = 20): Promise<TweetWithAuth
 
     const tweets: TweetWithAuthor[] = [];
     for (const t of res.data?.data ?? []) {
-      // Post-filter: if the tweet has any false-positive term AND no
-      // S&box-specific positive anchor, drop it. Keeps mentions that
-      // legitimately reference xbox + S&box together but filters out
-      // xbox-only, minecraft, etc.
       const text = t.text;
       const hasNegative = FALSE_POSITIVE_TERMS.some((re) => re.test(text));
       const hasPositive = POSITIVE_ANCHORS.some((re) => re.test(text));
+      // Drop if any false positive is present without a clear S&box
+      // anchor. A tweet about Scream + #sbox has no positive anchor =
+      // gone. A tweet mentioning xbox AND "sbox skin" keeps both and
+      // survives.
       if (hasNegative && !hasPositive) continue;
 
       const user = users.get(t.author_id ?? "") ?? {
