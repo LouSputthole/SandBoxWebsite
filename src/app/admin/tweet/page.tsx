@@ -63,6 +63,11 @@ interface ScheduledTweet {
   createdAt: string;
 }
 
+/** Hours offsets for the quick-schedule buttons on each draft row. Keep
+ * values sorted and under 6 entries to avoid button-row overflow on
+ * mobile. Adding more? Drop the least-used first. */
+const QUICK_SCHEDULE_HOURS: readonly number[] = [1, 1.5, 2, 4, 5];
+
 const KIND_LABELS: Record<string, string> = {
   "top-gainer": "Top Gainer (24h)",
   "top-loser": "Top Loser (24h)",
@@ -149,6 +154,11 @@ export default function TweetAdminPage() {
   const [customResult, setCustomResult] = useState<TweetResult | null>(null);
   const [postingCustom, setPostingCustom] = useState(false);
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  // Per-draft custom-time picker state. customDraftIndex tracks which
+  // draft row has its datetime-local input open; customDraftTime holds
+  // the current input value (browser-local ISO without TZ).
+  const [customDraftIndex, setCustomDraftIndex] = useState<number | null>(null);
+  const [customDraftTime, setCustomDraftTime] = useState("");
 
   // Mentions/replies state
   const [mentions, setMentions] = useState<Mention[]>([]);
@@ -250,14 +260,14 @@ export default function TweetAdminPage() {
   };
 
   /**
-   * Quick-schedule a draft for N hours from now. Used by the "+1h" / "+4h"
-   * shortcut buttons so you can line up a few posts without opening a date
-   * picker every time.
+   * Schedule a draft for a specific ISO timestamp. Shared core used by
+   * both the quick-schedule buttons (below) and the per-draft custom-
+   * time picker. Fractional hours work natively thanks to JS numbers
+   * (e.g. 1.5 → 90 min).
    */
-  const scheduleDraftInHours = async (index: number, draft: Draft, hours: number) => {
+  const scheduleDraftAt = async (index: number, draft: Draft, scheduledFor: string) => {
     setPostingIndex(index);
     try {
-      const scheduledFor = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
       const res = await fetch("/api/admin/tweet/schedule", {
         method: "POST",
         headers: {
@@ -287,6 +297,12 @@ export default function TweetAdminPage() {
     } finally {
       setPostingIndex(null);
     }
+  };
+
+  /** Quick-schedule a draft for N hours from now (supports fractional). */
+  const scheduleDraftInHours = (index: number, draft: Draft, hours: number) => {
+    const iso = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+    return scheduleDraftAt(index, draft, iso);
   };
 
   const fetchMentions = useCallback(async () => {
@@ -647,50 +663,75 @@ export default function TweetAdminPage() {
                   </div>
                 )
               ) : (
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    onClick={() => postDraft(index, draft.text)}
-                    disabled={postingIndex === index || draft.approxLength > 280}
-                    className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
-                    size="sm"
-                  >
-                    {postingIndex === index ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Send className="h-4 w-4" />
-                    )}
-                    Post now
-                  </Button>
-                  <Button
-                    onClick={() => scheduleDraftInHours(index, draft, 1)}
-                    disabled={postingIndex === index || draft.approxLength > 280}
-                    variant="outline"
-                    className="gap-2 border-neutral-700 text-neutral-300 hover:text-white"
-                    size="sm"
-                  >
-                    <Clock className="h-4 w-4" />
-                    +1h
-                  </Button>
-                  <Button
-                    onClick={() => scheduleDraftInHours(index, draft, 2)}
-                    disabled={postingIndex === index || draft.approxLength > 280}
-                    variant="outline"
-                    className="gap-2 border-neutral-700 text-neutral-300 hover:text-white"
-                    size="sm"
-                  >
-                    <Clock className="h-4 w-4" />
-                    +2h
-                  </Button>
-                  <Button
-                    onClick={() => scheduleDraftInHours(index, draft, 4)}
-                    disabled={postingIndex === index || draft.approxLength > 280}
-                    variant="outline"
-                    className="gap-2 border-neutral-700 text-neutral-300 hover:text-white"
-                    size="sm"
-                  >
-                    <Clock className="h-4 w-4" />
-                    +4h
-                  </Button>
+                <div className="space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      onClick={() => postDraft(index, draft.text)}
+                      disabled={postingIndex === index || draft.approxLength > 280}
+                      className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
+                      size="sm"
+                    >
+                      {postingIndex === index ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Send className="h-4 w-4" />
+                      )}
+                      Post now
+                    </Button>
+                    {QUICK_SCHEDULE_HOURS.map((h) => (
+                      <Button
+                        key={h}
+                        onClick={() => scheduleDraftInHours(index, draft, h)}
+                        disabled={postingIndex === index || draft.approxLength > 280}
+                        variant="outline"
+                        className="gap-1.5 border-neutral-700 text-neutral-300 hover:text-white px-2.5"
+                        size="sm"
+                      >
+                        <Clock className="h-3.5 w-3.5" />
+                        +{h}h
+                      </Button>
+                    ))}
+                    <Button
+                      onClick={() =>
+                        setCustomDraftIndex(customDraftIndex === index ? null : index)
+                      }
+                      disabled={postingIndex === index || draft.approxLength > 280}
+                      variant="outline"
+                      className={`gap-1.5 px-2.5 ${
+                        customDraftIndex === index
+                          ? "border-purple-500/50 bg-purple-500/10 text-purple-200"
+                          : "border-neutral-700 text-neutral-300 hover:text-white"
+                      }`}
+                      size="sm"
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                      Custom…
+                    </Button>
+                  </div>
+                  {customDraftIndex === index && (
+                    <div className="flex items-center gap-2 p-2 rounded-lg border border-purple-500/30 bg-purple-500/5">
+                      <Clock className="h-4 w-4 text-purple-400 shrink-0" />
+                      <input
+                        type="datetime-local"
+                        value={customDraftTime}
+                        onChange={(e) => setCustomDraftTime(e.target.value)}
+                        className="flex-1 min-w-0 rounded-md border border-neutral-700 bg-neutral-950 px-2 py-1 text-sm text-neutral-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-purple-500"
+                      />
+                      <Button
+                        onClick={() => {
+                          if (!customDraftTime) return;
+                          scheduleDraftAt(index, draft, new Date(customDraftTime).toISOString());
+                          setCustomDraftIndex(null);
+                          setCustomDraftTime("");
+                        }}
+                        disabled={!customDraftTime || postingIndex === index}
+                        size="sm"
+                        className="bg-purple-600 hover:bg-purple-700 text-white"
+                      >
+                        Schedule
+                      </Button>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>
