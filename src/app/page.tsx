@@ -214,18 +214,18 @@ export default async function HomePage() {
           <div className="text-center max-w-3xl mx-auto">
             <div className="inline-flex items-center gap-2 bg-purple-500/10 border border-purple-500/20 rounded-full px-4 py-1.5 mb-6">
               <Gamepad2 className="h-4 w-4 text-purple-400" />
-              <span className="text-sm text-purple-300">The S&box Cosmetics Market Tracker</span>
+              <span className="text-sm text-purple-300">Live S&box Market Tracker</span>
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 tracking-tight">
-              S&box Cosmetics &{" "}
+              S&box Skins &{" "}
               <span className="bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                Skin Market
+                Market
               </span>{" "}
               Tracker
             </h1>
             <p className="text-lg text-neutral-400 mb-8 max-w-2xl mx-auto">
-              Every S&box cosmetic on the Steam Community Market — live prices, order books,
-              24-hour and 7-day trends, and total supply data. The go-to source for S&box skin
+              Every S&box skin on the Steam Community Market — live prices, order books,
+              24-hour and 7-day trends, and total supply data. The go-to source for S&box
               market data, updated every 15–30 minutes.
             </p>
             <div className="flex items-center justify-center gap-3 flex-wrap">

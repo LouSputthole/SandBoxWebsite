@@ -11,7 +11,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: {
     default:
-      "sboxskins.gg — S&box Cosmetics & Skin Market Tracker | Prices, Trends, Order Books",
+      "sboxskins.gg — S&box Skin Market Tracker | Prices, Trends & Order Books",
     template: "%s | sboxskins.gg",
   },
   description:
@@ -37,7 +37,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/" },
   openGraph: {
     siteName: "sboxskins.gg",
-    title: "sboxskins.gg — S&box Cosmetics & Skin Market Tracker",
+    title: "sboxskins.gg — S&box Skin Market Tracker",
     description:
       "Live S&box cosmetics market data — prices, order books, supply, and trends from the Steam Community Market. The go-to tracker for every S&box skin.",
     type: "website",
@@ -47,13 +47,13 @@ export const metadata: Metadata = {
         url: "/opengraph-image",
         width: 1200,
         height: 630,
-        alt: "sboxskins.gg — S&box Cosmetics & Skin Market Tracker",
+        alt: "sboxskins.gg — S&box Skin Market Tracker",
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: "sboxskins.gg — S&box Cosmetics & Skin Market Tracker",
+    title: "sboxskins.gg — S&box Skin Market Tracker",
     description:
       "Live S&box cosmetics market data — prices, order books, supply, and trends. The go-to S&box skin market tracker.",
     images: ["/opengraph-image"],
