@@ -355,7 +355,11 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
       {/* Price Chart */}
       <Card className="bg-neutral-900/80">
         <CardContent className="p-6">
-          <PriceChart data={item.priceHistory} itemId={item.id} />
+          <PriceChart
+            data={item.priceHistory}
+            itemId={item.id}
+            priceChange24h={item.priceChange24h}
+          />
         </CardContent>
       </Card>
 
