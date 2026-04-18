@@ -136,19 +136,21 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
     }
 
     // Batched lookup of each item's price ~24h ago.
-    // We query a 4-hour window ending 24h ago and take the MEDIAN price
-    // per item within that window — not the nearest single point.
+    // 4-hour window CENTERED on exactly 24h ago — [now-26h, now-22h] —
+    // so the median of the window's points approximates "price 24 hours
+    // ago" rather than "price 26 hours ago" (which is what [now-28h,
+    // now-24h] gave us before). Alignment matters because the chart's
+    // own 24h view starts at now-24h, so if our baseline is 2h earlier
+    // than that, the header % and chart % disagree for items that moved
+    // in those extra 2 hours.
     //
-    // Why median: Steam's /market/search occasionally returns spurious
-    // sell_price values during a sync (e.g. a brief low-ball listing that
-    // got cancelled, or a quirky partial response), which end up stored
-    // as price points. If the baseline calc picks up one of those, the
-    // 24h change looks wildly off — we've seen +80% reported when the
-    // real move was sideways. Median across the window's points is
-    // robust to single-point outliers and still tracks genuine moves
-    // since we typically log 4-8 points in each 4-hour window.
-    const windowEnd = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const windowStart = new Date(Date.now() - 28 * 60 * 60 * 1000);
+    // Why median across the window: Steam's /market/search occasionally
+    // returns spurious sell_price values during a sync. If the baseline
+    // picked one of those, priceChange24h blew up (we saw +80% when the
+    // real move was sideways). Median across 4-8 typical window points
+    // is immune to single-point outliers and still tracks real moves.
+    const windowEnd = new Date(Date.now() - 22 * 60 * 60 * 1000);
+    const windowStart = new Date(Date.now() - 26 * 60 * 60 * 1000);
     const pointsFrom24hAgo = await prisma.pricePoint.findMany({
       where: { timestamp: { gte: windowStart, lte: windowEnd } },
       select: { itemId: true, price: true },
@@ -165,7 +167,7 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
       if (m !== null && m > 0) priceAt24hAgo.set(itemId, m);
     }
     debug(
-      `[sync] Loaded 24h-ago baselines for ${priceAt24hAgo.size} items (median of ${pointsFrom24hAgo.length} points across the 4h window)`,
+      `[sync] Loaded 24h-ago baselines for ${priceAt24hAgo.size} items (median across the 4h window centered on 24h ago, from ${pointsFrom24hAgo.length} points total)`,
     );
 
     // Accumulate price points to write in one batch at the end (avoids N+1)
