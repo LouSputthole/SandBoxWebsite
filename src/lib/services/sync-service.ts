@@ -136,22 +136,37 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
     }
 
     // Batched lookup of each item's price ~24h ago.
-    // We query a 4-hour window ending 24h ago, then keep the newest point
-    // per item within that window. This gives us a true 24h baseline for
-    // priceChange24h instead of comparing to the previous sync's price
-    // (which was only ~15-30 min ago and made 24h changes always look tiny).
+    // We query a 4-hour window ending 24h ago and take the MEDIAN price
+    // per item within that window — not the nearest single point.
+    //
+    // Why median: Steam's /market/search occasionally returns spurious
+    // sell_price values during a sync (e.g. a brief low-ball listing that
+    // got cancelled, or a quirky partial response), which end up stored
+    // as price points. If the baseline calc picks up one of those, the
+    // 24h change looks wildly off — we've seen +80% reported when the
+    // real move was sideways. Median across the window's points is
+    // robust to single-point outliers and still tracks genuine moves
+    // since we typically log 4-8 points in each 4-hour window.
     const windowEnd = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const windowStart = new Date(Date.now() - 28 * 60 * 60 * 1000);
     const pointsFrom24hAgo = await prisma.pricePoint.findMany({
       where: { timestamp: { gte: windowStart, lte: windowEnd } },
-      orderBy: { timestamp: "desc" },
       select: { itemId: true, price: true },
     });
-    const priceAt24hAgo = new Map<string, number>();
+    const pointsByItem = new Map<string, number[]>();
     for (const p of pointsFrom24hAgo) {
-      if (!priceAt24hAgo.has(p.itemId)) priceAt24hAgo.set(p.itemId, p.price);
+      const arr = pointsByItem.get(p.itemId) ?? [];
+      arr.push(p.price);
+      pointsByItem.set(p.itemId, arr);
     }
-    debug(`[sync] Loaded ${priceAt24hAgo.size} 24h-ago price points for change calc`);
+    const priceAt24hAgo = new Map<string, number>();
+    for (const [itemId, prices] of pointsByItem) {
+      const m = median(prices);
+      if (m !== null && m > 0) priceAt24hAgo.set(itemId, m);
+    }
+    debug(
+      `[sync] Loaded 24h-ago baselines for ${priceAt24hAgo.size} items (median of ${pointsFrom24hAgo.length} points across the 4h window)`,
+    );
 
     // Accumulate price points to write in one batch at the end (avoids N+1)
     const pendingPricePoints: { itemId: string; price: number; volume: number }[] = [];
