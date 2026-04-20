@@ -4,7 +4,8 @@ import Link from "next/link";
 import { TrendingUp, TrendingDown, Minus, ChevronUp, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
 import { ItemImage } from "@/components/items/item-image";
 import { Button } from "@/components/ui/button";
-import { formatPrice, formatPriceChange } from "@/lib/utils";
+import { formatPriceChange } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 
 interface Item {
   id: string;
@@ -166,7 +167,7 @@ export function ItemTable({ items, page, totalPages, total, sort, onPageChange, 
                 {/* Price */}
                 <td className="px-3 py-3 text-right whitespace-nowrap">
                   <span className="text-sm font-semibold text-white">
-                    {item.currentPrice != null ? formatPrice(item.currentPrice) : "—"}
+                    {item.currentPrice != null ? <Price amount={item.currentPrice} /> : "—"}
                   </span>
                 </td>
 
@@ -175,12 +176,12 @@ export function ItemTable({ items, page, totalPages, total, sort, onPageChange, 
 
                 {/* Lowest */}
                 <td className="px-3 py-3 text-right whitespace-nowrap text-sm text-neutral-400">
-                  {item.lowestPrice != null ? formatPrice(item.lowestPrice) : "—"}
+                  {item.lowestPrice != null ? <Price amount={item.lowestPrice} /> : "—"}
                 </td>
 
                 {/* Median */}
                 <td className="px-3 py-3 text-right whitespace-nowrap text-sm text-neutral-400">
-                  {item.medianPrice != null ? formatPrice(item.medianPrice) : "—"}
+                  {item.medianPrice != null ? <Price amount={item.medianPrice} /> : "—"}
                 </td>
 
                 {/* Listings */}

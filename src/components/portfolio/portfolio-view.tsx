@@ -16,7 +16,8 @@ import { useWatchlist } from "@/lib/watchlist/context";
 import { ItemImage } from "@/components/items/item-image";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { formatPrice, formatPriceChange } from "@/lib/utils";
+import { formatPriceChange } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 
 interface PortfolioItem {
   id: string;
@@ -144,7 +145,7 @@ export function PortfolioView() {
                 <span className="text-xs text-neutral-500">Total Value</span>
               </div>
               <span className="text-lg font-bold text-white">
-                {formatPrice(data.totalValue)}
+                <Price amount={data.totalValue} />
               </span>
             </CardContent>
           </Card>
@@ -156,7 +157,7 @@ export function PortfolioView() {
               </div>
               <span className="text-lg font-bold text-white">
                 {data.itemCount > 0
-                  ? formatPrice(data.totalValue / data.itemCount)
+                  ? <Price amount={data.totalValue / data.itemCount} />
                   : "N/A"}
               </span>
             </CardContent>
@@ -279,7 +280,7 @@ export function PortfolioView() {
                       <td className="px-4 py-3 text-right">
                         <span className="text-sm font-semibold text-white">
                           {item.currentPrice != null
-                            ? formatPrice(item.currentPrice)
+                            ? <Price amount={item.currentPrice} />
                             : "N/A"}
                         </span>
                       </td>
