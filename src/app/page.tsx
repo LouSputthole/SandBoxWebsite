@@ -26,7 +26,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { ItemCard } from "@/components/items/item-card";
 import { prisma } from "@/lib/db";
-import { formatPrice, formatRelativeTime } from "@/lib/utils";
+import { formatRelativeTime } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 
 // Render at request time — homepage data changes every sync cycle (15-30 min).
 // Next.js will cache the rendered HTML briefly at the edge anyway.
@@ -262,7 +263,7 @@ export default async function HomePage() {
               </div>
               <div>
                 <p className="text-xl font-bold text-white">
-                  {stats.estMarketCap > 0 ? formatPrice(stats.estMarketCap) : "—"}
+                  {stats.estMarketCap > 0 ? <Price amount={stats.estMarketCap} /> : "—"}
                 </p>
                 <p className="text-[11px] text-neutral-500">
                   Est. Market Cap
@@ -279,7 +280,7 @@ export default async function HomePage() {
                 <DollarSign className="h-5 w-5 text-emerald-400" />
               </div>
               <div>
-                <p className="text-xl font-bold text-white">{formatPrice(stats.avgPrice)}</p>
+                <p className="text-xl font-bold text-white"><Price amount={stats.avgPrice} /></p>
                 <p className="text-[11px] text-neutral-500">Avg Price</p>
               </div>
             </div>
@@ -663,7 +664,7 @@ function MoverRow({ item }: { item: Item }) {
       </div>
       <div className="text-right flex-shrink-0">
         <div className="text-sm font-semibold text-white">
-          {item.currentPrice != null ? formatPrice(item.currentPrice) : "—"}
+          {item.currentPrice != null ? <Price amount={item.currentPrice} /> : "—"}
         </div>
         <div className={`text-[11px] font-medium ${isUp ? "text-emerald-400" : "text-red-400"}`}>
           {isUp ? "+" : ""}

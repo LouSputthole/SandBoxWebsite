@@ -29,7 +29,8 @@ import { SpreadAnalysis } from "@/components/items/spread-analysis";
 import { PriceSignals } from "@/components/items/price-signals";
 import { WatchlistButton } from "@/components/items/watchlist-button";
 import { Tooltip } from "@/components/ui/tooltip";
-import { formatPrice, formatPriceChange } from "@/lib/utils";
+import { formatPriceChange } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 
 interface PricePoint {
   id: string;
@@ -161,7 +162,7 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
           {/* Price */}
           <div className="flex items-end gap-4 flex-wrap">
             <span className="text-4xl font-bold text-white">
-              {item.currentPrice != null ? formatPrice(item.currentPrice) : "N/A"}
+              {item.currentPrice != null ? <Price amount={item.currentPrice} /> : "N/A"}
             </span>
             <div className="flex items-center gap-3 pb-1">
               <div className="flex items-center gap-1">
@@ -193,7 +194,7 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
           </div>
           {item.releasePrice != null && (
             <p className="text-xs text-neutral-500">
-              Store price: {formatPrice(item.releasePrice)}
+              Store price: <Price amount={item.releasePrice} />
             </p>
           )}
 
@@ -206,7 +207,7 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                   <span className="text-xs text-neutral-500">Lowest</span>
                 </div>
                 <span className="text-sm font-semibold text-white">
-                  {item.lowestPrice != null ? formatPrice(item.lowestPrice) : "N/A"}
+                  {item.lowestPrice != null ? <Price amount={item.lowestPrice} /> : "N/A"}
                 </span>
               </CardContent>
             </Card>
@@ -217,7 +218,7 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                   <span className="text-xs text-neutral-500">Median</span>
                 </div>
                 <span className="text-sm font-semibold text-white">
-                  {item.medianPrice != null ? formatPrice(item.medianPrice) : "N/A"}
+                  {item.medianPrice != null ? <Price amount={item.medianPrice} /> : "N/A"}
                 </span>
               </CardContent>
             </Card>

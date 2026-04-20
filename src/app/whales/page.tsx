@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
-import { formatPrice } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 import { ExternalLink } from "lucide-react";
 
 export const revalidate = 1800; // 30 minutes
@@ -101,7 +101,7 @@ export default async function WhalesPage() {
         {whales.length > 0 && (
           <p className="text-xs text-neutral-600 mt-2">
             Tracking {whales.length} whales · combined portfolio value{" "}
-            <span className="text-white font-medium">{formatPrice(grandTotal)}</span>
+            <span className="text-white font-medium"><Price amount={grandTotal} /></span>
           </p>
         )}
       </div>
@@ -150,7 +150,7 @@ function WhaleRow({ whale, rank }: { whale: Whale; rank: number }) {
           </p>
         </div>
         <div className="text-right">
-          <p className="text-base font-semibold text-white">{formatPrice(whale.totalValue)}</p>
+          <p className="text-base font-semibold text-white"><Price amount={whale.totalValue} /></p>
         </div>
       </summary>
       <div className="px-4 py-3 border-t border-neutral-800 bg-neutral-950/30">
@@ -175,7 +175,7 @@ function WhaleRow({ whale, rank }: { whale: Whale; rank: number }) {
             >
               <span className="text-xs text-neutral-300 truncate flex-1">{it.name}</span>
               <span className="text-xs text-neutral-500 ml-2">
-                {it.quantity}× · {formatPrice(it.value)}
+                {it.quantity}× · <Price amount={it.value} />
               </span>
             </Link>
           ))}

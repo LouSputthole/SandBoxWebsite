@@ -20,6 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/context";
+import { CurrencyPicker } from "@/components/layout/currency-picker";
 
 export function Navbar() {
   const router = useRouter();
@@ -147,6 +148,7 @@ export function Navbar() {
 
           {/* Auth / User */}
           <div className="hidden md:flex items-center gap-2 shrink-0">
+            <CurrencyPicker variant="desktop" />
             {authLoading ? (
               <div className="h-8 w-8 rounded-full bg-neutral-800 animate-pulse" />
             ) : user ? (
@@ -324,6 +326,11 @@ export function Navbar() {
             >
               Contact
             </Link>
+
+            {/* Currency picker (mobile) */}
+            <div className="border-t border-neutral-800 mt-2 pt-2">
+              <CurrencyPicker variant="mobile" />
+            </div>
 
             {/* Mobile Auth */}
             <div className="px-3 pt-2 border-t border-neutral-800 mt-2">

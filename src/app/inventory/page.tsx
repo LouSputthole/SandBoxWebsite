@@ -20,7 +20,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ItemImage } from "@/components/items/item-image";
-import { formatPrice } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 import { useAuth } from "@/lib/auth/context";
 
 interface InventoryItem {
@@ -450,7 +450,7 @@ export default function InventoryPage() {
                   <DollarSign className="h-5 w-5 text-emerald-400" />
                 </div>
               </div>
-              <p className="text-2xl font-bold text-white">{formatPrice(result.totalValue)}</p>
+              <p className="text-2xl font-bold text-white"><Price amount={result.totalValue} /></p>
               <p className="text-xs text-neutral-500">Total Value</p>
             </div>
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 text-center">
@@ -522,10 +522,10 @@ export default function InventoryPage() {
                         {item.quantity > 1 ? `x${item.quantity}` : "1"}
                       </td>
                       <td className="px-4 py-3 text-right text-sm text-neutral-400">
-                        {item.unitPrice !== null ? formatPrice(item.unitPrice) : "—"}
+                        {item.unitPrice !== null ? <Price amount={item.unitPrice} /> : "—"}
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-semibold text-white">
-                        {item.totalPrice !== null ? formatPrice(item.totalPrice) : "—"}
+                        {item.totalPrice !== null ? <Price amount={item.totalPrice} /> : "—"}
                       </td>
                       <td className="px-4 py-3 text-center">
                         {item.slug && (
@@ -546,7 +546,7 @@ export default function InventoryPage() {
                       Total Inventory Value
                     </td>
                     <td className="px-4 py-3 text-right text-lg font-bold text-emerald-400">
-                      {formatPrice(result.totalValue)}
+                      <Price amount={result.totalValue} />
                     </td>
                     <td></td>
                   </tr>
