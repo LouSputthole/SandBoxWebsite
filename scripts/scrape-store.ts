@@ -14,9 +14,18 @@
  * Options:
  *   --dry-run    Print scraped data without updating the database
  *   --api-url    API URL to POST store data to (default: http://localhost:3000/api/sync/store)
+ *
+ * Failure policy:
+ *   This is an enrichment scraper, not a critical path. If sbox.game changes
+ *   its HTML, rate-limits us, or Playwright hiccups, the only consequence is
+ *   that store availability doesn't update *this run* — the DB keeps its
+ *   last known state. So we exit 0 on any unhandled error and log what
+ *   happened. The workflow staying green means the daily failure email
+ *   doesn't train us to ignore all GitHub Actions notifications. Set the
+ *   STRICT=1 env var to restore the old "exit 1 on any error" behavior.
  */
 
-import { chromium } from "playwright";
+import { chromium, type Browser } from "playwright";
 
 const API_URL =
   process.argv.find((a) => a.startsWith("--api-url="))?.split("=")[1] ??
@@ -33,7 +42,14 @@ interface StoreItem {
 
 async function scrapeStore(): Promise<StoreItem[]> {
   console.log("[store-scraper] Launching browser...");
-  const browser = await chromium.launch({ headless: true });
+  let browser: Browser | null = null;
+  try {
+    browser = await chromium.launch({ headless: true });
+  } catch (err) {
+    console.error("[store-scraper] Browser launch failed:", err);
+    return [];
+  }
+
   const page = await browser.newPage();
 
   // Try the S&box shop/skins pages
@@ -128,7 +144,12 @@ async function scrapeStore(): Promise<StoreItem[]> {
     }
   }
 
-  await browser.close();
+  // Close defensively — don't let a close failure take down the whole run.
+  try {
+    await browser.close();
+  } catch (err) {
+    console.warn("[store-scraper] Browser close failed (ignored):", err);
+  }
   return items;
 }
 
@@ -142,23 +163,27 @@ async function postStoreData(items: StoreItem[]) {
     headers["Authorization"] = `Bearer ${process.env.CRON_SECRET}`;
   }
 
-  const res = await fetch(API_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ items }),
-  });
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ items }),
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    console.error(`[store-scraper] API error ${res.status}: ${text}`);
-    return;
+    if (!res.ok) {
+      const text = await res.text();
+      console.error(`[store-scraper] API error ${res.status}: ${text}`);
+      return;
+    }
+
+    const result = await res.json();
+    console.log(
+      "[store-scraper] API response:",
+      JSON.stringify(result, null, 2)
+    );
+  } catch (err) {
+    console.error(`[store-scraper] POST to ${API_URL} failed:`, err);
   }
-
-  const result = await res.json();
-  console.log(
-    "[store-scraper] API response:",
-    JSON.stringify(result, null, 2)
-  );
 }
 
 async function main() {
@@ -166,9 +191,10 @@ async function main() {
 
   if (items.length === 0) {
     console.log(
-      "[store-scraper] No items found. The store page structure may have changed."
+      "[store-scraper] No items found. sbox.game may have changed layout, "
+        + "added bot protection, or is unreachable. DB keeps its last known "
+        + "state until the next successful run."
     );
-    console.log("[store-scraper] Run with headless: false to debug visually.");
     return;
   }
 
@@ -187,7 +213,12 @@ async function main() {
   await postStoreData(items);
 }
 
+// Soft-fail: log any unhandled error but exit 0 so the GitHub Actions
+// workflow stays green for a non-critical enrichment scraper. If you WANT
+// CI to fail (e.g., to gate a deploy), set STRICT=1.
 main().catch((err) => {
   console.error("[store-scraper] Fatal error:", err);
-  process.exit(1);
+  if (process.env.STRICT === "1") {
+    process.exit(1);
+  }
 });
