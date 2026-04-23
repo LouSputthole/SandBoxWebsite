@@ -14,8 +14,13 @@ export const metadata: Metadata = {
       "sboxskins.gg — S&box Skin Market Tracker | Prices, Trends & Order Books",
     template: "%s | sboxskins.gg",
   },
+  // Use "S&box" for the first (canonical) reference and "sbox" for the
+  // secondary one — Google treats them as related but distinct tokens, so
+  // including both in the meta description lifts ranking on the bare-word
+  // "sbox skins" query (which is what most people actually type on mobile)
+  // without diluting the "s&box skins" signal we already have.
   description:
-    "The dedicated S&box cosmetics market tracker. Live prices, real-time order books, 24h/7d changes, total supply counts, and historical charts for every S&box skin on the Steam Community Market. Updated every 15–30 minutes.",
+    "The dedicated S&box cosmetics market tracker. Live prices, real-time order books, 24h/7d changes, total supply counts, and historical charts for every sbox skin on the Steam Community Market. Updated every 15–30 minutes.",
   metadataBase: new URL("https://sboxskins.gg"),
   keywords: [
     // Core product — "skins" and "cosmetics" both hit
@@ -30,6 +35,10 @@ export const metadata: Metadata = {
     "s&box price tracker", "sbox market tracker", "sbox cosmetics tracker",
     // Trading / flipping
     "sbox trading", "s&box trading", "sbox skin trading",
+    // Bare-word sbox long-tails (users frequently drop the ampersand
+    // on mobile where & is a keyboard-shift)
+    "sbox game skins", "sbox game market", "sbox game cosmetics",
+    "sbox skin tracker", "sbox price history", "sbox skin prices today",
     // Misc discovery
     "steam market sbox", "facepunch sbox", "sandbox game skins",
     "sbox order book", "sbox skin supply", "sboxskins", "sbox charts",
@@ -39,7 +48,7 @@ export const metadata: Metadata = {
     siteName: "sboxskins.gg",
     title: "sboxskins.gg — S&box Skin Market Tracker",
     description:
-      "Live S&box cosmetics market data — prices, order books, supply, and trends from the Steam Community Market. The go-to tracker for every S&box skin.",
+      "Live S&box cosmetics market data — prices, order books, supply, and trends from the Steam Community Market. The go-to tracker for every sbox skin.",
     type: "website",
     url: "https://sboxskins.gg",
     images: [
@@ -55,7 +64,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "sboxskins.gg — S&box Skin Market Tracker",
     description:
-      "Live S&box cosmetics market data — prices, order books, supply, and trends. The go-to S&box skin market tracker.",
+      "Live S&box cosmetics market data — prices, order books, supply, and trends. The go-to sbox skin market tracker.",
     images: ["/opengraph-image"],
     site: "@SboxSkinsgg",
   },
@@ -81,9 +90,13 @@ export default function RootLayout({
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: "sboxskins.gg",
+    // Alternate names feed Google's "also known as" SERP layout and
+    // help match bare-word "sbox" queries without rewriting our primary
+    // S&box-first body copy.
+    alternateName: ["sbox skins", "S&box Skins", "sbox market tracker"],
     url: "https://sboxskins.gg",
     description:
-      "Browse, search, and track prices for S&box (sbox / sandbox) cosmetics and skins on the Steam Community Market. Live market data, order books, supply counts, and historical charts.",
+      "Browse, search, and track prices for S&box (also written sbox) cosmetics and skins on the Steam Community Market. Live sbox market data, order books, supply counts, and historical charts.",
     potentialAction: {
       "@type": "SearchAction",
       target: "https://sboxskins.gg/items?q={search_term_string}",
