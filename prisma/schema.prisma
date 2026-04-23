@@ -190,6 +190,12 @@ model PageView {
   id        String   @id @default(cuid())
   path      String
   referrer  String?
+  // Full pathname of the referring URL (no query/hash), captured for
+  // debugging which specific external pages send us traffic — e.g.
+  // "/groups/sboxtraders" when steamcommunity.com is the referrer.
+  // Separate from `referrer` so the main top-referrers aggregation
+  // (grouped by normalized hostname) stays clean.
+  referrerPath String?
   userAgent String?
   country   String?
   city      String?
