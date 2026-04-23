@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { ArrowLeft } from "lucide-react";
+import { NewsletterSignupForm } from "@/components/newsletter/signup-form";
 
 export const revalidate = 3600;
 
@@ -65,6 +66,10 @@ export default async function BlogPostPage({ params }: PageProps) {
 
         <div className="max-w-none">{renderMarkdown(post.content)}</div>
       </article>
+
+      <div className="mt-12">
+        <NewsletterSignupForm />
+      </div>
     </div>
   );
 }

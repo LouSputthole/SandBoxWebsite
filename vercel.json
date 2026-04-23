@@ -30,6 +30,10 @@
       "schedule": "0 18 * * 5"
     },
     {
+      "path": "/api/cron/monday-outlook",
+      "schedule": "0 14 * * 1"
+    },
+    {
       "path": "/api/cron/supply-snapshot",
       "schedule": "0 9 * * *"
     },
