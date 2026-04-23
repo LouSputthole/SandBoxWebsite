@@ -412,9 +412,19 @@ export async function genLimitedEdition(): Promise<GeneratedTweet | null> {
 
 /**
  * Find the price of each item ~7 days ago by querying PricePoint.
- * Uses a narrow [7d - 4h, 7d + 4h] window centered on the target time and
- * picks the point closest to exactly 7 days ago. Returns a map of
- * itemId -> price.
+ *
+ * Uses an 8-hour window centered on exactly 7 days ago ([7d - 4h,
+ * 7d + 4h]) and takes the MEDIAN price per item across that window —
+ * not the single closest point.
+ *
+ * Why median: Steam's /market/search occasionally returns a spurious
+ * sell_price during a sync (a brief low-ball listing that got
+ * cancelled, a quirky partial response, etc.) and that value gets
+ * stored as a PricePoint. If a single outlier lands closest to the
+ * target time, the weekly % explodes (we've seen +5457% tweeted when
+ * the real move was +23%). Median across the window's 4–8 typical
+ * points is immune to single-point outliers and still tracks real
+ * weekly moves.
  */
 async function getWeekAgoPrices(): Promise<Map<string, number>> {
   const targetTime = Date.now() - 7 * 24 * 60 * 60 * 1000;
@@ -423,22 +433,28 @@ async function getWeekAgoPrices(): Promise<Map<string, number>> {
 
   const points = await prisma.pricePoint.findMany({
     where: { timestamp: { gte: windowStart, lte: windowEnd } },
-    select: { itemId: true, price: true, timestamp: true },
+    select: { itemId: true, price: true },
   });
 
-  // For each item, pick the point with the smallest |timestamp - target|
-  const closest = new Map<string, { price: number; delta: number }>();
+  // Group all points in the window per item.
+  const pointsByItem = new Map<string, number[]>();
   for (const p of points) {
-    const delta = Math.abs(p.timestamp.getTime() - targetTime);
-    const existing = closest.get(p.itemId);
-    if (!existing || delta < existing.delta) {
-      closest.set(p.itemId, { price: p.price, delta });
-    }
+    const arr = pointsByItem.get(p.itemId) ?? [];
+    arr.push(p.price);
+    pointsByItem.set(p.itemId, arr);
   }
 
+  // Median per item — sort + pick middle.
   const map = new Map<string, number>();
-  for (const [id, { price }] of closest) {
-    map.set(id, price);
+  for (const [itemId, prices] of pointsByItem) {
+    if (prices.length === 0) continue;
+    const sorted = [...prices].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median =
+      sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
+    if (median > 0) map.set(itemId, median);
   }
   return map;
 }
