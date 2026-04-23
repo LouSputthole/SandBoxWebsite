@@ -46,26 +46,36 @@ export async function generateAndSaveWeeklyReport(): Promise<{
       orderBy: { timestamp: "desc" },
     }),
     prisma.marketSnapshot.findFirst({ orderBy: { timestamp: "desc" } }),
-    // Pull every price point in the ±12h window and keep the one closest
-    // to exactly 7 days ago per item. This gives us real week-over-week
-    // changes instead of the stale 24h column (which misses Mon→Fri moves).
+    // Pull every price point in the ±12h window centered on 7 days ago.
+    // We take the MEDIAN per item (not the single closest point) because
+    // Steam's /market/search occasionally stores spurious sell_prices
+    // during a sync. A single outlier at the baseline would blow up the
+    // reported weekly change — we've seen +5000%+ tweets when the real
+    // move was +20%. Median is robust to those one-offs.
     prisma.pricePoint.findMany({
       where: { timestamp: { gte: baselineStart, lte: baselineEnd } },
-      select: { itemId: true, price: true, timestamp: true },
+      select: { itemId: true, price: true },
     }),
   ]);
 
-  // Pick the price point closest to exactly 7 days ago per item
-  const targetTime = weekAgo.getTime();
-  const priceWeekAgo = new Map<string, number>();
-  const bestDelta = new Map<string, number>();
+  // Median baseline price per item. Group all window points, sort, pick
+  // middle. Skip items with zero-or-negative medians (shouldn't happen
+  // but guards against division blow-ups downstream).
+  const pointsByItem = new Map<string, number[]>();
   for (const p of weekAgoPoints) {
-    const delta = Math.abs(p.timestamp.getTime() - targetTime);
-    const prev = bestDelta.get(p.itemId);
-    if (prev === undefined || delta < prev) {
-      priceWeekAgo.set(p.itemId, p.price);
-      bestDelta.set(p.itemId, delta);
-    }
+    const arr = pointsByItem.get(p.itemId) ?? [];
+    arr.push(p.price);
+    pointsByItem.set(p.itemId, arr);
+  }
+  const priceWeekAgo = new Map<string, number>();
+  for (const [itemId, prices] of pointsByItem) {
+    const sorted = [...prices].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const median =
+      sorted.length % 2 === 0
+        ? (sorted[mid - 1] + sorted[mid]) / 2
+        : sorted[mid];
+    if (median > 0) priceWeekAgo.set(itemId, median);
   }
 
   // Compute 7-day change for each item that has both current + baseline
