@@ -1,19 +1,20 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
-import { Trophy, ExternalLink } from "lucide-react";
-import { formatPrice } from "@/lib/utils";
+import { Prisma } from "@/generated/prisma/client";
+import { Price } from "@/components/ui/price";
+import { ExternalLink } from "lucide-react";
 
 export const revalidate = 1800; // 30 minutes
 
 export const metadata: Metadata = {
-  title: "Top Holders — S&box Skin Whales",
+  title: "Whales — Biggest S&box Skin Collectors",
   description:
-    "The biggest S&box skin holders ranked by estimated portfolio value. Who owns the rarest items and largest inventories across the S&box economy.",
-  alternates: { canonical: "/holders" },
+    "The biggest S&box skin collectors ranked by estimated portfolio value. Who owns the rarest items and largest inventories across the S&box economy.",
+  alternates: { canonical: "/whales" },
 };
 
-interface Holder {
+interface Whale {
   steamId: string;
   name: string;
   avatarUrl: string;
@@ -23,7 +24,10 @@ interface Holder {
   uniqueItems: number;
 }
 
-async function getTopHolders(): Promise<Holder[]> {
+async function getWhales(): Promise<Whale[]> {
+  // "topHolders" remains the schema field name — that's the per-item
+  // holders JSON blob from sbox.dev. Here we aggregate across items to
+  // derive the site-wide "whale" ranking.
   const items = await prisma.item.findMany({
     where: { topHolders: { not: Prisma.JsonNull } },
     select: {
@@ -34,7 +38,7 @@ async function getTopHolders(): Promise<Holder[]> {
     },
   });
 
-  const byHolder = new Map<string, Holder>();
+  const byWhale = new Map<string, Whale>();
 
   for (const item of items) {
     if (!item.topHolders || !Array.isArray(item.topHolders)) continue;
@@ -48,7 +52,7 @@ async function getTopHolders(): Promise<Holder[]> {
       quantity: number;
     }>) {
       if (!h.steamId) continue;
-      const existing = byHolder.get(h.steamId) ?? {
+      const existing = byWhale.get(h.steamId) ?? {
         steamId: h.steamId,
         name: h.name,
         avatarUrl: h.avatarUrl,
@@ -68,53 +72,48 @@ async function getTopHolders(): Promise<Holder[]> {
       existing.totalValue += value;
       existing.totalQuantity += h.quantity;
       existing.uniqueItems = existing.items.length;
-      byHolder.set(h.steamId, existing);
+      byWhale.set(h.steamId, existing);
     }
   }
 
-  return Array.from(byHolder.values())
-    .map((h) => ({ ...h, items: h.items.sort((a, b) => b.value - a.value) }))
+  return Array.from(byWhale.values())
+    .map((w) => ({ ...w, items: w.items.sort((a, b) => b.value - a.value) }))
     .sort((a, b) => b.totalValue - a.totalValue)
     .slice(0, 50);
 }
 
-// Import at bottom so getTopHolders can use Prisma.JsonNull without a top-level hoist issue
-import { Prisma } from "@/generated/prisma/client";
+export default async function WhalesPage() {
+  const whales = await getWhales();
 
-export default async function HoldersPage() {
-  const holders = await getTopHolders();
-
-  const grandTotal = holders.reduce((sum, h) => sum + h.totalValue, 0);
+  const grandTotal = whales.reduce((sum, w) => sum + w.totalValue, 0);
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8">
       <div className="mb-8">
         <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 rounded-lg bg-amber-500/10">
-            <Trophy className="h-5 w-5 text-amber-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-white">Top Holders</h1>
+          <div className="p-2 rounded-lg bg-sky-500/10 text-2xl leading-none">🐋</div>
+          <h1 className="text-2xl font-bold text-white">Whales</h1>
         </div>
         <p className="text-sm text-neutral-400">
-          Biggest known S&box skin holders ranked by portfolio value. Only shows holders that appear in
-          the top 10 for at least one tracked item.
+          Biggest known S&box skin collectors ranked by portfolio value. Only shows accounts that appear
+          in the top 10 for at least one tracked item.
         </p>
-        {holders.length > 0 && (
+        {whales.length > 0 && (
           <p className="text-xs text-neutral-600 mt-2">
-            Tracking {holders.length} holders · combined portfolio value{" "}
-            <span className="text-white font-medium">{formatPrice(grandTotal)}</span>
+            Tracking {whales.length} whales · combined portfolio value{" "}
+            <span className="text-white font-medium"><Price amount={grandTotal} /></span>
           </p>
         )}
       </div>
 
-      {holders.length === 0 ? (
+      {whales.length === 0 ? (
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-12 text-center">
-          <p className="text-sm text-neutral-500">No holder data yet. Check back after the next sync.</p>
+          <p className="text-sm text-neutral-500">No whale data yet. Check back after the next sync.</p>
         </div>
       ) : (
         <div className="space-y-1">
-          {holders.map((h, i) => (
-            <HolderRow key={h.steamId} holder={h} rank={i + 1} />
+          {whales.map((w, i) => (
+            <WhaleRow key={w.steamId} whale={w} rank={i + 1} />
           ))}
         </div>
       )}
@@ -122,7 +121,7 @@ export default async function HoldersPage() {
   );
 }
 
-function HolderRow({ holder, rank }: { holder: Holder; rank: number }) {
+function WhaleRow({ whale, rank }: { whale: Whale; rank: number }) {
   const rankColor =
     rank === 1
       ? "bg-amber-500/20 text-amber-400"
@@ -138,26 +137,27 @@ function HolderRow({ holder, rank }: { holder: Holder; rank: number }) {
         <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${rankColor}`}>
           {rank}
         </span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={holder.avatarUrl}
+          src={whale.avatarUrl}
           alt=""
           className="h-10 w-10 rounded-full border border-neutral-700/50"
         />
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-white truncate">{holder.name}</p>
+          <p className="text-sm font-medium text-white truncate">{whale.name}</p>
           <p className="text-[11px] text-neutral-500">
-            {holder.uniqueItems} unique · {holder.totalQuantity} total items
+            {whale.uniqueItems} unique · {whale.totalQuantity} total items
           </p>
         </div>
         <div className="text-right">
-          <p className="text-base font-semibold text-white">{formatPrice(holder.totalValue)}</p>
+          <p className="text-base font-semibold text-white"><Price amount={whale.totalValue} /></p>
         </div>
       </summary>
       <div className="px-4 py-3 border-t border-neutral-800 bg-neutral-950/30">
         <div className="flex items-center justify-between mb-2">
           <p className="text-[11px] uppercase tracking-wider text-neutral-600">Top items</p>
           <a
-            href={`https://steamcommunity.com/profiles/${holder.steamId}`}
+            href={`https://steamcommunity.com/profiles/${whale.steamId}`}
             target="_blank"
             rel="noopener noreferrer"
             className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
@@ -167,7 +167,7 @@ function HolderRow({ holder, rank }: { holder: Holder; rank: number }) {
           </a>
         </div>
         <div className="space-y-1">
-          {holder.items.slice(0, 8).map((it) => (
+          {whale.items.slice(0, 8).map((it) => (
             <Link
               key={it.slug}
               href={`/items/${it.slug}`}
@@ -175,7 +175,7 @@ function HolderRow({ holder, rank }: { holder: Holder; rank: number }) {
             >
               <span className="text-xs text-neutral-300 truncate flex-1">{it.name}</span>
               <span className="text-xs text-neutral-500 ml-2">
-                {it.quantity}× · {formatPrice(it.value)}
+                {it.quantity}× · <Price amount={it.value} />
               </span>
             </Link>
           ))}

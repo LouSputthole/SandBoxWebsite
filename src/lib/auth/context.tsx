@@ -56,8 +56,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [fetchUser]);
 
   const login = useCallback(() => {
-    // Redirect to Steam login
-    window.location.href = "/api/auth/steam";
+    // Capture where the user is right now so the Steam callback can bounce
+    // them back instead of always dumping them on /. Pathname+search only
+    // (no hostname, no fragment) — the server re-validates it anyway so
+    // someone crafting a malicious redirect_to URL can't use us as an
+    // open redirect.
+    let returnTo = "/";
+    if (typeof window !== "undefined") {
+      returnTo = window.location.pathname + window.location.search;
+      // Don't bounce back to auth endpoints or the callback URL itself
+      if (returnTo.startsWith("/api/auth")) returnTo = "/";
+    }
+    window.location.href = `/api/auth/steam?next=${encodeURIComponent(returnTo)}`;
   }, []);
 
   const logout = useCallback(async () => {

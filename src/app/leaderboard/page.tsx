@@ -4,7 +4,8 @@ import { ItemImage } from "@/components/items/item-image";
 import { LeaderboardTabSwitcher } from "@/components/leaderboard/tab-switcher";
 import { tabs, type LeaderboardTab } from "@/components/leaderboard/tabs";
 import { prisma } from "@/lib/db";
-import { formatPrice, formatPriceChange } from "@/lib/utils";
+import { formatPriceChange } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 import type { Prisma } from "@/generated/prisma/client";
 
 // ISR — leaderboard data changes every sync (15-30 min). Caching the rendered
@@ -165,7 +166,7 @@ export default async function LeaderboardPage({ searchParams }: PageProps) {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <span className="text-sm font-semibold text-white">
-                        {item.currentPrice != null ? formatPrice(item.currentPrice) : "—"}
+                        {item.currentPrice != null ? <Price amount={item.currentPrice} /> : "—"}
                       </span>
                     </td>
                     {showChange && (

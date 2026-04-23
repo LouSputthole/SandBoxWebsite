@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { ArrowLeftRight, TrendingUp, AlertTriangle, Loader2 } from "lucide-react";
-import { formatPrice } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 import { Tooltip } from "@/components/ui/tooltip";
 
 interface OrderEntry {
@@ -125,7 +125,7 @@ export function SpreadAnalysis({ slug }: { slug: string }) {
             />
           </div>
           <div className="text-sm font-semibold text-white">
-            {formatPrice(spread)}
+            <Price amount={spread} />
           </div>
           <div className="text-[10px] text-neutral-500">
             {spreadPct.toFixed(1)}%
@@ -141,7 +141,7 @@ export function SpreadAnalysis({ slug }: { slug: string }) {
             />
           </div>
           <div className="text-sm font-semibold text-white">
-            {formatPrice(midpoint)}
+            <Price amount={midpoint} />
           </div>
         </div>
         <div className="rounded-lg bg-neutral-800/50 px-3 py-2.5">

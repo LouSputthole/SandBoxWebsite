@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { inferItemType } from "@/lib/services/sync-service";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
  * POST /api/admin/reclassify — Re-run type inference on all existing items.
@@ -8,17 +9,11 @@ import { inferItemType } from "@/lib/services/sync-service";
  * Useful after improving the inferItemType logic. Iterates every item, computes
  * a new type from its name, and updates if different. Returns a report of changes.
  *
- * Protected by CRON_SECRET header.
+ * Gated by CRON_SECRET with per-IP brute-force rate limiting.
  */
 export async function POST(request: NextRequest) {
-  const cronSecret = process.env.CRON_SECRET;
-  if (!cronSecret) {
-    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
-  }
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${cronSecret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request, { allowedKeys: ["cron"] });
+  if (!guard.ok) return guard.response;
 
   const items = await prisma.item.findMany({
     select: { id: true, name: true, type: true },

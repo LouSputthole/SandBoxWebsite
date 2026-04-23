@@ -1,26 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
- * GET /api/admin/tweet/stats?key=<ANALYTICS_KEY>&period=7d
+ * GET /api/admin/tweet/stats?period=7d
  *
- * Returns sent tweets in the window + click attribution.
- * Click attribution = pageviews with referrer containing "t.co" to a matching
- * path, within the period.
+ * Returns sent tweets in the window + click attribution. Gated by
+ * ANALYTICS_KEY with per-IP brute-force rate limiting.
  */
 export async function GET(request: NextRequest) {
-  const adminKey = process.env.ANALYTICS_KEY;
-  if (!adminKey) {
-    return NextResponse.json({ error: "Admin key not configured" }, { status: 500 });
-  }
-  // Prefer Authorization header; fall back to URL query for transitional use.
-  const authHeader = request.headers.get("authorization");
-  const queryKey = request.nextUrl.searchParams.get("key");
-  const authorized =
-    authHeader === `Bearer ${adminKey}` || queryKey === adminKey;
-  if (!authorized) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request, { allowedKeys: ["analytics"] });
+  if (!guard.ok) return guard.response;
 
   const period = request.nextUrl.searchParams.get("period") ?? "7d";
   const days = period === "30d" ? 30 : period === "24h" ? 1 : 7;

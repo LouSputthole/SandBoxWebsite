@@ -22,6 +22,17 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // /holders is the old path for what is now /whales. Permanent redirect
+  // preserves any backlinks + search rankings while the crawler catches up.
+  async redirects() {
+    return [
+      {
+        source: "/holders",
+        destination: "/whales",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -2,7 +2,8 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { ItemImage } from "@/components/items/item-image";
-import { formatPrice, formatPriceChange } from "@/lib/utils";
+import { formatPriceChange } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 import { GitCompare } from "lucide-react";
 import { ItemSelect } from "./item-select";
 
@@ -90,7 +91,7 @@ function ItemSelector({
           <ItemImage src={current.imageUrl} name={current.name} type={current.type} size="sm" className="h-10 w-10 rounded-md border border-neutral-700/50" />
           <div className="min-w-0 flex-1">
             <p className="text-sm text-white truncate">{current.name}</p>
-            <p className="text-xs text-neutral-500">{formatPrice(current.currentPrice ?? 0)}</p>
+            <p className="text-xs text-neutral-500"><Price amount={current.currentPrice ?? 0} /></p>
           </div>
         </div>
       )}
@@ -117,8 +118,8 @@ function ComparisonTable({
   const rows: { label: string; a: React.ReactNode; b: React.ReactNode; highlight?: "a" | "b" | null }[] = [
     {
       label: "Price",
-      a: formatPrice(itemA.currentPrice ?? 0),
-      b: formatPrice(itemB.currentPrice ?? 0),
+      a: <Price amount={itemA.currentPrice ?? 0} />,
+      b: <Price amount={itemB.currentPrice ?? 0} />,
       highlight: cmp(itemA.currentPrice, itemB.currentPrice, "higher"),
     },
     {

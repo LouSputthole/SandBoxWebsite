@@ -6,8 +6,30 @@ import {
   getSteamImageUrl,
   getMarketUrl,
   parseSteamPrice,
+  searchMarketByQuery,
 } from "@/lib/steam/client";
 import type { SteamSearchResult, SyncResult } from "@/lib/steam/types";
+
+/**
+ * Items we know exist on the Steam Market but have been missing from
+ * sync results historically. Steam's paginated /market/search/render is
+ * occasionally lossy — items can drop between pages during a sync and
+ * never make it into our DB. The reconciliation pass below re-seeds
+ * these by exact-name query if the main paginated sync didn't return
+ * them, so gaps self-heal.
+ *
+ * Add more names here when you spot another missing item. Keep in sync
+ * with real Steam market_hash_name values (case-sensitive on Steam's
+ * side but we match case-insensitive).
+ */
+const KNOWN_MARKET_HASH_NAMES: readonly string[] = [
+  "Hard Hat",
+];
+
+/** Safety cap — don't run unbounded individual Steam queries if the
+ * main sync missed a huge number of items (probably a Steam outage,
+ * reconciling hundreds of names one at a time would be worse). */
+const MAX_RECONCILE_ATTEMPTS = 15;
 import { slugify, median } from "@/lib/utils";
 import { debug } from "@/lib/debug";
 
@@ -114,22 +136,39 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
     }
 
     // Batched lookup of each item's price ~24h ago.
-    // We query a 4-hour window ending 24h ago, then keep the newest point
-    // per item within that window. This gives us a true 24h baseline for
-    // priceChange24h instead of comparing to the previous sync's price
-    // (which was only ~15-30 min ago and made 24h changes always look tiny).
-    const windowEnd = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const windowStart = new Date(Date.now() - 28 * 60 * 60 * 1000);
+    // 4-hour window CENTERED on exactly 24h ago — [now-26h, now-22h] —
+    // so the median of the window's points approximates "price 24 hours
+    // ago" rather than "price 26 hours ago" (which is what [now-28h,
+    // now-24h] gave us before). Alignment matters because the chart's
+    // own 24h view starts at now-24h, so if our baseline is 2h earlier
+    // than that, the header % and chart % disagree for items that moved
+    // in those extra 2 hours.
+    //
+    // Why median across the window: Steam's /market/search occasionally
+    // returns spurious sell_price values during a sync. If the baseline
+    // picked one of those, priceChange24h blew up (we saw +80% when the
+    // real move was sideways). Median across 4-8 typical window points
+    // is immune to single-point outliers and still tracks real moves.
+    const windowEnd = new Date(Date.now() - 22 * 60 * 60 * 1000);
+    const windowStart = new Date(Date.now() - 26 * 60 * 60 * 1000);
     const pointsFrom24hAgo = await prisma.pricePoint.findMany({
       where: { timestamp: { gte: windowStart, lte: windowEnd } },
-      orderBy: { timestamp: "desc" },
       select: { itemId: true, price: true },
     });
-    const priceAt24hAgo = new Map<string, number>();
+    const pointsByItem = new Map<string, number[]>();
     for (const p of pointsFrom24hAgo) {
-      if (!priceAt24hAgo.has(p.itemId)) priceAt24hAgo.set(p.itemId, p.price);
+      const arr = pointsByItem.get(p.itemId) ?? [];
+      arr.push(p.price);
+      pointsByItem.set(p.itemId, arr);
     }
-    debug(`[sync] Loaded ${priceAt24hAgo.size} 24h-ago price points for change calc`);
+    const priceAt24hAgo = new Map<string, number>();
+    for (const [itemId, prices] of pointsByItem) {
+      const m = median(prices);
+      if (m !== null && m > 0) priceAt24hAgo.set(itemId, m);
+    }
+    debug(
+      `[sync] Loaded 24h-ago baselines for ${priceAt24hAgo.size} items (median across the 4h window centered on 24h ago, from ${pointsFrom24hAgo.length} points total)`,
+    );
 
     // Accumulate price points to write in one batch at the end (avoids N+1)
     const pendingPricePoints: { itemId: string; price: number; volume: number }[] = [];
@@ -156,6 +195,55 @@ export async function syncItems(fetchPrices = false): Promise<SyncResult> {
     if (pendingPricePoints.length > 0) {
       await prisma.pricePoint.createMany({ data: pendingPricePoints });
       result.pricePointsCreated = pendingPricePoints.length;
+    }
+
+    // --- Reconciliation pass ---
+    // Steam's paginated search is occasionally lossy; items can drop
+    // between pages and never make it into our sync. We track the set
+    // of hash_names this run actually returned, then compare against
+    // (a) items previously seen in our DB and (b) a curated known-list
+    // of items we've spotted as chronically missing. Anything in either
+    // group that wasn't in this run gets re-seeded via a direct query
+    // to Steam, so gaps self-heal without manual curl-ing.
+    const seenThisSync = new Set(steamItems.map((i) => i.hash_name));
+    const knownFromDB = await prisma.item.findMany({
+      where: { steamMarketId: { not: null } },
+      select: { steamMarketId: true },
+    });
+    const expected = new Set<string>([
+      ...knownFromDB
+        .map((i) => i.steamMarketId)
+        .filter((x): x is string => !!x),
+      ...KNOWN_MARKET_HASH_NAMES,
+    ]);
+    const missing = [...expected].filter((n) => !seenThisSync.has(n));
+
+    if (missing.length > 0) {
+      // Cap to avoid runaway — if Steam dropped dozens at once, more
+      // likely an outage than a real gap. Next sync will try again.
+      const toReconcile = missing.slice(0, MAX_RECONCILE_ATTEMPTS);
+      if (missing.length > MAX_RECONCILE_ATTEMPTS) {
+        debug(
+          `[sync:reconcile] ${missing.length} items missing — attempting first ${MAX_RECONCILE_ATTEMPTS} only`,
+        );
+      } else {
+        debug(`[sync:reconcile] ${missing.length} items missing — attempting to reseed`);
+      }
+      let reconciled = 0;
+      for (const hashName of toReconcile) {
+        try {
+          const res = await seedItemByHashName(hashName, result);
+          if (res.itemId) {
+            reconciled++;
+            debug(`[sync:reconcile]   ✓ reseeded "${res.matchedName ?? hashName}"`);
+          }
+        } catch (err) {
+          result.errors.push(`Reconcile "${hashName}": ${err}`);
+        }
+      }
+      if (reconciled > 0) {
+        debug(`[sync:reconcile] Reseeded ${reconciled}/${toReconcile.length} missing items`);
+      }
     }
 
     // Optionally fetch detailed price overview for each item
@@ -264,7 +352,7 @@ function generateDescription(
  * falls back to comparing against the previous sync (not ideal but better
  * than nothing when we have < 24h of history).
  */
-async function upsertItem(
+export async function upsertItem(
   steamItem: SteamSearchResult,
   result: SyncResult,
   priceAt24hAgo?: Map<string, number>,
@@ -352,6 +440,39 @@ async function upsertItem(
     result.itemsCreated++;
     return created.id;
   }
+}
+
+/**
+ * Seed a single item by its market_hash_name via the Steam search
+ * endpoint (the /market/search/render API filtered by query). Used both
+ * by the /api/admin/seed-item escape-hatch AND by the reconciliation
+ * pass in syncItems() when the main paginated sync missed an item we
+ * know about.
+ *
+ * Runs through the same upsertItem path as the regular sync, so seeded
+ * items are indistinguishable from normally-synced ones (same slug,
+ * type inference, description).
+ *
+ * Returns null if Steam's response had no exact match for the name.
+ */
+export async function seedItemByHashName(
+  hashName: string,
+  result: SyncResult,
+): Promise<{ itemId: string | null; matchedName: string | null }> {
+  const search = await searchMarketByQuery(hashName, 20);
+  if (!search || !search.success) {
+    return { itemId: null, matchedName: null };
+  }
+
+  const match = search.results.find(
+    (r) => r.hash_name.toLowerCase() === hashName.toLowerCase(),
+  );
+  if (!match) {
+    return { itemId: null, matchedName: null };
+  }
+
+  const itemId = await upsertItem(match, result);
+  return { itemId, matchedName: match.name };
 }
 
 /**

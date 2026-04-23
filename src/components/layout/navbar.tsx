@@ -15,10 +15,12 @@ import {
   LogIn,
   LogOut,
   User as UserIcon,
+  ArrowRightLeft,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/context";
+import { CurrencyPicker } from "@/components/layout/currency-picker";
 
 export function Navbar() {
   const router = useRouter();
@@ -85,10 +87,17 @@ export function Navbar() {
               Leaderboard
             </Link>
             <Link
-              href="/holders"
+              href="/trade"
+              className="text-sm text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              Trade
+            </Link>
+            <Link
+              href="/whales"
               className="text-sm text-neutral-400 hover:text-white transition-colors"
             >
-              Holders
+              Whales
             </Link>
             <Link
               href="/blog"
@@ -139,6 +148,7 @@ export function Navbar() {
 
           {/* Auth / User */}
           <div className="hidden md:flex items-center gap-2 shrink-0">
+            <CurrencyPicker variant="desktop" />
             {authLoading ? (
               <div className="h-8 w-8 rounded-full bg-neutral-800 animate-pulse" />
             ) : user ? (
@@ -261,11 +271,18 @@ export function Navbar() {
               Leaderboard
             </Link>
             <Link
-              href="/holders"
+              href="/trade"
               className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
               onClick={() => setMobileMenuOpen(false)}
             >
-              Top Holders
+              Trading Board
+            </Link>
+            <Link
+              href="/whales"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Whales
             </Link>
             <Link
               href="/blog"
@@ -309,6 +326,11 @@ export function Navbar() {
             >
               Contact
             </Link>
+
+            {/* Currency picker (mobile) */}
+            <div className="border-t border-neutral-800 mt-2 pt-2">
+              <CurrencyPicker variant="mobile" />
+            </div>
 
             {/* Mobile Auth */}
             <div className="px-3 pt-2 border-t border-neutral-800 mt-2">

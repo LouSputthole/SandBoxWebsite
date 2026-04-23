@@ -2,7 +2,8 @@ import Link from "next/link";
 import { TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
 import { ItemImage } from "@/components/items/item-image";
 import { WatchlistButton } from "@/components/items/watchlist-button";
-import { formatPrice, formatPriceChange } from "@/lib/utils";
+import { formatPriceChange } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 
 interface ItemCardProps {
   item: {
@@ -56,7 +57,7 @@ export function ItemCard({ item }: ItemCardProps) {
 
           <div className="flex items-end justify-between pt-1">
             <span className="text-lg font-bold text-white">
-              {item.currentPrice != null ? formatPrice(item.currentPrice) : "N/A"}
+              {item.currentPrice != null ? <Price amount={item.currentPrice} /> : "N/A"}
             </span>
             <div className="flex items-center gap-1">
               {change > 0 ? (

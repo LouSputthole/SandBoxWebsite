@@ -10,11 +10,18 @@ import {
   AlertCircle,
   ExternalLink,
   Backpack,
+  TrendingUp,
+  LayoutGrid,
+  Lock,
+  HelpCircle,
+  Shield,
+  User as UserIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ItemImage } from "@/components/items/item-image";
-import { formatPrice } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
+import { useAuth } from "@/lib/auth/context";
 
 interface InventoryItem {
   name: string;
@@ -36,10 +43,138 @@ interface InventoryResult {
 }
 
 export default function InventoryPage() {
+  const { user } = useAuth();
   const [url, setUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<InventoryResult | null>(null);
+
+  /**
+   * Core lookup: given a resolved SteamID64, fetch the inventory, match
+   * it against our price DB, and set result/error state. Reused by both
+   * the URL-paste flow and the signed-in-user shortcut button.
+   */
+  const runLookup = async (steamid64: string) => {
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const invUrl = `/api/inventory/fetch?steamid=${steamid64}`;
+      let inv: {
+        assets?: Array<{ classid: string; instanceid: string; amount: string }>;
+        descriptions?: Array<{
+          classid: string;
+          instanceid: string;
+          name: string;
+          market_hash_name: string;
+          type: string;
+          icon_url: string;
+          marketable: number;
+        }>;
+        success?: number | boolean;
+        error?: string;
+      };
+      try {
+        const invRes = await fetch(invUrl);
+        if (!invRes.ok) {
+          const errBody = await invRes.json().catch(() => ({}));
+          setError(
+            errBody.error ||
+              `Failed to fetch inventory (HTTP ${invRes.status}). Try again in a minute.`,
+          );
+          return;
+        }
+        inv = await invRes.json();
+      } catch (err) {
+        console.error("[inventory] Fetch error:", err);
+        setError(
+          "Could not load inventory. Check your internet connection and try again.",
+        );
+        return;
+      }
+
+      if (inv.success === false || inv.success === 0) {
+        setError(
+          inv.error ||
+            "Steam returned an error. The inventory may be private or this account may not own S&box.",
+        );
+        return;
+      }
+
+      if (!inv.assets || inv.assets.length === 0) {
+        setResult({
+          steamid64,
+          totalItems: 0,
+          uniqueItems: 0,
+          totalValue: 0,
+          items: [],
+        });
+        return;
+      }
+
+      type InvDesc = NonNullable<typeof inv.descriptions>[number];
+      const descMap = new Map<string, InvDesc>();
+      if (inv.descriptions) {
+        for (const d of inv.descriptions) {
+          descMap.set(`${d.classid}_${d.instanceid}`, d);
+        }
+      }
+
+      const counts = new Map<
+        string,
+        {
+          hashName: string;
+          quantity: number;
+          name: string;
+          type: string;
+          iconUrl?: string;
+          marketable: number;
+        }
+      >();
+      for (const asset of inv.assets) {
+        const desc = descMap.get(`${asset.classid}_${asset.instanceid}`);
+        if (!desc) continue;
+        const qty = parseInt(asset.amount, 10) || 1;
+        const existing = counts.get(desc.market_hash_name);
+        if (existing) {
+          existing.quantity += qty;
+        } else {
+          counts.set(desc.market_hash_name, {
+            hashName: desc.market_hash_name,
+            quantity: qty,
+            name: desc.name,
+            type: desc.type ?? "unknown",
+            iconUrl: desc.icon_url,
+            marketable: desc.marketable,
+          });
+        }
+      }
+
+      const matchRes = await fetch("/api/inventory/match", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: Array.from(counts.values()) }),
+      });
+      const matchData = await matchRes.json();
+      if (!matchRes.ok) {
+        setError(matchData.error || "Failed to match items against database");
+        return;
+      }
+
+      setResult({ steamid64, ...matchData });
+    } catch {
+      setError("Unexpected error — please try again");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /** Logged-in-user shortcut: skip URL parsing entirely. */
+  const checkMine = () => {
+    if (!user?.steamId) return;
+    void runLookup(user.steamId);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,112 +251,13 @@ export default function InventoryPage() {
 
       console.log("[inventory] Using SteamID64:", steamid64);
 
-      // 2. Fetch inventory via our server-side proxy.
-      // Steam's inventory endpoint doesn't set CORS headers, so direct
-      // browser fetches are blocked. /api/inventory/fetch runs server-side
-      // (no CORS issues) and Steam's JSON endpoints accept Vercel IPs fine.
-      const invUrl = `/api/inventory/fetch?steamid=${steamid64}`;
-      let inv: {
-        assets?: Array<{ classid: string; instanceid: string; amount: string }>;
-        descriptions?: Array<{
-          classid: string;
-          instanceid: string;
-          name: string;
-          market_hash_name: string;
-          type: string;
-          icon_url: string;
-          marketable: number;
-        }>;
-        success?: number | boolean;
-        error?: string;
-      };
-      try {
-        const invRes = await fetch(invUrl);
-        if (!invRes.ok) {
-          // The proxy returns helpful error messages in the body for common cases
-          const errBody = await invRes.json().catch(() => ({}));
-          setError(
-            errBody.error ||
-              `Failed to fetch inventory (HTTP ${invRes.status}). Try again in a minute.`,
-          );
-          return;
-        }
-        inv = await invRes.json();
-      } catch (err) {
-        console.error("[inventory] Fetch error:", err);
-        setError(
-          "Could not load inventory. Check your internet connection and try again.",
-        );
-        return;
-      }
-
-      // Check for Steam error response (e.g., {"success": false, "error": "..."})
-      if (inv.success === false || inv.success === 0) {
-        setError(
-          inv.error || "Steam returned an error. The inventory may be private or this account may not own S&box."
-        );
-        return;
-      }
-
-      if (!inv.assets || inv.assets.length === 0) {
-        setResult({
-          steamid64,
-          totalItems: 0,
-          uniqueItems: 0,
-          totalValue: 0,
-          items: [],
-        });
-        return;
-      }
-
-      // 3. Build description lookup and aggregate by market_hash_name
-      type InvDesc = NonNullable<typeof inv.descriptions>[number];
-      const descMap = new Map<string, InvDesc>();
-      if (inv.descriptions) {
-        for (const d of inv.descriptions) {
-          descMap.set(`${d.classid}_${d.instanceid}`, d);
-        }
-      }
-
-      const counts = new Map<
-        string,
-        { hashName: string; quantity: number; name: string; type: string; iconUrl?: string; marketable: number }
-      >();
-      for (const asset of inv.assets) {
-        const desc = descMap.get(`${asset.classid}_${asset.instanceid}`);
-        if (!desc) continue;
-        const qty = parseInt(asset.amount, 10) || 1;
-        const existing = counts.get(desc.market_hash_name);
-        if (existing) {
-          existing.quantity += qty;
-        } else {
-          counts.set(desc.market_hash_name, {
-            hashName: desc.market_hash_name,
-            quantity: qty,
-            name: desc.name,
-            type: desc.type ?? "unknown",
-            iconUrl: desc.icon_url,
-            marketable: desc.marketable,
-          });
-        }
-      }
-
-      // 4. Send parsed list to our server for DB-based price enrichment
-      const matchRes = await fetch("/api/inventory/match", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: Array.from(counts.values()) }),
-      });
-      const matchData = await matchRes.json();
-      if (!matchRes.ok) {
-        setError(matchData.error || "Failed to match items against database");
-        return;
-      }
-
-      setResult({ steamid64, ...matchData });
+      // URL resolve done — hand off to the shared lookup flow. It handles
+      // its own loading/error state so we don't need a finally here.
+      setLoading(false);
+      await runLookup(steamid64);
+      return;
     } catch {
       setError("Unexpected error — please try again");
-    } finally {
       setLoading(false);
     }
   };
@@ -243,8 +279,43 @@ export default function InventoryPage() {
         </p>
       </div>
 
+      {/* Signed-in shortcut — skips the "paste your URL" step entirely.
+          We already have their steamId from the session, so one click
+          runs the same lookup the URL form would trigger. */}
+      {user && (
+        <div className="max-w-2xl mx-auto mb-4 flex justify-center">
+          <Button
+            type="button"
+            onClick={checkMine}
+            disabled={loading}
+            className="h-12 px-6 bg-purple-600 hover:bg-purple-700 text-white gap-2"
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <UserIcon className="h-4 w-4" />
+            )}
+            Check my inventory
+            {user.username && (
+              <span className="text-purple-200 text-xs font-normal">
+                ({user.username})
+              </span>
+            )}
+          </Button>
+        </div>
+      )}
+
       {/* Search Form */}
       <form onSubmit={handleSubmit} className="max-w-2xl mx-auto mb-10">
+        {user && (
+          <div className="flex items-center gap-3 mb-3">
+            <div className="flex-1 border-t border-neutral-800" />
+            <span className="text-[10px] uppercase tracking-wider text-neutral-600">
+              or look up another inventory
+            </span>
+            <div className="flex-1 border-t border-neutral-800" />
+          </div>
+        )}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
@@ -259,7 +330,7 @@ export default function InventoryPage() {
           <Button
             type="submit"
             disabled={loading || !url.trim()}
-            className="h-12 px-6 bg-purple-600 hover:bg-purple-700 text-white"
+            className={`h-12 px-6 text-white ${user ? "bg-neutral-700 hover:bg-neutral-600" : "bg-purple-600 hover:bg-purple-700"}`}
           >
             {loading ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -268,10 +339,83 @@ export default function InventoryPage() {
             )}
           </Button>
         </div>
-        <p className="text-xs text-neutral-600 mt-2 text-center">
-          No login required. We only read public inventory data.
-        </p>
+        {!user && (
+          <p className="text-xs text-neutral-600 mt-2 text-center">
+            No login required. We only read public inventory data.
+          </p>
+        )}
       </form>
+
+      {/* Feature cards + FAQ — only shown when the user hasn't run a
+          lookup yet. Once they see results or an error, these become
+          noise; we hide them to keep the results view focused. */}
+      {!loading && !error && !result && (
+        <div className="max-w-3xl mx-auto space-y-4 mb-10">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <FeatureCard
+              icon={<TrendingUp className="h-5 w-5 text-emerald-400" />}
+              tint="bg-emerald-500/10"
+              title="Real-time Valuation"
+              body="Every item priced against live Steam Community Market data, re-synced every 15–30 minutes."
+            />
+            <FeatureCard
+              icon={<LayoutGrid className="h-5 w-5 text-purple-400" />}
+              tint="bg-purple-500/10"
+              title="Per-Item Deep Dive"
+              body="Click any item to see its full price chart, order book, supply, and scarcity score."
+            />
+            <FeatureCard
+              icon={<Lock className="h-5 w-5 text-blue-400" />}
+              tint="bg-blue-500/10"
+              title="Public, No Login"
+              body="We only read your public inventory. No Steam password, no OAuth, nothing stored."
+            />
+          </div>
+
+          <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 space-y-5">
+            <FaqItem
+              icon={<HelpCircle className="h-5 w-5 text-neutral-500" />}
+              question="How does it work?"
+              answer={
+                <>
+                  Paste a Steam profile URL or 17-digit SteamID. We fetch that account&apos;s public inventory from Steam, match every S&amp;box item against our live price database, and total it up. Nothing about your visit is stored.
+                </>
+              }
+            />
+            <FaqItem
+              icon={<Shield className="h-5 w-5 text-neutral-500" />}
+              question="Is my data safe?"
+              answer={
+                <>
+                  We only read publicly-visible inventory data. We can&apos;t see your password, can&apos;t trade, and can&apos;t modify anything. If your profile is set to Friends-Only or Private, Steam won&apos;t return the inventory at all — we never see it either.
+                </>
+              }
+            />
+            <FaqItem
+              icon={<HelpCircle className="h-5 w-5 text-neutral-500" />}
+              question="Why doesn't my item show a price?"
+              answer={
+                <>
+                  Either the item is brand new and we haven&apos;t picked it up on the next sync yet, or it isn&apos;t marketable on the Steam Community Market (tradable cosmetics only). Drop us a note on the{" "}
+                  <Link href="/contact" className="text-purple-400 hover:text-purple-300 underline">
+                    contact page
+                  </Link>{" "}
+                  if something looks wrong.
+                </>
+              }
+            />
+            <FaqItem
+              icon={<HelpCircle className="h-5 w-5 text-neutral-500" />}
+              question="How do I make my inventory public?"
+              answer={
+                <>
+                  On Steam: click your name → Edit Profile → Privacy Settings. Set <strong className="text-neutral-300">My Profile</strong>, <strong className="text-neutral-300">Game Details</strong>, <em>and</em> <strong className="text-neutral-300">Inventory</strong> all to Public, then hit Save. It can take a minute for Steam&apos;s cache to catch up.
+                </>
+              }
+            />
+          </div>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -306,7 +450,7 @@ export default function InventoryPage() {
                   <DollarSign className="h-5 w-5 text-emerald-400" />
                 </div>
               </div>
-              <p className="text-2xl font-bold text-white">{formatPrice(result.totalValue)}</p>
+              <p className="text-2xl font-bold text-white"><Price amount={result.totalValue} /></p>
               <p className="text-xs text-neutral-500">Total Value</p>
             </div>
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 text-center">
@@ -378,10 +522,10 @@ export default function InventoryPage() {
                         {item.quantity > 1 ? `x${item.quantity}` : "1"}
                       </td>
                       <td className="px-4 py-3 text-right text-sm text-neutral-400">
-                        {item.unitPrice !== null ? formatPrice(item.unitPrice) : "—"}
+                        {item.unitPrice !== null ? <Price amount={item.unitPrice} /> : "—"}
                       </td>
                       <td className="px-4 py-3 text-right text-sm font-semibold text-white">
-                        {item.totalPrice !== null ? formatPrice(item.totalPrice) : "—"}
+                        {item.totalPrice !== null ? <Price amount={item.totalPrice} /> : "—"}
                       </td>
                       <td className="px-4 py-3 text-center">
                         {item.slug && (
@@ -402,7 +546,7 @@ export default function InventoryPage() {
                       Total Inventory Value
                     </td>
                     <td className="px-4 py-3 text-right text-lg font-bold text-emerald-400">
-                      {formatPrice(result.totalValue)}
+                      <Price amount={result.totalValue} />
                     </td>
                     <td></td>
                   </tr>
@@ -412,6 +556,48 @@ export default function InventoryPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function FeatureCard({
+  icon,
+  tint,
+  title,
+  body,
+}: {
+  icon: React.ReactNode;
+  tint: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-5 text-center">
+      <div className={`inline-flex items-center justify-center h-10 w-10 rounded-lg ${tint} mb-3`}>
+        {icon}
+      </div>
+      <h3 className="text-sm font-semibold text-white mb-1">{title}</h3>
+      <p className="text-xs text-neutral-400 leading-relaxed">{body}</p>
+    </div>
+  );
+}
+
+function FaqItem({
+  icon,
+  question,
+  answer,
+}: {
+  icon: React.ReactNode;
+  question: string;
+  answer: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div className="shrink-0 mt-0.5">{icon}</div>
+      <div>
+        <h4 className="text-sm font-semibold text-white mb-1">{question}</h4>
+        <p className="text-sm text-neutral-400 leading-relaxed">{answer}</p>
+      </div>
     </div>
   );
 }

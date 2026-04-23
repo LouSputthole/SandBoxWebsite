@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
  * GET /api/analytics/dashboard?period=7d
  *
  * Returns analytics data: views, visitors, top pages, referrers, devices, etc.
- * Protected by ADMIN_KEY query param (set in env as ANALYTICS_KEY).
+ * Protected by ANALYTICS_KEY with per-IP brute-force rate limiting.
  */
 export async function GET(request: NextRequest) {
-  const analyticsKey = process.env.ANALYTICS_KEY;
-  if (!analyticsKey) {
-    return NextResponse.json({ error: "Admin key not configured" }, { status: 500 });
-  }
-  // Prefer Authorization header so the key doesn't appear in URLs/access logs.
-  const authHeader = request.headers.get("authorization");
-  const queryKey = request.nextUrl.searchParams.get("key");
-  const authorized =
-    authHeader === `Bearer ${analyticsKey}` || queryKey === analyticsKey;
-  if (!authorized) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request, { allowedKeys: ["analytics"] });
+  if (!guard.ok) return guard.response;
 
   const period = request.nextUrl.searchParams.get("period") ?? "7d";
   const days = period === "30d" ? 30 : period === "24h" ? 1 : 7;
@@ -38,6 +29,7 @@ export async function GET(request: NextRequest) {
     browsersRaw,
     osRaw,
     dailyRaw,
+    referrerDetailsRaw,
   ] = await Promise.all([
     prisma.pageView.count({ where: { timestamp: { gte: since } } }),
 
@@ -105,6 +97,27 @@ export async function GET(request: NextRequest) {
       GROUP BY 1
       ORDER BY 1 ASC
     `,
+
+    // Referrer URL breakdown — which specific external pages are sending
+    // traffic. Rolls up by (normalized host, path). Lets you see, e.g.,
+    // "steamcommunity.com -> /groups/sboxtraders — 15 visits" so you can
+    // identify where community mentions of your site live. Only includes
+    // rows with a pathname recorded (post-referrerPath deployment).
+    prisma.$queryRaw<
+      { referrer: string; referrerPath: string; count: bigint }[]
+    >`
+      SELECT
+        "referrer",
+        "referrerPath",
+        COUNT(*)::bigint AS count
+      FROM "PageView"
+      WHERE "timestamp" >= ${since}
+        AND "referrer" IS NOT NULL
+        AND "referrerPath" IS NOT NULL
+      GROUP BY 1, 2
+      ORDER BY count DESC
+      LIMIT 30
+    `,
   ]);
 
   const uniqueVisitors = Number(visitorsRaw[0]?.count ?? 0);
@@ -138,6 +151,12 @@ export async function GET(request: NextRequest) {
     visitors: Number(r.visitors),
   }));
 
+  const referrerDetails = referrerDetailsRaw.map((r) => ({
+    referrer: r.referrer,
+    path: r.referrerPath,
+    count: Number(r.count),
+  }));
+
   return NextResponse.json({
     period,
     totalViews,
@@ -149,5 +168,6 @@ export async function GET(request: NextRequest) {
     browsers,
     operatingSystems,
     viewsByDay,
+    referrerDetails,
   });
 }

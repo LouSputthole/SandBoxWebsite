@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { ItemImage } from "@/components/items/item-image";
-import { formatPrice } from "@/lib/utils";
+import { Price } from "@/components/ui/price";
 import { ExternalLink, Wallet, Package } from "lucide-react";
 
 // Inventory data is user-specific and we don't want to cache too aggressively
@@ -204,7 +204,7 @@ export default async function UserPortfolioPage({ params }: PageProps) {
             <Wallet className="h-4 w-4 text-emerald-400" />
             <span className="text-[10px] uppercase tracking-wider text-neutral-500">Portfolio value</span>
           </div>
-          <p className="text-xl font-bold text-white">{formatPrice(totalValue)}</p>
+          <p className="text-xl font-bold text-white"><Price amount={totalValue} /></p>
         </div>
         <div className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
           <div className="flex items-center gap-2 mb-1">
@@ -254,8 +254,8 @@ export default async function UserPortfolioPage({ params }: PageProps) {
                 <span className="text-sm text-neutral-100 truncate">{item.name}</span>
               </div>
               <div className="text-sm text-neutral-400 text-right self-center">{item.quantity}</div>
-              <div className="text-sm text-neutral-400 text-right self-center">{formatPrice(item.price)}</div>
-              <div className="text-sm font-semibold text-white text-right self-center">{formatPrice(item.value)}</div>
+              <div className="text-sm text-neutral-400 text-right self-center"><Price amount={item.price} /></div>
+              <div className="text-sm font-semibold text-white text-right self-center"><Price amount={item.value} /></div>
             </Link>
           ))}
         </div>

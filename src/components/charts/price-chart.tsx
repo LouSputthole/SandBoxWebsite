@@ -20,9 +20,27 @@ interface PricePoint {
   timestamp: string;
 }
 
+/** Median for a non-empty number array. Not imported from utils because
+ * this file is a client component and we want to avoid an extra bundle
+ * dep for a one-off helper. */
+function medianOf(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1] + sorted[mid]) / 2
+    : sorted[mid];
+}
+
 interface PriceChartProps {
   data: PricePoint[];
   itemId: string;
+  /** Authoritative 24h % change from the DB (computed by the sync job
+   * with the same median-of-window-centered-on-24h-ago method). When
+   * the chart is on the 24H view we display this directly so the chart
+   * stat agrees with the item header. For longer periods we fall back
+   * to computing change from the visible data. */
+  priceChange24h?: number | null;
 }
 
 const periods = [
@@ -58,7 +76,7 @@ function formatTooltipDate(dateStr: string): string {
   });
 }
 
-export function PriceChart({ data: initialData, itemId }: PriceChartProps) {
+export function PriceChart({ data: initialData, itemId, priceChange24h }: PriceChartProps) {
   const [period, setPeriod] = useState("all");
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(false);
@@ -95,9 +113,26 @@ export function PriceChart({ data: initialData, itemId }: PriceChartProps) {
     const high = Math.max(...prices);
     const low = Math.min(...prices);
     const avg = prices.reduce((sum, p) => sum + p, 0) / prices.length;
-    const startPrice = prices[0];
-    const endPrice = prices[prices.length - 1];
-    const changePercent = startPrice > 0 ? ((endPrice - startPrice) / startPrice) * 100 : 0;
+    // Robust change: median of the first N and last N points rather than
+    // raw endpoints. Raw first/last endpoints are easy to fool — Steam
+    // occasionally returns a spurious sell_price during a sync, and if
+    // that anomaly lands on either boundary the CHANGE stat went wildly
+    // off. Median of a small window on each side smooths that.
+    // N scales with data length so short chunks (e.g. 4-point 24h)
+    // still work and long ones (500-point All) use a meaningful slice.
+    const n = Math.max(1, Math.min(5, Math.floor(prices.length / 10) + 1));
+    const startPrice = medianOf(prices.slice(0, n));
+    const endPrice = medianOf(prices.slice(-n));
+    // For the 24H view, prefer the DB-computed priceChange24h (same one
+    // the item header shows). The chart's own median calc is robust but
+    // uses a slightly different baseline window than the sync, so the
+    // two stats could disagree by 1-2 pp on volatile items. Single
+    // source of truth wins. Longer periods compute from data as before.
+    const computedChange = startPrice > 0 ? ((endPrice - startPrice) / startPrice) * 100 : 0;
+    const changePercent =
+      period === "24h" && typeof priceChange24h === "number"
+        ? priceChange24h
+        : computedChange;
 
     const mapped = sorted.map((point) => ({
       timestamp: point.timestamp,
@@ -111,7 +146,7 @@ export function PriceChart({ data: initialData, itemId }: PriceChartProps) {
       stats: { high, low, avg, changePercent, startPrice, endPrice, count: sorted.length },
       totalDays: days,
     };
-  }, [data]);
+  }, [data, period, priceChange24h]);
 
   const minPrice = stats ? stats.low * 0.95 : 0;
   const maxPrice = stats ? stats.high * 1.05 : 1;
