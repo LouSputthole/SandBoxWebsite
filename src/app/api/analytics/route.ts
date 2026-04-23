@@ -156,7 +156,11 @@ export async function POST(request: NextRequest) {
     // Clean referrer — strip the current domain, then normalize to a
     // friendly source label so "google.com" / "google.co.uk" / "l.google.com"
     // all roll up to "google" (matches how GSC reports the bucket).
+    // Also capture the pathname separately so we can see WHICH specific
+    // external pages are sending traffic (e.g. which steamcommunity.com
+    // group or profile links to us).
     let cleanReferrer = referrer ?? null;
+    let cleanReferrerPath: string | null = null;
     if (cleanReferrer) {
       try {
         const refUrl = new URL(cleanReferrer);
@@ -167,6 +171,11 @@ export async function POST(request: NextRequest) {
           cleanReferrer = null; // Internal navigation, not a real referrer
         } else {
           cleanReferrer = normalizeReferrer(refUrl.hostname);
+          // Keep pathname (no query/hash — those often carry tokens/PII).
+          // Skip the bare "/" case since it adds no information.
+          if (refUrl.pathname && refUrl.pathname !== "/") {
+            cleanReferrerPath = refUrl.pathname.slice(0, 500);
+          }
         }
       } catch {
         cleanReferrer = null;
@@ -179,6 +188,7 @@ export async function POST(request: NextRequest) {
         data: {
           path,
           referrer: cleanReferrer,
+          referrerPath: cleanReferrerPath,
           userAgent: ua.slice(0, 500),
           country,
           city,

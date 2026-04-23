@@ -27,6 +27,10 @@ interface DashboardData {
   browsers: { browser: string; count: number }[];
   operatingSystems: { os: string; count: number }[];
   viewsByDay: { date: string; views: number; visitors: number }[];
+  /** (referrer, path) combos with counts — populated from the
+   * referrerPath column added 2026-04-24. Older pageviews don't have
+   * path data; this table accumulates from the deployment forward. */
+  referrerDetails?: { referrer: string; path: string; count: number }[];
 }
 
 const PERIOD_OPTIONS = [
@@ -34,6 +38,33 @@ const PERIOD_OPTIONS = [
   { value: "7d", label: "Last 7 days" },
   { value: "30d", label: "Last 30 days" },
 ];
+
+/** Map our normalized referrer buckets back to an openable hostname so
+ * the "Referring URLs" section can render real clickable links. Multiple
+ * sites collapse to one bucket (e.g. google → google.com) — we pick the
+ * .com variant as the canonical link target. Anything not in this map
+ * is treated as-is (niche referrers never get normalized). */
+const CANONICAL_HOST: Record<string, string> = {
+  google: "google.com",
+  bing: "bing.com",
+  duckduckgo: "duckduckgo.com",
+  yahoo: "search.yahoo.com",
+  yandex: "yandex.com",
+  twitter: "t.co", // t.co doesn't host pages but preserves what was stored
+  facebook: "facebook.com",
+  reddit: "reddit.com",
+  youtube: "youtube.com",
+  discord: "discord.com",
+  "ai-chat": "chatgpt.com",
+};
+
+function buildFullUrl(referrer: string, path: string): string | null {
+  const host = CANONICAL_HOST[referrer] ?? referrer;
+  // Defensive: reject anything that doesn't look like a hostname.
+  if (!/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(host)) return null;
+  const safePath = path.startsWith("/") ? path : `/${path}`;
+  return `https://${host}${safePath}`;
+}
 
 const deviceIcons: Record<string, typeof Monitor> = {
   desktop: Monitor,
@@ -395,6 +426,67 @@ export default function AnalyticsDashboard() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Referring URLs — full-width card. Shows the specific
+              external pages that link to us, grouped by (source,
+              pathname). Useful for finding "who's recommending us" —
+              e.g. which Steam Community group, profile, or forum
+              thread is sending traffic. Only populated from the
+              2026-04-24 deploy forward since referrerPath is a new
+              column. */}
+          {data.referrerDetails && data.referrerDetails.length > 0 && (
+            <Card className="bg-neutral-900/80 mt-6">
+              <CardContent className="p-6">
+                <h3 className="text-sm font-medium text-neutral-300 mb-1">
+                  Referring URLs
+                </h3>
+                <p className="text-[11px] text-neutral-500 mb-4">
+                  Specific external pages sending traffic. Click a link to open
+                  in a new tab — good for finding which Steam group, profile,
+                  or forum thread is recommending the site.
+                </p>
+                <div className="space-y-1.5">
+                  {data.referrerDetails.map((row, i) => {
+                    const fullUrl = buildFullUrl(row.referrer, row.path);
+                    return (
+                      <div
+                        key={`${row.referrer}-${row.path}-${i}`}
+                        className="flex items-center justify-between text-sm gap-3"
+                      >
+                        <div className="min-w-0 flex-1">
+                          {fullUrl ? (
+                            <a
+                              href={fullUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-neutral-300 hover:text-purple-300 transition-colors flex items-center gap-1.5 font-mono text-xs truncate"
+                              title={`${row.referrer}${row.path}`}
+                            >
+                              <ArrowRight className="h-3 w-3 text-neutral-600 shrink-0" />
+                              <span className="text-neutral-500">
+                                {row.referrer}
+                              </span>
+                              <span className="truncate">{row.path}</span>
+                            </a>
+                          ) : (
+                            <span className="text-neutral-300 font-mono text-xs">
+                              <span className="text-neutral-500">
+                                {row.referrer}
+                              </span>
+                              {row.path}
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-neutral-500 shrink-0 tabular-nums">
+                          {row.count.toLocaleString()}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
     </div>
