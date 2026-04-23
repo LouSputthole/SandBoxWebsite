@@ -36,21 +36,6 @@ async function getDataFreshness(): Promise<string | null> {
   return latest?.updatedAt.toISOString() ?? null;
 }
 
-/**
- * Report the freshest moment any item in the catalog was touched by a sync
- * — used by the admin UI to show "data X ago" so the user knows whether
- * these drafts are based on stale numbers. `updatedAt` bumps on every
- * Prisma update, so this reflects both Steam price syncs and sbox.dev
- * enrichment.
- */
-async function getDataFreshness(): Promise<string | null> {
-  const latest = await prisma.item.findFirst({
-    orderBy: { updatedAt: "desc" },
-    select: { updatedAt: true },
-  });
-  return latest?.updatedAt.toISOString() ?? null;
-}
-
 export async function GET(request: NextRequest) {
   const guard = await guardAdminRoute(request, { allowedKeys: ["analytics"] });
   if (!guard.ok) return guard.response;

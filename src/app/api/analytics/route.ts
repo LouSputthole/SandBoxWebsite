@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { createHash } from "crypto";
 
@@ -59,7 +59,8 @@ function isBot(ua: string): boolean {
  */
 function normalizeReferrer(hostname: string): string {
   const h = hostname.toLowerCase().replace(/^www\./, "");
-  if (h === "google" || h.endsWith(".google.com") || /^google\.[a-z.]+$/.test(h)) {
+  // google.com, google.co.uk, l.google.com, encrypted.google.com, …
+  if (h === "google.com" || h.endsWith(".google.com") || /^google\.[a-z.]+$/.test(h)) {
     return "google";
   }
   if (h === "bing.com" || h.endsWith(".bing.com")) return "bing";
@@ -164,10 +165,17 @@ export async function POST(request: NextRequest) {
     if (cleanReferrer) {
       try {
         const refUrl = new URL(cleanReferrer);
-        if (
-          refUrl.hostname === "sboxskins.gg" ||
-          refUrl.hostname.endsWith(".vercel.app")
-        ) {
+        // Collapse every apex/sub/www variant of our own domain + any
+        // Vercel preview URL down to "internal". Previous check matched
+        // only the exact apex, so `www.sboxskins.gg` (which browsers
+        // occasionally set as the referrer even when the user is on apex)
+        // leaked into the referrers table as an external source.
+        const refHost = refUrl.hostname.toLowerCase();
+        const isInternal =
+          refHost === "sboxskins.gg" ||
+          refHost.endsWith(".sboxskins.gg") ||
+          refHost.endsWith(".vercel.app");
+        if (isInternal) {
           cleanReferrer = null; // Internal navigation, not a real referrer
         } else {
           cleanReferrer = normalizeReferrer(refUrl.hostname);
@@ -182,23 +190,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fire and forget — don't block the response on DB write
-    prisma.pageView
-      .create({
-        data: {
-          path,
-          referrer: cleanReferrer,
-          referrerPath: cleanReferrerPath,
-          userAgent: ua.slice(0, 500),
-          country,
-          city,
-          device,
-          browser,
-          os,
-          sessionId,
-        },
-      })
-      .catch((err) => console.error("[analytics] Failed to record:", err));
+    // Run the DB write after the response is sent. `after()` routes the
+    // promise through Vercel's waitUntil() so the invocation stays alive
+    // until it settles — without it, bare `.catch()` promises get
+    // cancelled when the serverless function terminates, silently
+    // dropping a slice of pageviews. Symptom was dashboard counts lagging
+    // the actual traffic under load.
+    after(
+      prisma.pageView
+        .create({
+          data: {
+            path,
+            referrer: cleanReferrer,
+            referrerPath: cleanReferrerPath,
+            userAgent: ua.slice(0, 500),
+            country,
+            city,
+            device,
+            browser,
+            os,
+            sessionId,
+          },
+        })
+        .catch((err) => console.error("[analytics] Failed to record:", err)),
+    );
 
     return NextResponse.json({ ok: true });
   } catch {
