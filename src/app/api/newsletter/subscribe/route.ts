@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { redis } from "@/lib/redis/client";
 import { looksLikeEmail, newOpaqueToken } from "@/lib/newsletter/tokens";
+import { sendVerificationEmail } from "@/lib/newsletter/send";
 
 const ALLOWED_KINDS = ["friday-report", "monday-outlook"] as const;
 type Kind = (typeof ALLOWED_KINDS)[number];
@@ -102,9 +103,20 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Verification email dispatch is deferred to a separate worker (not in
-  // this PR). For now the token is just created and stored — a follow-up
-  // PR wires up Resend or SES. The admin can manually verify via the
-  // verify endpoint if they need to hand-confirm a subscription.
+  // Fire the verification email via `after()` so the response returns
+  // immediately. Resend calls are usually <500ms but can spike when
+  // their edge is loaded — we don't want a legitimate user staring at
+  // a spinner. `after()` routes the send through Vercel's waitUntil()
+  // so the invocation stays alive until Resend responds.
+  //
+  // If RESEND_API_KEY is unset, sendVerificationEmail logs a warning
+  // and returns `{ sent: false, reason: "no-key" }`. The row is still
+  // stored — admin can verify manually from /admin/newsletter.
+  after(
+    sendVerificationEmail({ email, verifyToken, unsubscribeToken }).catch(
+      (err) => console.error("[newsletter] verify-send threw:", err),
+    ),
+  );
+
   return NextResponse.json({ ok: true, status: "verification-sent" });
 }
