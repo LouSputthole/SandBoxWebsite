@@ -1,8 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
-import { generateDrafts, generateTweet, type TweetKind } from "@/lib/twitter/content";
+import {
+  generateDrafts,
+  generateTweet,
+  type TweetKind,
+  type Tone,
+} from "@/lib/twitter/content";
 import { postTweet } from "@/lib/twitter/client";
 import { prisma } from "@/lib/db";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
+
+const ALLOWED_TONES: readonly Tone[] = [
+  "casual",
+  "analytical",
+  "hype",
+  "cs-ref",
+  "newsy",
+  "community",
+  "hashtagged",
+] as const;
+
+function parseTone(raw: string | null): Tone | undefined {
+  if (!raw) return undefined;
+  return (ALLOWED_TONES as readonly string[]).includes(raw)
+    ? (raw as Tone)
+    : undefined;
+}
 
 /** Extract the first /items/<slug> URL from a tweet body, if any. */
 function extractItemSlug(text: string): string | null {
@@ -41,10 +63,13 @@ export async function GET(request: NextRequest) {
   if (!guard.ok) return guard.response;
 
   const kind = request.nextUrl.searchParams.get("kind") as TweetKind | null;
+  const tone = parseTone(request.nextUrl.searchParams.get("tone"));
+  const itemSlug =
+    request.nextUrl.searchParams.get("itemSlug") ?? undefined;
   const dataUpdatedAt = await getDataFreshness();
 
   if (kind) {
-    const draft = await generateTweet(kind);
+    const draft = await generateTweet(kind, { tone, itemSlug });
     if (!draft) {
       return NextResponse.json(
         { error: `No data available for tweet type "${kind}"` },

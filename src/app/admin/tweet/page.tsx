@@ -178,12 +178,51 @@ export default function TweetAdminPage() {
   const [customScheduleTime, setCustomScheduleTime] = useState("");
   const [schedulingCustom, setSchedulingCustom] = useState(false);
 
+  // Draft-tuning knobs. Both are optional — left blank/default, we get
+  // the normal random mix. These let the admin nudge the voice or target
+  // a specific item for the spotlight kind without re-rolling ten times.
+  const [tone, setTone] = useState("");
+  const [itemSlug, setItemSlug] = useState("");
+  const [itemOptions, setItemOptions] = useState<
+    { slug: string; name: string }[]
+  >([]);
+  const [spotlightOnly, setSpotlightOnly] = useState(false);
+
+  // Fetch item catalog once per session for the picker datalist.
+  useEffect(() => {
+    if (!authed) return;
+    void (async () => {
+      try {
+        const res = await fetch("/api/items?limit=100&sort=name-asc");
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          items?: { slug: string; name: string }[];
+        };
+        setItemOptions(data.items ?? []);
+      } catch {
+        // Silent — the picker degrades to freeform typing when the
+        // fetch fails. Not worth surfacing an error banner for.
+      }
+    })();
+  }, [authed]);
+
   const fetchDrafts = useCallback(async () => {
     if (!key) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/tweet", {
+      // When the admin has tuned tone or item, we hit the single-kind
+      // endpoint rather than the full draft set — the tune params only
+      // apply to one kind per call, so showing all kinds with the same
+      // filter would produce a confusing mixed list.
+      const qs = new URLSearchParams();
+      if (spotlightOnly || itemSlug) qs.set("kind", "item-spotlight");
+      if (tone) qs.set("tone", tone);
+      if (itemSlug) qs.set("itemSlug", itemSlug);
+      const url = qs.toString()
+        ? `/api/admin/tweet?${qs}`
+        : "/api/admin/tweet";
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${key}` },
       });
       if (res.status === 401) {
@@ -204,7 +243,7 @@ export default function TweetAdminPage() {
     } finally {
       setLoading(false);
     }
-  }, [key]);
+  }, [key, tone, itemSlug, spotlightOnly]);
 
   const postDraft = async (index: number, text: string) => {
     setPostingIndex(index);
@@ -591,6 +630,77 @@ export default function TweetAdminPage() {
 
       {activeTab === "drafts" && (
       <>
+      {/* Tune-the-drafts controls: tone selector + item picker. When
+          either is set we flip into "single-kind" mode (item-spotlight)
+          because the backend ignores tone/itemSlug for other kinds. */}
+      <Card className="bg-neutral-900/60 border-neutral-800 mb-6">
+        <CardContent className="p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <p className="text-xs uppercase tracking-wider text-neutral-500">
+              Tune drafts
+            </p>
+            {(tone || itemSlug || spotlightOnly) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setTone("");
+                  setItemSlug("");
+                  setSpotlightOnly(false);
+                }}
+                className="text-[11px] text-neutral-400 hover:text-white inline-flex items-center gap-1"
+              >
+                <X className="h-3 w-3" />
+                Reset
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto] gap-2">
+            <select
+              value={tone}
+              onChange={(e) => setTone(e.target.value)}
+              className="rounded-md bg-neutral-950/60 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
+            >
+              <option value="">Any tone</option>
+              <option value="casual">Casual (Wendy's)</option>
+              <option value="analytical">Analytical</option>
+              <option value="hype">Hype</option>
+              <option value="cs-ref">CS comparison</option>
+              <option value="newsy">Newsy / short</option>
+              <option value="community">Community / question</option>
+              <option value="hashtagged">Hashtagged (SEO)</option>
+            </select>
+            <Input
+              list="admin-tweet-item-picker"
+              type="text"
+              placeholder="Spotlight item (type to search by name or slug, e.g. cardboard-king)"
+              value={itemSlug}
+              onChange={(e) => setItemSlug(e.target.value)}
+              className="bg-neutral-950/60 border-neutral-700"
+            />
+            <datalist id="admin-tweet-item-picker">
+              {itemOptions.map((it) => (
+                // Using slug as value + name as the displayed label
+                // means typing either matches. Browsers render the
+                // label in the dropdown and slot the value on select.
+                <option key={it.slug} value={it.slug} label={it.name} />
+              ))}
+            </datalist>
+            <Button size="sm" onClick={fetchDrafts} disabled={loading}>
+              {loading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                "Apply"
+              )}
+            </Button>
+          </div>
+          <p className="mt-2 text-[11px] text-neutral-600">
+            Leave both blank for the normal mixed draft list. Picking either
+            tone or item-slug narrows to a single <strong>item-spotlight</strong>{" "}
+            draft tuned to your inputs.
+          </p>
+        </CardContent>
+      </Card>
+
       <div className="space-y-4 mb-12">
         {drafts.map((draft, index) => (
           <Card key={`${draft.kind}-${index}`} className="bg-neutral-900">
