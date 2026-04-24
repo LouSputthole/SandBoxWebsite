@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { createHash } from "crypto";
 
@@ -164,10 +164,17 @@ export async function POST(request: NextRequest) {
     if (cleanReferrer) {
       try {
         const refUrl = new URL(cleanReferrer);
-        if (
-          refUrl.hostname === "sboxskins.gg" ||
-          refUrl.hostname.endsWith(".vercel.app")
-        ) {
+        // Collapse every apex/sub/www variant of our own domain plus any
+        // Vercel preview URL down to "internal". Previous check matched
+        // only the exact apex, so `www.sboxskins.gg` (browsers occasionally
+        // set www as the referrer even when the user is on apex) leaked
+        // into the referrers table as an external source.
+        const refHost = refUrl.hostname.toLowerCase();
+        const isInternal =
+          refHost === "sboxskins.gg" ||
+          refHost.endsWith(".sboxskins.gg") ||
+          refHost.endsWith(".vercel.app");
+        if (isInternal) {
           cleanReferrer = null; // Internal navigation, not a real referrer
         } else {
           cleanReferrer = normalizeReferrer(refUrl.hostname);
@@ -182,23 +189,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fire and forget — don't block the response on DB write
-    prisma.pageView
-      .create({
-        data: {
-          path,
-          referrer: cleanReferrer,
-          referrerPath: cleanReferrerPath,
-          userAgent: ua.slice(0, 500),
-          country,
-          city,
-          device,
-          browser,
-          os,
-          sessionId,
-        },
-      })
-      .catch((err) => console.error("[analytics] Failed to record:", err));
+    // Run DB write via `after()` — routes the promise through Vercel's
+    // waitUntil() so the invocation stays alive until the insert
+    // settles. A bare `.catch()` without await or waitUntil gets
+    // cancelled when the serverless function terminates, silently
+    // dropping a slice of pageviews. Observable symptom was the
+    // dashboard lagging actual traffic under load.
+    after(
+      prisma.pageView
+        .create({
+          data: {
+            path,
+            referrer: cleanReferrer,
+            referrerPath: cleanReferrerPath,
+            userAgent: ua.slice(0, 500),
+            country,
+            city,
+            device,
+            browser,
+            os,
+            sessionId,
+          },
+        })
+        .catch((err) => console.error("[analytics] Failed to record:", err)),
+    );
 
     return NextResponse.json({ ok: true });
   } catch {

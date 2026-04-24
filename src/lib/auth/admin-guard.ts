@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { redis } from "@/lib/redis/client";
 
 /**
@@ -141,9 +141,13 @@ export async function guardAdminRoute(
   }
 
   // Correct token — reset the failure counter for this IP so one earlier
-  // typo doesn't count against future attempts.
+  // typo doesn't count against future attempts. Route the DEL through
+  // `after()` so the Redis call survives serverless function
+  // termination — bare fire-and-forget can silently drop the reset and
+  // leave a legitimate admin counting against their own bad-try tally
+  // for the next 15 minutes.
   if (redis) {
-    redis.del(rlKey).catch(() => {});
+    after(redis.del(rlKey).catch(() => {}));
   }
 
   return { ok: true, keyType: matchedType };
