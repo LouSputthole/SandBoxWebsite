@@ -15,6 +15,31 @@ export type TweetKind =
   | "weekly-market-change"
   | "market-insight";
 
+/**
+ * Voice preset for template selection. Each generator's template list is
+ * tagged by tone so the admin can pick "more dry" or "more hype" when
+ * drafting manually. Defaults to `null` which means "any tone, random
+ * pick". Tone buckets must exactly match the comment groupings in each
+ * template array — this is intentional coupling so you can't rename a
+ * bucket without noticing.
+ */
+export type Tone =
+  | "casual"
+  | "analytical"
+  | "hype"
+  | "cs-ref"
+  | "newsy"
+  | "community"
+  | "hashtagged";
+
+export interface GenerateOptions {
+  /** Bias template selection toward a specific voice. */
+  tone?: Tone;
+  /** For item-specific kinds (spotlight), target this slug instead of
+   *  the default "top by volume" pick. Ignored by non-item generators. */
+  itemSlug?: string;
+}
+
 export interface GeneratedTweet {
   kind: TweetKind;
   text: string;
@@ -39,6 +64,28 @@ function itemUrl(slug: string): string {
 /** Pick from an array using the same seed twice within a minute to avoid dupes on retries */
 function seedPick<T>(arr: T[], seed = Math.floor(Date.now() / 60_000)): T {
   return arr[seed % arr.length];
+}
+
+/**
+ * Tagged template picker. Each template is `{tone, text}`. When a tone
+ * is requested we narrow to matches; if none exist we fall back to the
+ * whole list so the generator NEVER returns null just because the tone
+ * bucket is empty — admins can always produce SOMETHING.
+ */
+export interface TonedTemplate {
+  tone: Tone;
+  text: string;
+}
+function pickTone(
+  templates: TonedTemplate[],
+  tone?: Tone,
+  seed = Math.floor(Date.now() / 60_000),
+): string {
+  const pool = tone
+    ? templates.filter((t) => t.tone === tone)
+    : templates;
+  const chosen = pool.length > 0 ? pool : templates;
+  return chosen[seed % chosen.length].text;
 }
 
 // ----- Individual tweet generators (each returns null if no data fits) -----
@@ -286,67 +333,100 @@ export async function genMarketCap(): Promise<GeneratedTweet | null> {
   return { kind: "market-cap", text, approxLength: approximateLength(text) };
 }
 
-export async function genItemSpotlight(): Promise<GeneratedTweet | null> {
-  // Random item from the top 20 by volume — ones people actually care about
-  const candidates = await prisma.item.findMany({
-    where: { currentPrice: { not: null, gt: 0 } },
-    orderBy: { volume: "desc" },
-    take: 20,
-  });
-  if (candidates.length === 0) return null;
-
-  const item = candidates[Math.floor(Math.random() * candidates.length)];
+export async function genItemSpotlight(
+  options: GenerateOptions = {},
+): Promise<GeneratedTweet | null> {
+  // If the admin picked a specific slug, use that. Otherwise fall back
+  // to "random from the top 20 by volume" — items people actually care
+  // about.
+  let item:
+    | Awaited<ReturnType<typeof prisma.item.findFirst>>
+    | null = null;
+  if (options.itemSlug) {
+    item = await prisma.item.findFirst({
+      where: {
+        OR: [{ slug: options.itemSlug }, { id: options.itemSlug }],
+        currentPrice: { not: null, gt: 0 },
+      },
+    });
+  }
+  if (!item) {
+    const candidates = await prisma.item.findMany({
+      where: { currentPrice: { not: null, gt: 0 } },
+      orderBy: { volume: "desc" },
+      take: 20,
+    });
+    if (candidates.length === 0) return null;
+    item = candidates[Math.floor(Math.random() * candidates.length)];
+  }
   if (!item.currentPrice) return null;
 
   const price = formatPrice(item.currentPrice);
-  const supplyPart = item.totalSupply ? ` · ${item.totalSupply.toLocaleString()} exist` : "";
+  const supplyPart = item.totalSupply
+    ? ` · ${item.totalSupply.toLocaleString()} exist`
+    : "";
   const listingsPart = item.volume ? ` · ${item.volume} listings` : "";
 
-  const templates = [
-    // loose / wendy's
-    `item watch: ${item.name}\n${price}${supplyPart}${listingsPart}\n\ndo what you will with this info. ${itemUrl(item.slug)}`,
-    `${item.name} update: ${price}${supplyPart}${listingsPart}.\n\n${itemUrl(item.slug)}`,
-    `currently on the S&box market: ${item.name} at ${price}${supplyPart}.\n\nchart, order book, the whole 9: ${itemUrl(item.slug)}`,
-    `${item.name}. ${price}.${supplyPart}${listingsPart}. you love to see it.\n\n${itemUrl(item.slug)}`,
-    `quick one: ${item.name} at ${price}${supplyPart}. just a fun fact for your timeline.\n\n${itemUrl(item.slug)}`,
-    `${item.name} sitting at ${price}${supplyPart}. make of that what you will.\n\n${itemUrl(item.slug)}`,
-    `catalog check: ${item.name}, ${price}${supplyPart}${listingsPart}.\n\n${itemUrl(item.slug)}`,
-    `${item.name} exists and it's ${price}. that's the whole post.${supplyPart}\n\n${itemUrl(item.slug)}`,
+  const templates: TonedTemplate[] = [
+    // casual / wendy's
+    { tone: "casual", text: `item watch: ${item.name}\n${price}${supplyPart}${listingsPart}\n\ndo what you will with this info. ${itemUrl(item.slug)}` },
+    { tone: "casual", text: `${item.name} update: ${price}${supplyPart}${listingsPart}.\n\n${itemUrl(item.slug)}` },
+    { tone: "casual", text: `currently on the S&box market: ${item.name} at ${price}${supplyPart}.\n\nchart, order book, the whole 9: ${itemUrl(item.slug)}` },
+    { tone: "casual", text: `${item.name}. ${price}.${supplyPart}${listingsPart}. you love to see it.\n\n${itemUrl(item.slug)}` },
+    { tone: "casual", text: `quick one: ${item.name} at ${price}${supplyPart}. just a fun fact for your timeline.\n\n${itemUrl(item.slug)}` },
+    { tone: "casual", text: `${item.name} sitting at ${price}${supplyPart}. make of that what you will.\n\n${itemUrl(item.slug)}` },
+    { tone: "casual", text: `catalog check: ${item.name}, ${price}${supplyPart}${listingsPart}.\n\n${itemUrl(item.slug)}` },
+    { tone: "casual", text: `${item.name} exists and it's ${price}. that's the whole post.${supplyPart}\n\n${itemUrl(item.slug)}` },
+    // NEW casual additions
+    { tone: "casual", text: `looked at ${item.name} today. ${price}${supplyPart}. that's the tweet.\n\n${itemUrl(item.slug)}` },
+    { tone: "casual", text: `${item.name}: ${price}${supplyPart}. some of you will find this interesting.\n\n${itemUrl(item.slug)}` },
     // analytical
-    `Spotlight: ${item.name}\nPrice: ${price}${supplyPart}${listingsPart}\nFull chart: ${itemUrl(item.slug)}`,
-    `${item.name} — current: ${price}${supplyPart}${listingsPart}.\nLive order book → ${itemUrl(item.slug)}`,
-    `Item check — ${item.name} · ${price}${supplyPart}${listingsPart}. Price history + full order book at ${itemUrl(item.slug)}`,
-    `S&box cosmetics spotlight: ${item.name} at ${price}${supplyPart}${listingsPart}. Detail page → ${itemUrl(item.slug)}`,
-    `${item.name} datapoint — ${price}${supplyPart}${listingsPart}. Chart, supply, order spread: ${itemUrl(item.slug)}`,
+    { tone: "analytical", text: `Spotlight: ${item.name}\nPrice: ${price}${supplyPart}${listingsPart}\nFull chart: ${itemUrl(item.slug)}` },
+    { tone: "analytical", text: `${item.name} — current: ${price}${supplyPart}${listingsPart}.\nLive order book → ${itemUrl(item.slug)}` },
+    { tone: "analytical", text: `Item check — ${item.name} · ${price}${supplyPart}${listingsPart}. Price history + full order book at ${itemUrl(item.slug)}` },
+    { tone: "analytical", text: `S&box cosmetics spotlight: ${item.name} at ${price}${supplyPart}${listingsPart}. Detail page → ${itemUrl(item.slug)}` },
+    { tone: "analytical", text: `${item.name} datapoint — ${price}${supplyPart}${listingsPart}. Chart, supply, order spread: ${itemUrl(item.slug)}` },
+    // NEW analytical
+    { tone: "analytical", text: `${item.name} quick read — market ${price}${supplyPart}. Live 30-day chart + order book: ${itemUrl(item.slug)}` },
+    { tone: "analytical", text: `Item breakdown: ${item.name}. ${price}${supplyPart}${listingsPart}. Momentum + scarcity scores: ${itemUrl(item.slug)}` },
     // hype / collector
-    `${item.name} is a whole vibe. ${price}${supplyPart}.\n${itemUrl(item.slug)}`,
-    `You seen ${item.name} yet? ${price}${supplyPart}${listingsPart}.\n${itemUrl(item.slug)}`,
-    `${item.name} hits different. ${price}${supplyPart}.\n${itemUrl(item.slug)}`,
-    `One to watch: ${item.name} at ${price}${supplyPart}${listingsPart}.\n${itemUrl(item.slug)}`,
-    `Unsung S&box item: ${item.name}. ${price}${supplyPart}.\n${itemUrl(item.slug)}`,
+    { tone: "hype", text: `${item.name} is a whole vibe. ${price}${supplyPart}.\n${itemUrl(item.slug)}` },
+    { tone: "hype", text: `You seen ${item.name} yet? ${price}${supplyPart}${listingsPart}.\n${itemUrl(item.slug)}` },
+    { tone: "hype", text: `${item.name} hits different. ${price}${supplyPart}.\n${itemUrl(item.slug)}` },
+    { tone: "hype", text: `One to watch: ${item.name} at ${price}${supplyPart}${listingsPart}.\n${itemUrl(item.slug)}` },
+    { tone: "hype", text: `Unsung S&box item: ${item.name}. ${price}${supplyPart}.\n${itemUrl(item.slug)}` },
+    { tone: "hype", text: `${item.name} is built different. ${price}${supplyPart}. grails season.\n${itemUrl(item.slug)}` },
     // CS comparison
-    `${item.name} for ${price}. CS traders spend more on cases. Just saying.\n${itemUrl(item.slug)}`,
-    `If you liked flipping CS skins, ${item.name} at ${price} is the kind of play worth watching.\n${itemUrl(item.slug)}`,
-    `CS skin under $10 is a hard find in 2026. ${item.name} at ${price}${supplyPart}.\n${itemUrl(item.slug)}`,
-    `Remember when CS Howl was ${price}? ${item.name} is there today${supplyPart}.\n${itemUrl(item.slug)}`,
+    { tone: "cs-ref", text: `${item.name} for ${price}. CS traders spend more on cases. Just saying.\n${itemUrl(item.slug)}` },
+    { tone: "cs-ref", text: `If you liked flipping CS skins, ${item.name} at ${price} is the kind of play worth watching.\n${itemUrl(item.slug)}` },
+    { tone: "cs-ref", text: `CS skin under $10 is a hard find in 2026. ${item.name} at ${price}${supplyPart}.\n${itemUrl(item.slug)}` },
+    { tone: "cs-ref", text: `Remember when CS Howl was ${price}? ${item.name} is there today${supplyPart}.\n${itemUrl(item.slug)}` },
+    { tone: "cs-ref", text: `Same energy as a 2014 CS sticker find: ${item.name} at ${price}${supplyPart}.\n${itemUrl(item.slug)}` },
     // newsy / factual
-    `👕 ${item.name} · ${price}${supplyPart}${listingsPart}\n${itemUrl(item.slug)}`,
-    `🎨 ${item.name} → ${price}${supplyPart}\n${itemUrl(item.slug)}`,
-    `📎 ${item.name} · ${price}${listingsPart}\n${itemUrl(item.slug)}`,
+    { tone: "newsy", text: `👕 ${item.name} · ${price}${supplyPart}${listingsPart}\n${itemUrl(item.slug)}` },
+    { tone: "newsy", text: `🎨 ${item.name} → ${price}${supplyPart}\n${itemUrl(item.slug)}` },
+    { tone: "newsy", text: `📎 ${item.name} · ${price}${listingsPart}\n${itemUrl(item.slug)}` },
+    { tone: "newsy", text: `🔎 ${item.name} · ${price}${supplyPart}${listingsPart}\n${itemUrl(item.slug)}` },
     // community
-    `Anyone holding ${item.name}? ${price}${supplyPart}. Thoughts?\n${itemUrl(item.slug)}`,
-    `${item.name} thoughts? ${price}${supplyPart}${listingsPart}.\n${itemUrl(item.slug)}`,
-    `${item.name} at ${price}${supplyPart}. Fair value or overpriced?\n${itemUrl(item.slug)}`,
+    { tone: "community", text: `Anyone holding ${item.name}? ${price}${supplyPart}. Thoughts?\n${itemUrl(item.slug)}` },
+    { tone: "community", text: `${item.name} thoughts? ${price}${supplyPart}${listingsPart}.\n${itemUrl(item.slug)}` },
+    { tone: "community", text: `${item.name} at ${price}${supplyPart}. Fair value or overpriced?\n${itemUrl(item.slug)}` },
+    { tone: "community", text: `${item.name} holders, speak up — ${price}${supplyPart}. Long or short from here?\n${itemUrl(item.slug)}` },
     // hashtagged (SEO + authority)
-    `${item.name} · ${price}${supplyPart}${listingsPart} #sboxskins #sboxgame\n${itemUrl(item.slug)}`,
-    `S&box market watchlist: ${item.name} at ${price}${supplyPart} #sboxskins\n${itemUrl(item.slug)}`,
-    `Full S&box skin data → ${item.name}: ${price}${supplyPart}${listingsPart} #sboxgame #sboxmarket\n${itemUrl(item.slug)}`,
-    `Your go-to source for S&box cosmetics pricing. Today: ${item.name} at ${price}.\n${itemUrl(item.slug)}`,
-    `Complete S&box skin tracker — ${item.name} · ${price}${supplyPart} #sboxskins\n${itemUrl(item.slug)}`,
-    `#sboxgame spotlight: ${item.name} · ${price}${supplyPart} #sboxcosmetics\n${itemUrl(item.slug)}`,
+    { tone: "hashtagged", text: `${item.name} · ${price}${supplyPart}${listingsPart} #sboxskins #sboxgame\n${itemUrl(item.slug)}` },
+    { tone: "hashtagged", text: `S&box market watchlist: ${item.name} at ${price}${supplyPart} #sboxskins\n${itemUrl(item.slug)}` },
+    { tone: "hashtagged", text: `Full S&box skin data → ${item.name}: ${price}${supplyPart}${listingsPart} #sboxgame #sboxmarket\n${itemUrl(item.slug)}` },
+    { tone: "hashtagged", text: `Your go-to source for S&box cosmetics pricing. Today: ${item.name} at ${price}.\n${itemUrl(item.slug)}` },
+    { tone: "hashtagged", text: `Complete S&box skin tracker — ${item.name} · ${price}${supplyPart} #sboxskins\n${itemUrl(item.slug)}` },
+    { tone: "hashtagged", text: `#sboxgame spotlight: ${item.name} · ${price}${supplyPart} #sboxcosmetics\n${itemUrl(item.slug)}` },
   ];
-  const text = seedPick(templates);
-  return { kind: "item-spotlight", text, itemSlug: item.slug, approxLength: approximateLength(text) };
+  const text = pickTone(templates, options.tone);
+  return {
+    kind: "item-spotlight",
+    text,
+    itemSlug: item.slug,
+    approxLength: approximateLength(text),
+  };
 }
 
 export async function genLimitedEdition(): Promise<GeneratedTweet | null> {
@@ -835,14 +915,22 @@ export async function genMarketInsight(): Promise<GeneratedTweet | null> {
 
 // ----- Entry points -----
 
-/** Generate one specific kind of tweet on demand (for the admin UI). */
-export async function generateTweet(kind: TweetKind): Promise<GeneratedTweet | null> {
+/**
+ * Generate one specific kind of tweet on demand (for the admin UI).
+ * Options are passed through — currently only `item-spotlight` uses them,
+ * but the signature is uniform so admins can send tone/itemSlug for any
+ * kind without the caller caring which generators ignore it.
+ */
+export async function generateTweet(
+  kind: TweetKind,
+  options: GenerateOptions = {},
+): Promise<GeneratedTweet | null> {
   switch (kind) {
     case "top-gainer": return genTopGainer();
     case "top-loser": return genTopLoser();
     case "rarest": return genRarest();
     case "market-cap": return genMarketCap();
-    case "item-spotlight": return genItemSpotlight();
+    case "item-spotlight": return genItemSpotlight(options);
     case "limited-edition": return genLimitedEdition();
     case "weekly-gainer": return genWeeklyGainer();
     case "weekly-loser": return genWeeklyLoser();
