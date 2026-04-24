@@ -255,6 +255,78 @@ If you ever want out: ${opts.unsubscribeUrl}`;
   };
 }
 
+const KIND_BLURB: Record<string, string> = {
+  "monday-outlook":
+    "Monday outlook — forward-looking momentum rankings and what we're watching this week",
+  "friday-report":
+    "Friday wrap — what actually happened in the S&box skin market that week",
+};
+
+export interface WelcomeEmailContent {
+  subject: string;
+  html: string;
+  text: string;
+}
+
+export function buildWelcomeEmail(opts: {
+  kinds: string[];
+  unsubscribeUrl: string;
+}): WelcomeEmailContent {
+  const kindLines = opts.kinds
+    .map((k) => `<li style="margin-bottom:4px;">${escapeHtml(KIND_BLURB[k] ?? k)}</li>`)
+    .join("");
+
+  const inner = `
+    <h1 style="margin:0 0 14px;color:#ffffff;font-size:22px;font-weight:800;">You're in.</h1>
+    <p style="margin:0 0 14px;color:${BRAND.fg};font-size:15px;line-height:1.6;">
+      Thanks for subscribing. You'll get:
+    </p>
+    <ul style="margin:0 0 18px;padding-left:22px;color:${BRAND.fg};font-size:15px;line-height:1.7;">
+      ${kindLines}
+    </ul>
+    <p style="margin:0 0 18px;color:${BRAND.fg};font-size:15px;line-height:1.6;">
+      No spam, no weekly "here's what we're up to" noise. Just the data, written
+      plainly. If something in an issue isn't useful, reply to the email and tell us.
+    </p>
+    <p style="margin:0 0 6px;">
+      <a href="${SITE_ORIGIN}" style="display:inline-block;background:${BRAND.accentDark};color:#ffffff;padding:11px 20px;border-radius:8px;font-weight:600;font-size:14px;text-decoration:none;">
+        Visit sboxskins.gg
+      </a>
+    </p>
+    <p style="margin:16px 0 0;color:${BRAND.muted};font-size:12px;line-height:1.6;">
+      Change your mind? One-click unsubscribe is in every issue we send.
+    </p>
+  `;
+  const html = shell({
+    preheader: "You're subscribed to the sboxskins.gg newsletter.",
+    inner,
+    unsubscribeUrl: opts.unsubscribeUrl,
+    footerNote:
+      "You're getting this because you subscribed at sboxskins.gg just now.",
+  });
+
+  const kindText = opts.kinds
+    .map((k) => `- ${KIND_BLURB[k] ?? k}`)
+    .join("\n");
+  const text = `You're in.
+
+Thanks for subscribing to the sboxskins.gg newsletter. You'll get:
+
+${kindText}
+
+No spam. Reply with feedback any time.
+
+Visit sboxskins.gg: ${SITE_ORIGIN}
+
+Unsubscribe any time (also in every issue): ${opts.unsubscribeUrl}`;
+
+  return {
+    subject: "You're in — sboxskins.gg newsletter",
+    html,
+    text,
+  };
+}
+
 export interface IssueEmailContent {
   subject: string;
   html: string;

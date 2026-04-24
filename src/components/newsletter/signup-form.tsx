@@ -66,9 +66,10 @@ export function NewsletterSignupForm({ id = "newsletter" }: { id?: string }) {
         className="rounded-xl border border-purple-500/30 bg-purple-500/5 p-6 text-center"
       >
         <CheckCircle2 className="h-8 w-8 text-purple-300 mx-auto mb-3" />
-        <h3 className="text-white font-semibold mb-1">Check your inbox.</h3>
+        <h3 className="text-white font-semibold mb-1">You're in.</h3>
         <p className="text-sm text-neutral-400">
-          We sent a confirmation link to <span className="text-purple-200">{email}</span>. One click and you're in.
+          <span className="text-purple-200">{email}</span> is subscribed. Watch
+          your inbox for a welcome note and the next issue.
         </p>
       </div>
     );

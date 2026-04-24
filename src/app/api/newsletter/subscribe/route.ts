@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { prisma } from "@/lib/db";
 import { redis } from "@/lib/redis/client";
 import { looksLikeEmail, newOpaqueToken } from "@/lib/newsletter/tokens";
-import { sendVerificationEmail } from "@/lib/newsletter/send";
+import { sendWelcomeEmail } from "@/lib/newsletter/send";
 
 const ALLOWED_KINDS = ["friday-report", "monday-outlook"] as const;
 type Kind = (typeof ALLOWED_KINDS)[number];
@@ -11,14 +11,18 @@ type Kind = (typeof ALLOWED_KINDS)[number];
  * POST /api/newsletter/subscribe
  * Body: { email: string, kinds?: ("friday-report" | "monday-outlook")[] }
  *
- * Idempotent on email: if a row already exists we just update its
- * `kinds` list and re-issue a verify token if the row wasn't verified
- * yet. Never reveals via response whether an email was new or existing
- * — that'd be an enumeration oracle for spammers.
+ * Single opt-in: new rows are marked verified immediately and a welcome
+ * email fires. Chose single opt-in because the conversion loss from the
+ * double-confirm click is real (15-30% of signups never click verify)
+ * and the risk surface is bounded:
+ *   - Rate-limited 5/hour per IP via Redis (fail-open on outage)
+ *   - Every outgoing email includes a one-click unsubscribe with
+ *     List-Unsubscribe headers for Gmail's native button
+ *   - Anyone typed in maliciously can unsub in one click from any
+ *     newsletter we send
  *
- * Rate limited per-IP via Redis (5/hour). Without it, anyone could
- * pump thousands of signup requests and fill our table with garbage
- * addresses — free spam, our bill.
+ * Idempotent on email. Never reveals whether an email was new or existing
+ * — that'd be an enumeration oracle.
  */
 export async function POST(request: NextRequest) {
   let body: { email?: string; kinds?: string[] };
@@ -70,21 +74,27 @@ export async function POST(request: NextRequest) {
     where: { email },
   });
 
-  if (existing && existing.verified && !existing.unsubscribedAt) {
-    // Already subscribed. Merge kinds so a second signup with a different
-    // set of checkboxes adds those, doesn't replace.
+  if (existing && !existing.unsubscribedAt) {
+    // Already subscribed (verified or not). Merge kinds so a second
+    // signup with a different set of checkboxes adds those, doesn't
+    // replace. Flip `verified` to true in case this row predates
+    // single-opt-in (legacy rows with pending verification inherit
+    // the new policy retroactively — they clicked "subscribe", that's
+    // consent).
     const mergedKinds = Array.from(new Set([...existing.kinds, ...kinds]));
-    if (mergedKinds.length !== existing.kinds.length) {
-      await prisma.newsletterSubscription.update({
-        where: { email },
-        data: { kinds: mergedKinds },
-      });
-    }
+    await prisma.newsletterSubscription.update({
+      where: { email },
+      data: {
+        kinds: mergedKinds,
+        verified: true,
+        verifiedAt: existing.verifiedAt ?? new Date(),
+        verifyToken: null,
+      },
+    });
     return NextResponse.json({ ok: true, status: "already-subscribed" });
   }
 
-  // New row OR unverified/resubscribing row → issue fresh verify token.
-  const verifyToken = newOpaqueToken();
+  // New row OR previously-unsubscribed resub. Mark verified immediately.
   const unsubscribeToken = existing?.unsubscribeToken ?? newOpaqueToken();
 
   if (existing) {
@@ -92,31 +102,35 @@ export async function POST(request: NextRequest) {
       where: { email },
       data: {
         kinds,
-        verifyToken,
-        verified: false,
+        verified: true,
+        verifiedAt: new Date(),
+        verifyToken: null,
         unsubscribedAt: null,
       },
     });
   } else {
     await prisma.newsletterSubscription.create({
-      data: { email, kinds, verifyToken, unsubscribeToken },
+      data: {
+        email,
+        kinds,
+        verified: true,
+        verifiedAt: new Date(),
+        // Legacy column — kept NOT NULL... actually it's nullable. We
+        // just don't use it anymore, set to null.
+        verifyToken: null,
+        unsubscribeToken,
+      },
     });
   }
 
-  // Fire the verification email via `after()` so the response returns
-  // immediately. Resend calls are usually <500ms but can spike when
-  // their edge is loaded — we don't want a legitimate user staring at
-  // a spinner. `after()` routes the send through Vercel's waitUntil()
-  // so the invocation stays alive until Resend responds.
-  //
-  // If RESEND_API_KEY is unset, sendVerificationEmail logs a warning
-  // and returns `{ sent: false, reason: "no-key" }`. The row is still
-  // stored — admin can verify manually from /admin/newsletter.
+  // Fire a welcome email via `after()` so the response returns
+  // immediately. No-op gracefully if RESEND_API_KEY is missing — the
+  // subscription row is stored regardless.
   after(
-    sendVerificationEmail({ email, verifyToken, unsubscribeToken }).catch(
-      (err) => console.error("[newsletter] verify-send threw:", err),
+    sendWelcomeEmail({ email, unsubscribeToken, kinds }).catch((err) =>
+      console.error("[newsletter] welcome-send threw:", err),
     ),
   );
 
-  return NextResponse.json({ ok: true, status: "verification-sent" });
+  return NextResponse.json({ ok: true, status: "subscribed" });
 }

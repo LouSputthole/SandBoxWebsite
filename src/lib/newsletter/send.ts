@@ -6,7 +6,7 @@ import {
   SENDER_REPLY_TO,
   SITE_ORIGIN,
 } from "./client";
-import { buildIssueEmail, buildVerifyEmail } from "./templates";
+import { buildIssueEmail, buildVerifyEmail, buildWelcomeEmail } from "./templates";
 
 /**
  * Email send helpers. Every function gracefully no-ops if
@@ -72,6 +72,55 @@ export async function sendVerificationEmail(opts: {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[newsletter] verify send threw:`, message);
+    return { sent: false, reason: message };
+  }
+}
+
+/**
+ * Welcome email sent on signup (single-opt-in flow). Greets the new
+ * subscriber, confirms which newsletters they picked, and prominently
+ * features the unsubscribe link so someone who was signed up without
+ * intent can get out in one click.
+ */
+export async function sendWelcomeEmail(opts: {
+  email: string;
+  unsubscribeToken: string;
+  kinds: string[];
+}): Promise<SendResult> {
+  const client = getResend();
+  if (!client) {
+    console.warn(
+      `[newsletter] RESEND_API_KEY missing — would have sent welcome to ${opts.email}`,
+    );
+    return { sent: false, reason: "no-key" };
+  }
+
+  const { subject, html, text } = buildWelcomeEmail({
+    kinds: opts.kinds,
+    unsubscribeUrl: unsubscribeUrl(opts.unsubscribeToken),
+  });
+
+  try {
+    const { data, error } = await client.emails.send({
+      from: SENDER_FROM,
+      to: [opts.email],
+      replyTo: SENDER_REPLY_TO,
+      subject,
+      html,
+      text,
+      headers: {
+        "List-Unsubscribe": `<${unsubscribeUrl(opts.unsubscribeToken)}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      },
+    });
+    if (error) {
+      console.error(`[newsletter] welcome send failed:`, error);
+      return { sent: false, reason: error.message };
+    }
+    return { sent: true, resendId: data?.id };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[newsletter] welcome send threw:`, message);
     return { sent: false, reason: message };
   }
 }
