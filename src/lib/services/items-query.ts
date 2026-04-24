@@ -99,7 +99,14 @@ export async function getItems(params: ItemsQueryParams): Promise<ItemsQueryResu
       },
     }),
     prisma.item.count({ where }),
+    // Scope "last updated" to the same filter as the list. Previously this
+    // returned the global max across all items — so filtering to, say,
+    // type=accessory would show a "updated 2m ago" pill even if no
+    // accessory had been synced in hours. Matching the list's where clause
+    // makes the freshness indicator reflect the rows the user is
+    // actually looking at.
     prisma.item.findFirst({
+      where,
       orderBy: { updatedAt: "desc" },
       select: { updatedAt: true },
     }),
@@ -111,6 +118,8 @@ export async function getItems(params: ItemsQueryParams): Promise<ItemsQueryResu
     page: pageNum,
     limit: limitNum,
     totalPages: Math.ceil(total / limitNum),
-    lastUpdated: lastUpdatedItem?.updatedAt ?? null,
+    // `items.length === 0` case falls through as null — safer UX than
+    // showing a timestamp for rows that don't exist.
+    lastUpdated: items.length > 0 ? (lastUpdatedItem?.updatedAt ?? null) : null,
   };
 }
