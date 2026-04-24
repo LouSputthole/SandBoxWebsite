@@ -28,6 +28,7 @@ import { ItemCard } from "@/components/items/item-card";
 import { prisma } from "@/lib/db";
 import { formatRelativeTime } from "@/lib/utils";
 import { Price } from "@/components/ui/price";
+import { NewsletterSignupForm } from "@/components/newsletter/signup-form";
 
 // Render at request time — homepage data changes every sync cycle (15-30 min).
 // Next.js will cache the rendered HTML briefly at the edge anyway.
@@ -542,6 +543,11 @@ export default async function HomePage() {
             </Link>
           ))}
         </div>
+      </section>
+
+      {/* Newsletter signup */}
+      <section className="mx-auto max-w-2xl px-4 sm:px-6 lg:px-8 py-12">
+        <NewsletterSignupForm />
       </section>
 
       {/* About the S&box Cosmetics Market — SEO content */}

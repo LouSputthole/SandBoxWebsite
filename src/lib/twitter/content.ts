@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { formatPrice } from "@/lib/utils";
+import { fetchAllGameNews, filterUnposted } from "@/lib/game-news/sources";
 
 export type TweetKind =
   | "top-gainer"
@@ -13,7 +14,8 @@ export type TweetKind =
   | "weekly-loser"
   | "weekly-recap"
   | "weekly-market-change"
-  | "market-insight";
+  | "market-insight"
+  | "game-update";
 
 /**
  * Voice preset for template selection. Each generator's template list is
@@ -913,6 +915,51 @@ export async function genMarketInsight(): Promise<GeneratedTweet | null> {
   return { kind: "market-insight", text, approxLength: approximateLength(text) };
 }
 
+/**
+ * Game-update tweet. Grabs the freshest S&box-related post from Facepunch
+ * or sbox.game (whichever's more recent), dedupes against SentTweet so
+ * we don't re-post the same thing, and wraps it in one of a handful of
+ * "did you see this?" style frames.
+ *
+ * Returns null if there's no new news — the cron will fall through to a
+ * different tweet kind rather than spam a stale link.
+ */
+export async function genGameUpdate(): Promise<GeneratedTweet | null> {
+  const freshAll = await fetchAllGameNews(8);
+  const fresh = await filterUnposted(freshAll);
+  if (fresh.length === 0) return null;
+
+  // Pick newest first, but rotate if we've seen the same headline bouncing
+  // between sources — prefer diversity.
+  const pick = fresh[0];
+  const srcLabel =
+    pick.source === "facepunch"
+      ? "Facepunch just posted"
+      : pick.source === "sbox.game"
+        ? "New on sbox.game"
+        : "S&box update";
+
+  // Three frame styles — rotate deterministically so successive runs within
+  // the same minute don't all produce identical copy when cron retries.
+  const frames = [
+    `${srcLabel}: ${pick.title}\n\n${pick.url}\n\nFresh S&box news, our market tracker keeps up → ${SITE}`,
+    `📰 ${pick.title}\n\nvia ${pick.source} — ${pick.url}\n\nTrack how this moves the skin market at ${SITE}`,
+    `S&box news: ${pick.title}\n\n${pick.url}\n\nPrice impact? We'll see it first — ${SITE}`,
+    `${pick.title}\n\nStraight from ${pick.source}: ${pick.url}\n\nMarket data for the fallout → ${SITE}`,
+    `Heads up — ${pick.title}\n\n${pick.url}\n\nFollow the market reaction on ${SITE}`,
+  ];
+  const text = seedPick(frames);
+
+  return {
+    kind: "game-update",
+    // Reuse the existing itemSlug column to carry the news fingerprint.
+    // filterUnposted() reads this back on the next run to skip reposts.
+    itemSlug: pick.id,
+    text,
+    approxLength: approximateLength(text),
+  };
+}
+
 // ----- Entry points -----
 
 /**
@@ -937,6 +984,7 @@ export async function generateTweet(
     case "weekly-recap": return genWeeklyRecap();
     case "weekly-market-change": return genWeeklyMarketChange();
     case "market-insight": return genMarketInsight();
+    case "game-update": return genGameUpdate();
     case "new-high": return null; // reserved
   }
 }
@@ -955,6 +1003,7 @@ export async function generateDrafts(): Promise<GeneratedTweet[]> {
     "weekly-recap",
     "weekly-market-change",
     "market-insight",
+    "game-update",
   ];
   const results = await Promise.all(kinds.map((k) => generateTweet(k)));
   return results.filter((r): r is GeneratedTweet => r !== null);
@@ -992,6 +1041,7 @@ export async function pickScheduledTweet(): Promise<GeneratedTweet | null> {
   const rotation: TweetKind[] = [
     "top-gainer",
     "item-spotlight",
+    "game-update",
     "rarest",
     "market-cap",
     "top-loser",
