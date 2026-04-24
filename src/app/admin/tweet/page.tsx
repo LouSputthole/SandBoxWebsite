@@ -80,6 +80,7 @@ const KIND_LABELS: Record<string, string> = {
   "weekly-recap": "Weekly Recap",
   "weekly-market-change": "Weekly Market Change",
   "market-insight": "Market Insight",
+  "game-update": "S&box Game Update",
 };
 
 function formatTweetTime(iso: string): string {
