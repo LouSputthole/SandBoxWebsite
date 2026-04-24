@@ -1,10 +1,15 @@
 import { prisma } from "@/lib/db";
 import { formatPrice } from "@/lib/utils";
+import { scoreAllItems, type ScoredItem } from "@/lib/market/momentum";
+import { pickWhaleSpotlight, type WhaleSpotlight } from "./whales-spotlight";
+import { writeFridayNarrative } from "./narrative";
 
 /**
- * Generates and persists a weekly market report as a BlogPost row.
- * Run weekly by a cron. Idempotent on slug — won't overwrite an existing
- * post for the same ISO week.
+ * Friday weekly market report. Shipped as a blog post AND queued for
+ * newsletter delivery. Stat sections are generator-produced (reliable
+ * under flaky LLM outages); narrative sections are Claude-written with
+ * anti-duplication context. Fully graceful fallback — if Anthropic is
+ * unreachable, the whole report still ships with flat-template narrative.
  */
 export async function generateAndSaveWeeklyReport(): Promise<{
   created: boolean;
@@ -15,52 +20,40 @@ export async function generateAndSaveWeeklyReport(): Promise<{
   const { year, week } = getIsoWeek(now);
   const slug = `weekly-report-${year}-w${String(week).padStart(2, "0")}`;
 
-  // Idempotency: skip if we already have this week's post
   const existing = await prisma.blogPost.findUnique({ where: { slug } });
   if (existing) {
     return { created: false, slug, title: existing.title };
   }
 
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-  // Centered ±12h window around 7-day-ago — gives us tolerance for sync gaps
   const baselineStart = new Date(weekAgo.getTime() - 12 * 60 * 60 * 1000);
   const baselineEnd = new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000);
 
-  const [items, oldSnap, newestSnap, weekAgoPoints] = await Promise.all([
-    prisma.item.findMany({
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        currentPrice: true,
-        priceChange24h: true,
-        totalSupply: true,
-        uniqueOwners: true,
-        volume: true,
-        scarcityScore: true,
-      },
-    }),
-    prisma.marketSnapshot.findFirst({
-      where: { timestamp: { lte: baselineEnd } },
-      orderBy: { timestamp: "desc" },
-    }),
-    prisma.marketSnapshot.findFirst({ orderBy: { timestamp: "desc" } }),
-    // Pull every price point in the ±12h window centered on 7 days ago.
-    // We take the MEDIAN per item (not the single closest point) because
-    // Steam's /market/search occasionally stores spurious sell_prices
-    // during a sync. A single outlier at the baseline would blow up the
-    // reported weekly change — we've seen +5000%+ tweets when the real
-    // move was +20%. Median is robust to those one-offs.
-    prisma.pricePoint.findMany({
-      where: { timestamp: { gte: baselineStart, lte: baselineEnd } },
-      select: { itemId: true, price: true },
-    }),
-  ]);
+  const [items, oldSnap, newestSnap, weekAgoPoints, scored, whale] =
+    await Promise.all([
+      prisma.item.findMany({
+        select: {
+          id: true, name: true, slug: true, type: true,
+          currentPrice: true, priceChange24h: true,
+          totalSupply: true, uniqueOwners: true, volume: true,
+          scarcityScore: true, soldPast24h: true, isActiveStoreItem: true,
+          leavingStoreAt: true, category: true,
+        },
+      }),
+      prisma.marketSnapshot.findFirst({
+        where: { timestamp: { lte: baselineEnd } },
+        orderBy: { timestamp: "desc" },
+      }),
+      prisma.marketSnapshot.findFirst({ orderBy: { timestamp: "desc" } }),
+      prisma.pricePoint.findMany({
+        where: { timestamp: { gte: baselineStart, lte: baselineEnd } },
+        select: { itemId: true, price: true },
+      }),
+      scoreAllItems(),
+      pickWhaleSpotlight(),
+    ]);
 
-  // Median baseline price per item. Group all window points, sort, pick
-  // middle. Skip items with zero-or-negative medians (shouldn't happen
-  // but guards against division blow-ups downstream).
+  // Median baseline per item — robust to single-point outlier spikes.
   const pointsByItem = new Map<string, number[]>();
   for (const p of weekAgoPoints) {
     const arr = pointsByItem.get(p.itemId) ?? [];
@@ -71,14 +64,13 @@ export async function generateAndSaveWeeklyReport(): Promise<{
   for (const [itemId, prices] of pointsByItem) {
     const sorted = [...prices].sort((a, b) => a - b);
     const mid = Math.floor(sorted.length / 2);
-    const median =
+    const m =
       sorted.length % 2 === 0
         ? (sorted[mid - 1] + sorted[mid]) / 2
         : sorted[mid];
-    if (median > 0) priceWeekAgo.set(itemId, median);
+    if (m > 0) priceWeekAgo.set(itemId, m);
   }
 
-  // Compute 7-day change for each item that has both current + baseline
   const withWeeklyChange = items
     .map((i) => {
       const baseline = priceWeekAgo.get(i.id);
@@ -113,38 +105,129 @@ export async function generateAndSaveWeeklyReport(): Promise<{
     .sort((a, b) => (b.scarcityScore ?? 0) - (a.scarcityScore ?? 0))
     .slice(0, 5);
 
-  const title = `S&box Market Report — Week ${week}, ${year}`;
-  const excerpt = capChange != null
-    ? `Listings value moved ${capChange >= 0 ? "+" : ""}${capChange.toFixed(1)}% this week across ${totalItems} tracked S&box skins.`
-    : `Weekly snapshot of the S&box skin market across ${totalItems} tracked items.`;
+  // --- New analysis sections ---
+  const categoryBreakdown = buildCategoryBreakdown(items);
+  const volumeLeaders = [...items]
+    .filter((i) => i.volume != null && i.volume > 0)
+    .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
+    .slice(0, 5);
+  const soldLeaders = [...items]
+    .filter((i) => i.soldPast24h != null && i.soldPast24h > 0)
+    .sort((a, b) => (b.soldPast24h ?? 0) - (a.soldPast24h ?? 0))
+    .slice(0, 5);
+  const leavingStore = items
+    .filter(
+      (i) =>
+        i.isActiveStoreItem &&
+        i.leavingStoreAt &&
+        i.leavingStoreAt.getTime() - now.getTime() <
+          21 * 24 * 60 * 60 * 1000,
+    )
+    .sort(
+      (a, b) =>
+        (a.leavingStoreAt?.getTime() ?? Infinity) -
+        (b.leavingStoreAt?.getTime() ?? Infinity),
+    )
+    .slice(0, 5);
+  const topMomentum = scored.filter((s) => s.momentumScore > 0).slice(0, 6);
 
-  const md = buildMarkdown({
+  // Claude-generated narrative (falls back to template strings if null).
+  const narrative = await writeFridayNarrative({
     week,
     year,
     totalItems,
     currentListings,
     capChange,
-    gainers,
-    losers,
-    rarestItems,
+    gainers: gainers.map((g) => ({
+      name: g.name,
+      slug: g.slug,
+      weeklyChangePct: g.weeklyChangePct,
+    })),
+    losers: losers.map((l) => ({
+      name: l.name,
+      slug: l.slug,
+      weeklyChangePct: l.weeklyChangePct,
+    })),
+    topMomentum: topMomentum.map((m) => ({
+      name: m.name,
+      slug: m.slug,
+      momentumScore: m.momentumScore,
+      rationale: m.rationale,
+    })),
+    whaleSpotlight: whale
+      ? {
+          name: whale.item.name,
+          slug: whale.item.slug,
+          topHolderShare: whale.topHolderShare,
+        }
+      : null,
+  });
+
+  const title = `S&box Market Report — Week ${week}, ${year}`;
+  const excerpt =
+    capChange != null
+      ? `Listings value moved ${capChange >= 0 ? "+" : ""}${capChange.toFixed(1)}% this week across ${totalItems} tracked S&box skins.`
+      : `Weekly snapshot of the S&box skin market across ${totalItems} tracked items.`;
+
+  const md = buildMarkdown({
+    week, year, totalItems, currentListings, capChange,
+    gainers, losers, rarestItems, topMomentum, categoryBreakdown,
+    volumeLeaders, soldLeaders, leavingStore, whale, narrative,
   });
 
   const post = await prisma.blogPost.create({
-    data: {
-      slug,
-      title,
-      excerpt,
-      content: md,
-      kind: "weekly-report",
-    },
+    data: { slug, title, excerpt, content: md, kind: "weekly-report" },
   });
 
   return { created: true, slug: post.slug, title: post.title };
 }
 
+// ---------- helpers ----------
+
+interface WeeklyItem {
+  name: string; slug: string; type: string;
+  currentPrice: number | null; volume: number | null;
+  soldPast24h: number | null; category: string | null;
+  leavingStoreAt: Date | null; isActiveStoreItem: boolean;
+}
+
+interface CategoryRow {
+  label: string;
+  itemCount: number;
+  totalListingsValue: number;
+  avgPrice: number;
+}
+
+function buildCategoryBreakdown(items: WeeklyItem[]): CategoryRow[] {
+  const byCat = new Map<string, WeeklyItem[]>();
+  for (const i of items) {
+    const label = i.category ?? i.type ?? "other";
+    const arr = byCat.get(label) ?? [];
+    arr.push(i);
+    byCat.set(label, arr);
+  }
+  const rows: CategoryRow[] = [];
+  for (const [label, group] of byCat) {
+    const priced = group.filter((i) => i.currentPrice != null && i.currentPrice > 0);
+    if (priced.length === 0) continue;
+    const totalValue = priced.reduce(
+      (s, i) => s + (i.currentPrice ?? 0) * (i.volume ?? 0),
+      0,
+    );
+    const avg =
+      priced.reduce((s, i) => s + (i.currentPrice ?? 0), 0) / priced.length;
+    rows.push({
+      label,
+      itemCount: group.length,
+      totalListingsValue: totalValue,
+      avgPrice: avg,
+    });
+  }
+  return rows.sort((a, b) => b.totalListingsValue - a.totalListingsValue);
+}
+
 interface WeeklyMover {
-  name: string;
-  slug: string;
+  name: string; slug: string;
   currentPrice: number | null;
   weeklyChangePct: number;
   weekAgoPrice: number;
@@ -158,11 +241,33 @@ function buildMarkdown(data: {
   capChange: number | null;
   gainers: WeeklyMover[];
   losers: WeeklyMover[];
-  rarestItems: Array<{ name: string; slug: string; currentPrice: number | null; scarcityScore: number | null }>;
+  rarestItems: Array<{
+    name: string; slug: string;
+    currentPrice: number | null;
+    scarcityScore: number | null;
+  }>;
+  topMomentum: ScoredItem[];
+  categoryBreakdown: CategoryRow[];
+  volumeLeaders: WeeklyItem[];
+  soldLeaders: WeeklyItem[];
+  leavingStore: WeeklyItem[];
+  whale: WhaleSpotlight | null;
+  narrative: { overview: string | null; closing: string | null };
 }): string {
-  const capLine = data.capChange != null
-    ? `The total listings value of the S&box skin market is **${formatPrice(data.currentListings)}**, a ${data.capChange >= 0 ? "gain" : "drop"} of **${data.capChange.toFixed(1)}%** week-over-week.`
-    : `The total listings value of the S&box skin market is **${formatPrice(data.currentListings)}**.`;
+  const { narrative } = data;
+
+  const fallbackOverview =
+    data.capChange != null
+      ? `Total listings value sits at **${formatPrice(data.currentListings)}**, a ${data.capChange >= 0 ? "gain" : "drop"} of **${data.capChange.toFixed(1)}%** week-over-week across ${data.totalItems} tracked S&box skins.`
+      : `Total listings value sits at **${formatPrice(data.currentListings)}** across ${data.totalItems} tracked S&box skins.`;
+
+  const fallbackClosing = `Week ${data.week} of ${data.year} ${
+    data.capChange != null && data.capChange > 0
+      ? "was net-positive for holders"
+      : data.capChange != null && data.capChange < 0
+        ? "brought a correction"
+        : "kept the economy humming"
+  }. Watch the top momentum list below — those are the items with multiple signals lining up, not just a single spiky print.`;
 
   const moverLine = (m: WeeklyMover, i: number): string => {
     const sign = m.weeklyChangePct >= 0 ? "+" : "";
@@ -171,48 +276,133 @@ function buildMarkdown(data: {
 
   const gainerLines = data.gainers.map(moverLine).join("\n");
   const loserLines = data.losers.map(moverLine).join("\n");
+
   const rarestLines = data.rarestItems
-    .map((r, i) => `${i + 1}. [${r.name}](/items/${r.slug}) — scarcity ${r.scarcityScore?.toFixed(0)}/100 · ${formatPrice(r.currentPrice ?? 0)}`)
+    .map(
+      (r, i) =>
+        `${i + 1}. [${r.name}](/items/${r.slug}) — scarcity ${r.scarcityScore?.toFixed(0)}/100 · ${formatPrice(r.currentPrice ?? 0)}`,
+    )
     .join("\n");
 
-  const emptyNote = "_Not enough 7-day price history yet — we'll fill this section once more data accumulates._";
+  const momentumLines = data.topMomentum
+    .map((m, i) => {
+      const why =
+        m.rationale.length > 0 ? ` — ${m.rationale.join("; ")}` : "";
+      return `${i + 1}. [${m.name}](/items/${m.slug}) — momentum **${m.momentumScore.toFixed(1)}**${why}`;
+    })
+    .join("\n");
+
+  const categoryLines = data.categoryBreakdown
+    .slice(0, 8)
+    .map(
+      (c) =>
+        `- **${c.label}** — ${c.itemCount} items · avg ${formatPrice(c.avgPrice)} · listings value ${formatPrice(c.totalListingsValue)}`,
+    )
+    .join("\n");
+
+  const volumeLines = data.volumeLeaders
+    .map(
+      (v, i) =>
+        `${i + 1}. [${v.name}](/items/${v.slug}) — ${v.volume?.toLocaleString() ?? 0} listings · ${formatPrice(v.currentPrice ?? 0)}`,
+    )
+    .join("\n");
+
+  const soldLines = data.soldLeaders
+    .map(
+      (s, i) =>
+        `${i + 1}. [${s.name}](/items/${s.slug}) — ${s.soldPast24h?.toLocaleString() ?? 0} sold past 24h`,
+    )
+    .join("\n");
+
+  const leavingLines = data.leavingStore
+    .map((l) => {
+      const days = l.leavingStoreAt
+        ? Math.ceil(
+            (l.leavingStoreAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000),
+          )
+        : null;
+      return `- [${l.name}](/items/${l.slug})${days != null ? ` — leaves in ${days}d` : ""}`;
+    })
+    .join("\n");
+
+  const whaleSection = data.whale
+    ? `## Whale Spotlight
+
+**Whale spotlight: [${data.whale.item.name}](/items/${data.whale.item.slug})** — one holder controls **${data.whale.topHolderCount}** units, or **${(data.whale.topHolderShare * 100).toFixed(1)}%** of the total ${data.whale.item.totalSupply?.toLocaleString() ?? "?"} supply. Across the top 10 holders we count **${data.whale.whaleCount}** whales (5+ units each). When distribution is this tight, small accumulation moves the whole market for this skin.
+
+Top-10 holdings (counts only — we don't dox Steam IDs): ${data.whale.topHoldings.join(", ")}.`
+    : "";
 
   return `## Market Overview
 
-${capLine}
+${narrative.overview ?? fallbackOverview}
 
-We're tracking **${data.totalItems}** unique S&box skins this week across the Steam Community Market.
+We're tracking **${data.totalItems}** unique S&box skins across the Steam Community Market.
 
-## Top Gainers This Week
+## Top Momentum This Week
 
-${gainerLines || emptyNote}
+Our composite momentum score blends 7-day and 30-day price trends, volume surges, supply contraction, holder concentration, and store-rotation signals. Items ranking high have multiple indicators pointing the same way — not just a one-off spike.
 
-## Top Losers This Week
+${momentumLines || "_Momentum data populating — need more price history for full coverage._"}
 
-${loserLines || emptyNote}
+## Top Gainers
+
+${gainerLines || "_Not enough 7-day price history yet._"}
+
+## Top Losers
+
+${loserLines || "_Not enough 7-day price history yet._"}
+
+## Category Breakdown
+
+${categoryLines || "_Category data still populating._"}
+
+## Volume Leaders
+
+Most listed on the Steam Community Market right now. Deep order books → easier to buy/sell at market.
+
+${volumeLines || "_Volume data still populating._"}
+
+## Busiest Past 24h
+
+Actual sales — not listings. The skins people are actively trading.
+
+${soldLines || "_Sales-velocity data still populating._"}
+
+${data.leavingStore.length > 0 ? `## Leaving the Store Soon
+
+Items in the S&box store that rotate out within 3 weeks. Historically, store rotations drive a spike in secondary-market price — worth watching these.
+
+${leavingLines}` : ""}
 
 ## Rarest Skins by Scarcity Score
 
-These are the skins with the tightest distribution and lowest liquidity right now — whales holding, market thin, high momentum.
+Tightest distribution and thinnest liquidity right now.
 
 ${rarestLines || "_Scarcity data still populating._"}
 
+${whaleSection}
+
 ## What This Means
 
-Week ${data.week} of ${data.year} ${data.capChange != null && data.capChange > 0 ? "was a net-positive week for holders" : data.capChange != null && data.capChange < 0 ? "was a correction week for the market" : "kept the S&box economy humming"}. Keep an eye on the top gainers — rapid moves often signal accumulation or sudden demand shifts. The losers list is where bargain hunters should be looking.
+${narrative.closing ?? fallbackClosing}
 
-For live data, check the [Trends page](/trends) and set [price alerts](/items) on items you're watching.
+For live data, check [Trends](/trends) and set [price alerts](/items) on items you're watching. Get this report in your inbox every Friday — [subscribe to the newsletter](/#newsletter) (we also do a Monday forward-looking outlook).
 
 ---
 
-_This report is auto-generated from our market data every Friday. Data pulled from the Steam Community Market and sbox.dev._`;
+_Auto-generated from our market data every Friday. Signals pulled from the Steam Community Market, sbox.dev, and our own daily supply snapshots._`;
 }
 
 function getIsoWeek(date: Date): { year: number; week: number } {
-  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const d = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  const week = Math.ceil(
+    ((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+  );
   return { year: d.getUTCFullYear(), week };
 }

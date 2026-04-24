@@ -304,3 +304,37 @@ model TradeListingItem {
   @@index([listingId])
   @@index([itemId])
 }
+
+// ---------------------------------------------------------------------------
+// Newsletter subscriptions. Two flavors (`kinds`): "friday-report" (weekly
+// market wrap) and "monday-outlook" (forward-looking digest with momentum
+// rankings). One row per email — users can be subscribed to both, neither,
+// or either. Double-opt-in via verifyToken + one-click unsubscribe via a
+// signed token in the link.
+// ---------------------------------------------------------------------------
+
+model NewsletterSubscription {
+  id               String    @id @default(cuid())
+  email            String    @unique
+  // Which newsletters this address wants. Stored as a Postgres string[]
+  // so we can query `"monday-outlook" = ANY("kinds")` efficiently at send
+  // time without a join table (kinds are an enum-like closed set).
+  kinds            String[]  @default(["monday-outlook"])
+  // Opaque token placed in unsubscribe links. Rotating it invalidates old
+  // links if an abuse report comes in — keeps us compliant without
+  // rewriting every outgoing email.
+  unsubscribeToken String    @unique
+  // Double opt-in: unverified rows never receive mail. verifyToken is the
+  // one-time confirmation token emailed after signup. NULL once verified.
+  verified         Boolean   @default(false)
+  verifyToken      String?   @unique
+  createdAt        DateTime  @default(now())
+  verifiedAt       DateTime?
+  unsubscribedAt   DateTime?
+  // Soft track of last send per kind so we don't double-send if a cron
+  // replays. Stored as JSON { "monday-outlook": "2026-04-27T...", … }.
+  lastSentAt       Json?
+
+  @@index([verified])
+  @@index([unsubscribedAt])
+}
