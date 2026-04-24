@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { cache } from "react";
+import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Share2 } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { ItemDetail } from "@/components/items/item-detail";
 import { ItemCard } from "@/components/items/item-card";
@@ -178,6 +180,29 @@ export default async function ItemDetailPage({ params }: PageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <ItemDetail item={serialized} />
+
+      {/* Shareable snapshot link — drives screenshots + URL shares into
+          our funnel. The /s/<slug> page is a minimal poster view with our
+          brand embedded, so a screenshot of it still reads as "from
+          sboxskins.gg" on a feed. */}
+      <section className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+        <Link
+          href={`/s/${item.slug}`}
+          className="group flex items-center justify-between gap-4 rounded-xl border border-purple-500/25 bg-gradient-to-br from-purple-500/5 to-transparent hover:border-purple-500/50 hover:from-purple-500/10 transition-colors px-5 py-4"
+        >
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white mb-0.5">
+              Shareable snapshot
+            </p>
+            <p className="text-xs text-neutral-400">
+              Clean, screenshot-ready card with {item.name}'s price, supply,
+              and momentum — great for posting on Discord, Twitter, or Reddit.
+            </p>
+          </div>
+          <Share2 className="h-5 w-5 text-purple-300 group-hover:text-purple-200 shrink-0" />
+        </Link>
+      </section>
+
       {relatedItems.length > 0 && (
         <section className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-12">
           <h2 className="text-xl font-bold text-white mb-6">Similar Items</h2>
