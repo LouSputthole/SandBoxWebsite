@@ -57,6 +57,20 @@ export async function callClaude(opts: CallClaudeOpts): Promise<string | null> {
 
   const label = opts.label ?? "claude";
 
+  // The API rejects messages with empty text blocks — "messages: text
+  // content blocks must be non-empty". A whitespace-only user or system
+  // prompt is always a caller bug (an unfilled template, a facts struct
+  // that produced no content). Bail before the round trip so the caller
+  // gets the same null-fallback path as a missing key.
+  const system = opts.system.trim();
+  const user = opts.user.trim();
+  if (system.length === 0 || user.length === 0) {
+    console.error(
+      `[anthropic:${label}] empty ${system.length === 0 ? "system" : "user"} prompt — skipping call`,
+    );
+    return null;
+  }
+
   try {
     const resp = await client.messages.create({
       model: "claude-opus-4-7",
@@ -65,11 +79,11 @@ export async function callClaude(opts: CallClaudeOpts): Promise<string | null> {
       system: [
         {
           type: "text",
-          text: opts.system,
+          text: system,
           cache_control: { type: "ephemeral" },
         },
       ],
-      messages: [{ role: "user", content: opts.user }],
+      messages: [{ role: "user", content: user }],
     });
 
     // Messages API returns an array of content blocks. For text-only
