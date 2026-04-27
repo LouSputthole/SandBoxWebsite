@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/context";
 import { CurrencyPicker } from "@/components/layout/currency-picker";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 export function Navbar() {
   const router = useRouter();
@@ -149,6 +150,7 @@ export function Navbar() {
           {/* Auth / User */}
           <div className="hidden md:flex items-center gap-2 shrink-0">
             <CurrencyPicker variant="desktop" />
+            {!authLoading && user && <NotificationBell />}
             {authLoading ? (
               <div className="h-8 w-8 rounded-full bg-neutral-800 animate-pulse" />
             ) : user ? (
