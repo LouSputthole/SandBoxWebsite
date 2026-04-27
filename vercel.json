@@ -34,6 +34,14 @@
       "schedule": "0 14 * * 1"
     },
     {
+      "path": "/api/cron/newsletter-send?kind=friday-report",
+      "schedule": "15 18 * * 5"
+    },
+    {
+      "path": "/api/cron/newsletter-send?kind=monday-outlook",
+      "schedule": "15 14 * * 1"
+    },
+    {
       "path": "/api/cron/supply-snapshot",
       "schedule": "0 9 * * *"
     },
