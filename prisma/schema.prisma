@@ -161,6 +161,7 @@ model User {
   watchlistItems WatchlistItem[]
   priceAlerts    PriceAlert[]
   tradeListings  TradeListing[]
+  tradeComments  TradeComment[]
 }
 
 model Session {
@@ -276,12 +277,47 @@ model TradeListing {
   // "expired" once now() > expiresAt.
   expiresAt   DateTime
 
-  items TradeListingItem[]
+  items    TradeListingItem[]
+  comments TradeComment[]
 
   @@index([status, createdAt])
   @@index([status, expiresAt])
   @@index([userId, status])
   @@index([side, status])
+}
+
+// ---------------------------------------------------------------------------
+// Public comment thread on a TradeListing. Mirrors how every functioning
+// trade community already works (TF2 Outpost, r/GlobalOffensiveTrade) —
+// users drop "+rep, hit me on Discord: handle#1234" so traders can reach
+// each other without us building real-time DMs.
+//
+// Steam OAuth required to post (handled at the API layer); soft-deleted
+// rows stay in the table so an admin moderation history exists, and so
+// reply context (e.g. "I deleted that one because…") doesn't lose anchor.
+// ---------------------------------------------------------------------------
+model TradeComment {
+  id        String   @id @default(cuid())
+  listingId String
+  listing   TradeListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // 1-1000 chars enforced at the API; stored as plaintext, rendered as
+  // pre-wrap in JSX (no HTML or markdown — keeps the renderer dumb and
+  // can't ship XSS).
+  body      String
+  createdAt DateTime @default(now())
+  // Soft-delete: NULL = visible, set = hidden from UI. We keep the row so
+  // moderation has an audit trail and so a deleted comment doesn't
+  // re-orphan future "reply to" features.
+  deletedAt DateTime?
+  // Whoever clicked delete (the comment author themselves, or an admin).
+  // Stored as a free string instead of a user FK so admin actions can
+  // record "admin" without needing a User row for the operator.
+  deletedBy String?
+
+  @@index([listingId, createdAt])
+  @@index([userId])
 }
 
 model TradeListingItem {

@@ -9,6 +9,7 @@ import { formatPrice } from "@/lib/utils";
 import { getCurrentUser } from "@/lib/auth/session";
 import { ArrowLeft, ExternalLink, Clock, Eye } from "lucide-react";
 import { OwnerActions } from "./owner-actions";
+import { CommentsThread, type ThreadComment } from "./comments-thread";
 
 export const dynamic = "force-dynamic";
 
@@ -83,11 +84,32 @@ const SIDE_LABEL: Record<string, string> = {
 
 export default async function TradeListingPage({ params }: PageProps) {
   const { id } = await params;
-  const [listing, currentUser] = await Promise.all([
+  const [listing, currentUser, commentRows] = await Promise.all([
     getListing(id),
     getCurrentUser(),
+    prisma.tradeComment.findMany({
+      where: { listingId: id, deletedAt: null },
+      orderBy: { createdAt: "asc" },
+      include: {
+        user: {
+          select: {
+            id: true,
+            steamId: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    }),
   ]);
   if (!listing) notFound();
+
+  const initialComments: ThreadComment[] = commentRows.map((c) => ({
+    id: c.id,
+    body: c.body,
+    createdAt: c.createdAt.toISOString(),
+    user: c.user,
+  }));
 
   // Fire-and-forget viewCount bump. Don't block render. Skip if the viewer
   // is the listing owner — their visits don't count toward "interest."
@@ -246,6 +268,12 @@ export default async function TradeListingPage({ params }: PageProps) {
           }))}
         />
       </div>
+
+      <CommentsThread
+        listingId={listing.id}
+        initialComments={initialComments}
+        currentUserId={currentUser?.id ?? null}
+      />
     </div>
   );
 }
