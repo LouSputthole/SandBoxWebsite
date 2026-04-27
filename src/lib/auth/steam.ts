@@ -1,14 +1,43 @@
+import { redis } from "@/lib/redis/client";
+
 /**
  * Steam OpenID 2.0 authentication.
  *
  * Flow:
  * 1. Redirect user to Steam with our return URL
  * 2. Steam authenticates and redirects back with claimed_id
- * 3. We verify the assertion by POSTing back to Steam
- * 4. Extract Steam ID from the claimed_id URL
+ * 3. We verify the assertion by POSTing back to Steam (this is the
+ *    cryptographic check — Steam re-signs and confirms the assertion
+ *    came from them)
+ * 4. We additionally enforce that the assertion's signed-field list
+ *    covers everything we depend on (nobody can shave a critical
+ *    field out of the signature) and that nonce + return_to + op
+ *    endpoint match what we'd accept
+ * 5. Extract Steam ID from the claimed_id URL
+ *
+ * The defense-in-depth checks past Steam's own sig are belt-and-
+ * suspenders — Steam's check_authentication call is the canonical
+ * truth. But OpenID 2.0 has historical gotchas (signature shaving,
+ * replay) and the cost of these extra checks is ~30 lines.
  */
 
 const STEAM_OPENID_URL = "https://steamcommunity.com/openid/login";
+
+/**
+ * Fields we REQUIRE to be in `openid.signed`. If Steam ever returns an
+ * assertion missing any of these from the signature scope, we reject —
+ * an attacker could otherwise tamper with an unsigned field after the
+ * fact. The full list of fields actually present in each assertion may
+ * be larger; we only assert the floor.
+ */
+const REQUIRED_SIGNED_FIELDS = [
+  "claimed_id",
+  "identity",
+  "return_to",
+  "response_nonce",
+  "assoc_handle",
+  "op_endpoint",
+] as const;
 
 function getBaseUrl(): string {
   if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL;
@@ -16,12 +45,16 @@ function getBaseUrl(): string {
   return "http://localhost:3000";
 }
 
+function getCallbackUrl(): string {
+  return `${getBaseUrl()}/api/auth/steam/callback`;
+}
+
 /**
  * Build the Steam OpenID login redirect URL.
  */
 export function getSteamLoginUrl(): string {
   const baseUrl = getBaseUrl();
-  const returnTo = `${baseUrl}/api/auth/steam/callback`;
+  const returnTo = getCallbackUrl();
 
   const params = new URLSearchParams({
     "openid.ns": "http://specs.openid.net/auth/2.0",
@@ -35,24 +68,97 @@ export function getSteamLoginUrl(): string {
   return `${STEAM_OPENID_URL}?${params.toString()}`;
 }
 
+export interface SteamVerifyResult {
+  ok: boolean;
+  steamId: string | null;
+  failureReason?: string;
+}
+
 /**
- * Verify the Steam OpenID assertion by checking back with Steam.
- * Returns the Steam ID (64-bit) if valid, null otherwise.
+ * Atomically claim a nonce — returns true if this nonce has not been
+ * seen before, false if it's a replay. Falls open (returns true) if
+ * Redis is unavailable so a Redis outage doesn't lock everyone out;
+ * Steam's own assertion-already-used check is still in play in that
+ * window.
+ */
+async function claimNonce(nonce: string): Promise<boolean> {
+  if (!redis) return true;
+  try {
+    // 24h TTL — Steam's assertion freshness window is way smaller, so
+    // 24h is plenty of headroom for "did we see this exact nonce
+    // recently."
+    const key = `oid:nonce:${nonce}`;
+    // SET with NX returns "OK" on first write, null if the key existed.
+    const result = await redis.set(key, "1", { ex: 60 * 60 * 24, nx: true });
+    return result === "OK";
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Verify the Steam OpenID assertion by checking back with Steam, then
+ * applying our defense-in-depth checks. Returns a result object with
+ * the steamId on success or a failure reason for the audit log.
  */
 export async function verifySteamLogin(
   query: Record<string, string>,
-): Promise<string | null> {
-  // The claimed_id should contain the Steam ID
+): Promise<SteamVerifyResult> {
+  // ---- Structural checks before the expensive round trip ----
   const claimedId = query["openid.claimed_id"];
-  if (!claimedId) return null;
-
-  // Extract Steam ID from URL like https://steamcommunity.com/openid/id/76561198012345678
+  if (!claimedId) {
+    return { ok: false, steamId: null, failureReason: "missing_claimed_id" };
+  }
   const steamIdMatch = claimedId.match(
     /^https?:\/\/steamcommunity\.com\/openid\/id\/(\d{17})$/,
   );
-  if (!steamIdMatch) return null;
+  if (!steamIdMatch) {
+    return { ok: false, steamId: null, failureReason: "claimed_id_format" };
+  }
+  const steamId = steamIdMatch[1];
 
-  // Verify the assertion with Steam
+  // op_endpoint must be Steam's actual login URL — defends against an
+  // attacker pointing claimed_id at steamcommunity.com but routing the
+  // sig-verify call somewhere else.
+  if (query["openid.op_endpoint"] !== STEAM_OPENID_URL) {
+    return { ok: false, steamId: null, failureReason: "op_endpoint_mismatch" };
+  }
+
+  // return_to must match exactly the URL we sent the user to. Steam
+  // signs this field, so any mismatch already fails check_authentication
+  // — but checking explicitly here gives us a cleaner audit reason.
+  const expectedReturnTo = getCallbackUrl();
+  const actualReturnTo = (query["openid.return_to"] ?? "").split("?")[0];
+  if (actualReturnTo !== expectedReturnTo) {
+    return { ok: false, steamId: null, failureReason: "return_to_mismatch" };
+  }
+
+  // openid.signed lists which fields are covered by the signature.
+  // Reject anything missing the fields we depend on — otherwise an
+  // attacker could send a partially-signed assertion with our trust
+  // fields tampered.
+  const signed = (query["openid.signed"] ?? "").split(",").filter(Boolean);
+  for (const required of REQUIRED_SIGNED_FIELDS) {
+    if (!signed.includes(required)) {
+      return {
+        ok: false,
+        steamId: null,
+        failureReason: `signed_missing:${required}`,
+      };
+    }
+  }
+
+  // Nonce replay defense — claim before round trip so concurrent
+  // replays still race to one winner.
+  const nonce = query["openid.response_nonce"];
+  if (!nonce) {
+    return { ok: false, steamId: null, failureReason: "missing_nonce" };
+  }
+  if (!(await claimNonce(nonce))) {
+    return { ok: false, steamId: null, failureReason: "nonce_replay" };
+  }
+
+  // ---- Steam's own signature verification (canonical truth) ----
   const verifyParams = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     verifyParams.set(key, value);
@@ -68,13 +174,13 @@ export async function verifySteamLogin(
 
     const text = await res.text();
     if (text.includes("is_valid:true")) {
-      return steamIdMatch[1];
+      return { ok: true, steamId };
     }
+    return { ok: false, steamId: null, failureReason: "steam_invalid" };
   } catch (error) {
     console.error("[auth] Steam verification failed:", error);
+    return { ok: false, steamId: null, failureReason: "steam_network_error" };
   }
-
-  return null;
 }
 
 /**

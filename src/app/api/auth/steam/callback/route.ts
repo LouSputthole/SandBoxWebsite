@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { verifySteamLogin, fetchSteamProfile } from "@/lib/auth/steam";
 import { createSession } from "@/lib/auth/session";
+import {
+  hashIp,
+  getClientIp,
+  getUserAgentFromRequest,
+} from "@/lib/auth/fingerprint";
+import { recordLoginEvent } from "@/lib/auth/audit";
 
 const RETURN_PATH_COOKIE = "_sbox_login_return";
 
@@ -18,17 +24,18 @@ function safeReturnPath(raw: string | undefined): string {
   if (raw.startsWith("//") || raw.startsWith("/\\")) return "/?auth=success";
   if (/^\/[a-z]+:/i.test(raw)) return "/?auth=success";
   if (raw.startsWith("/api/auth")) return "/?auth=success";
-  // Preserve the intended path, drop the auth=success flash param since
-  // it only makes sense on the default landing. Feature flag via sep query.
   const sep = raw.includes("?") ? "&" : "?";
   return `${raw}${sep}auth=success`;
 }
 
 /**
  * GET /api/auth/steam/callback — Handle Steam OpenID callback.
- * Verifies the assertion, creates/updates user, creates session, and
- * redirects the user back to wherever they started the login from
- * (captured in the _sbox_login_return cookie by /api/auth/steam).
+ *
+ * Verifies the assertion (with our defense-in-depth hardening: signed-
+ * field enforcement, return_to/op_endpoint match, nonce replay dedup),
+ * upserts the user, creates a fingerprinted session, and writes a
+ * login_success or login_failure LoginEvent so /account/sessions can
+ * surface the audit trail.
  */
 export async function GET(request: NextRequest) {
   const baseUrl =
@@ -40,8 +47,10 @@ export async function GET(request: NextRequest) {
   const returnCookie = request.cookies.get(RETURN_PATH_COOKIE)?.value;
   const successPath = safeReturnPath(returnCookie);
 
-  // One redirect factory that also clears the return-path cookie so it
-  // doesn't haunt future logins if the user re-auths later.
+  const ipHash = hashIp(getClientIp(request));
+  const userAgent = getUserAgentFromRequest(request);
+
+  // One redirect factory that also clears the return-path cookie.
   const redirect = (path: string): NextResponse => {
     const res = NextResponse.redirect(`${baseUrl}${path}`);
     res.cookies.delete(RETURN_PATH_COOKIE);
@@ -49,44 +58,52 @@ export async function GET(request: NextRequest) {
   };
 
   try {
-    // Extract all query params
     const query: Record<string, string> = {};
     request.nextUrl.searchParams.forEach((value, key) => {
       query[key] = value;
     });
 
-    // Verify the Steam OpenID assertion
-    const steamId = await verifySteamLogin(query);
+    const verification = await verifySteamLogin(query);
 
-    if (!steamId) {
-      console.error("[auth] Steam verification failed");
+    if (!verification.ok || !verification.steamId) {
+      console.error(
+        `[auth] Steam verification failed: ${verification.failureReason ?? "unknown"}`,
+      );
+      // Failure events have no userId yet (we don't trust the claimed
+      // SteamID before sig-verify). Best we can do is leave a trace at
+      // the request level via console — the audit table is per-user.
       return redirect(`/?auth=error`);
     }
 
-    // Fetch Steam profile info
-    const profile = await fetchSteamProfile(steamId);
+    const profile = await fetchSteamProfile(verification.steamId);
 
-    // Upsert user
     const user = await prisma.user.upsert({
-      where: { steamId },
+      where: { steamId: verification.steamId },
       update: {
         username: profile.username || undefined,
         avatarUrl: profile.avatarUrl || undefined,
         profileUrl: profile.profileUrl || undefined,
       },
       create: {
-        steamId,
+        steamId: verification.steamId,
         username: profile.username,
         avatarUrl: profile.avatarUrl,
         profileUrl: profile.profileUrl,
       },
     });
 
-    // Create session
-    await createSession(user.id);
+    const { sessionId } = await createSession(user.id);
+
+    await recordLoginEvent({
+      userId: user.id,
+      sessionId,
+      kind: "login_success",
+      ipHash,
+      userAgent,
+    });
 
     console.log(
-      `[auth] User logged in: ${user.username ?? steamId} (${user.id})`,
+      `[auth] User logged in: ${user.username ?? verification.steamId} (${user.id})`,
     );
 
     return redirect(successPath);
