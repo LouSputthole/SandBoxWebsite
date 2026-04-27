@@ -162,6 +162,7 @@ model User {
   priceAlerts    PriceAlert[]
   tradeListings  TradeListing[]
   tradeComments  TradeComment[]
+  notifications  Notification[]
 }
 
 model Session {
@@ -318,6 +319,37 @@ model TradeComment {
 
   @@index([listingId, createdAt])
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// In-app notifications. One row per event delivered to one user — fan-out at
+// write time, not read time, so the bell badge query is a cheap COUNT WHERE
+// readAt IS NULL on a single user-keyed index.
+//
+// `payload` is intentionally JSON instead of FK columns: each notification
+// kind ("trade_comment" today, "trade_offer" / "price_alert" tomorrow)
+// carries its own shape, and we don't want a 12-nullable-column table when
+// kinds expand. The kind+payload pair is what the renderer dispatches on.
+// ---------------------------------------------------------------------------
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // "trade_comment" — someone commented on a listing this user owns.
+  // Future kinds can be added without schema changes; the renderer in
+  // src/components/notifications/notification-bell.tsx narrows on this.
+  kind      String
+  // Shape depends on `kind`. For "trade_comment":
+  //   { listingId, listingTitle, commentId, body (truncated 160 chars),
+  //     fromUsername, fromAvatarUrl }
+  payload   Json
+  // NULL until the user sees it (clicks the bell or marks-all-read).
+  // Indexed jointly with userId so the unread-count query is hot.
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
 }
 
 model TradeListingItem {

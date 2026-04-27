@@ -95,7 +95,7 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
 
   const listing = await prisma.tradeListing.findUnique({
     where: { id },
-    select: { id: true },
+    select: { id: true, userId: true, description: true },
   });
   if (!listing) {
     return NextResponse.json({ error: "Listing not found" }, { status: 404 });
@@ -122,6 +122,31 @@ export async function POST(request: NextRequest, ctx: RouteContext) {
       },
     },
   });
+
+  // Fan out a notification to the listing owner. Skip self-comments —
+  // the owner already knows they posted on their own thread. Best-
+  // effort: a notification write that errors must never fail the
+  // comment creation.
+  if (listing.userId !== user.id) {
+    try {
+      await prisma.notification.create({
+        data: {
+          userId: listing.userId,
+          kind: "trade_comment",
+          payload: {
+            listingId: id,
+            listingTitle: listing.description.slice(0, 80),
+            commentId: created.id,
+            body: raw.slice(0, 160),
+            fromUsername: created.user.username,
+            fromAvatarUrl: created.user.avatarUrl,
+          },
+        },
+      });
+    } catch (err) {
+      console.error("[notify] failed to create comment notification:", err);
+    }
+  }
 
   return NextResponse.json({ comment: created }, { status: 201 });
 }
