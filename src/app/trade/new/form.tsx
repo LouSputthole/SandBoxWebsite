@@ -11,6 +11,7 @@ import {
   ExternalLink,
   Check,
   Backpack,
+  DollarSign,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -436,6 +437,93 @@ function Field({
   );
 }
 
+/**
+ * Inline "+ Cash $___" quick-add. Creates a line item with a
+ * canonical "$<amount> cash" customName so listings render the same
+ * way regardless of which picker added it. Payment method (PayPal,
+ * Venmo, etc.) stays in the description field — that's where
+ * specifics belong.
+ */
+function CashAddButton({
+  onAdd,
+}: {
+  onAdd: (li: DraftLineItem) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [amount, setAmount] = useState("");
+
+  const submit = () => {
+    const n = Number(amount);
+    if (!Number.isFinite(n) || n <= 0) return;
+    // Round to cents and strip trailing zeros so "$50" stays "$50",
+    // "$12.50" stays "$12.50".
+    const rounded = Math.round(n * 100) / 100;
+    const display = Number.isInteger(rounded)
+      ? `$${rounded} cash`
+      : `$${rounded.toFixed(2)} cash`;
+    onAdd({ key: newKey(), customName: display, quantity: 1 });
+    setAmount("");
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div className="rounded-md border border-emerald-700/40 bg-emerald-500/5 p-2 mb-2 flex items-center gap-2">
+        <DollarSign className="h-3.5 w-3.5 text-emerald-300 shrink-0" />
+        <input
+          type="number"
+          autoFocus
+          inputMode="decimal"
+          min={0}
+          step={1}
+          placeholder="50"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              submit();
+            } else if (e.key === "Escape") {
+              setEditing(false);
+              setAmount("");
+            }
+          }}
+          className="flex-1 px-2 py-1 rounded border border-neutral-800 bg-neutral-900 text-sm text-white placeholder:text-neutral-600 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-emerald-500"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            setEditing(false);
+            setAmount("");
+          }}
+          className="text-[11px] text-neutral-500 hover:text-white transition"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!amount || Number(amount) <= 0}
+          className="text-[11px] text-emerald-300 hover:text-emerald-200 transition disabled:text-neutral-600 disabled:cursor-not-allowed"
+        >
+          Add
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-emerald-300/80 hover:text-emerald-300 border border-dashed border-emerald-700/40 hover:border-emerald-500/60 rounded-md py-2 mb-2 transition"
+    >
+      <DollarSign className="h-3.5 w-3.5" />
+      Add cash
+    </button>
+  );
+}
+
 function ItemListEditor({
   label,
   tone,
@@ -495,14 +583,19 @@ function ItemListEditor({
           onCancel={() => setAdding(false)}
         />
       ) : (
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-neutral-400 hover:text-white border border-dashed border-neutral-800 hover:border-neutral-600 rounded-md py-2 transition"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add item
-        </button>
+        <>
+          <CashAddButton
+            onAdd={(picked) => setItems([...items, picked])}
+          />
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-neutral-400 hover:text-white border border-dashed border-neutral-800 hover:border-neutral-600 rounded-md py-2 transition"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add item
+          </button>
+        </>
       )}
     </div>
   );
@@ -639,7 +732,7 @@ function AddRow({
               onClick={() => setShowCustom(true)}
               className="text-purple-400 hover:text-purple-300 transition"
             >
-              + Add off-catalog (TF2 keys, cash, etc.)
+              + Add off-catalog (TF2 keys, Rust skins, etc.)
             </button>
             <button
               type="button"
@@ -868,8 +961,12 @@ function OfferingPicker({
         />
       )}
 
-      {/* Off-catalog adder — TF2 keys, cash, etc. Always available; users
-          might offer a mix of owned items + cash. */}
+      {/* Cash quick-add — most common off-catalog payment, deserves a
+          one-click button instead of free-text. */}
+      <CashAddButton onAdd={(picked) => setItems([...items, picked])} />
+
+      {/* Off-catalog adder — TF2 keys, etc. Always available; users
+          might offer a mix of owned items + cash + other things. */}
       {addingCustom ? (
         <div className="rounded-md border border-neutral-700 bg-neutral-950 p-2 space-y-2">
           <input
@@ -909,7 +1006,7 @@ function OfferingPicker({
           className="w-full inline-flex items-center justify-center gap-1.5 text-xs text-neutral-400 hover:text-white border border-dashed border-neutral-800 hover:border-neutral-600 rounded-md py-2 transition"
         >
           <Plus className="h-3.5 w-3.5" />
-          Add off-catalog (TF2 keys, cash, etc.)
+          Add off-catalog (TF2 keys, Rust skins, etc.)
         </button>
       )}
     </div>
