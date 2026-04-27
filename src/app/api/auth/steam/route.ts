@@ -1,7 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSteamLoginUrl } from "@/lib/auth/steam";
+import { redis } from "@/lib/redis/client";
+import { getClientIp } from "@/lib/auth/fingerprint";
 
 const RETURN_PATH_COOKIE = "_sbox_login_return";
+
+/**
+ * Per-IP rate limit on the Steam login start endpoint. Stops a botnet
+ * from using us as an OAuth-flooding amplifier against Steam, and
+ * keeps an attacker from spinning up endless callback round-trips
+ * trying to brute-force the nonce dedupe.
+ *
+ * Generous bound — a real user pressing "Sign in with Steam" twelve
+ * times in a minute is fine; thirteenth gets a hold-off.
+ */
+const RATE_LIMIT_MAX = 12;
+const RATE_LIMIT_WINDOW_SEC = 60;
+
+async function rateLimit(ip: string): Promise<boolean> {
+  if (!redis) return true;
+  try {
+    const key = `rl:auth-start:${ip}`;
+    const count = await redis.incr(key);
+    if (count === 1) await redis.expire(key, RATE_LIMIT_WINDOW_SEC);
+    return count <= RATE_LIMIT_MAX;
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Sanitize a user-supplied "next" path. We accept only strict local paths
@@ -32,6 +58,14 @@ function sanitizeReturnPath(raw: string | null): string {
  * enough for the Steam login round trip.
  */
 export async function GET(request: NextRequest) {
+  const ip = getClientIp(request);
+  if (!(await rateLimit(ip))) {
+    return NextResponse.json(
+      { error: "Too many login attempts. Try again in a minute." },
+      { status: 429 },
+    );
+  }
+
   const next = sanitizeReturnPath(
     request.nextUrl.searchParams.get("next"),
   );

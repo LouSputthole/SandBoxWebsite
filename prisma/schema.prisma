@@ -162,6 +162,7 @@ model User {
   priceAlerts    PriceAlert[]
   tradeListings  TradeListing[]
   tradeComments  TradeComment[]
+  loginEvents    LoginEvent[]
 }
 
 model Session {
@@ -172,8 +173,53 @@ model Session {
   expiresAt DateTime
   createdAt DateTime @default(now())
 
+  // SHA-256(ip + AUTH_HASH_SALT). We don't store raw IPs — the hash is
+  // enough to detect "is this the same network as the one that created
+  // the session" without keeping PII. Salt makes a DB leak useless for
+  // rainbow-tabling addresses back. NULL only on legacy rows pre-rollout.
+  ipHash    String?
+  // First 200 chars of User-Agent. Bounded to keep the column tame.
+  userAgent String?
+  // Refreshed on every authenticated request so the /account/sessions
+  // page can show "last seen 2m ago" instead of just "created 8 days ago".
+  // Throttled in code to once per 60s to avoid hammering the DB.
+  lastSeenAt DateTime @default(now())
+
+  loginEvents LoginEvent[]
+
   @@index([token])
   @@index([userId])
+  @@index([userId, lastSeenAt])
+}
+
+// ---------------------------------------------------------------------------
+// Audit trail for security-relevant events on a Steam-authenticated account.
+// Surfaced to the user on /account/sessions so they can spot anything
+// suspicious themselves — we don't auto-revoke on anomaly because false
+// positives (mobile IP roaming, Chrome version bumps) would train users
+// to ignore the warnings.
+// ---------------------------------------------------------------------------
+model LoginEvent {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Optional FK to the session involved — null when the event happened
+  // before a session existed (e.g. failed assertion verification).
+  sessionId String?
+  session   Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  // "login_success", "login_failure", "logout", "session_revoked",
+  // "session_anomaly" (token used from a notably different ipHash + UA
+  // combo than at create time).
+  kind      String
+  // Free-form context: failure reason, anomaly description, or "user
+  // clicked logout-all". Not user-secret data.
+  reason    String?
+  ipHash    String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([kind, createdAt])
 }
 
 model WatchlistItem {
