@@ -9,6 +9,7 @@ import {
   ExternalLink,
   MessageSquare,
   AlertTriangle,
+  Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -149,6 +150,44 @@ export default function RedditAdminPage() {
           <CardContent className="p-4 text-sm text-red-400">{error}</CardContent>
         </Card>
       )}
+
+      {/* Markdown-mode reminder. Reddit defaults new accounts to the
+          "fancy" rich-text editor, which renders pasted [text](url) as
+          literal text. Switch to Markdown Mode in the post composer
+          before pasting (or set Markdown as the default editor in
+          Reddit Preferences → Feed Settings). */}
+      <Card className="bg-blue-500/5 border-blue-500/30 mb-4">
+        <CardContent className="p-4 flex items-start gap-3">
+          <Info className="h-4 w-4 text-blue-300 mt-0.5 shrink-0" />
+          <div className="text-xs text-blue-200/90 leading-relaxed">
+            <p className="font-semibold text-blue-200 mb-1">
+              Reddit posts use markdown — switch the editor mode before pasting.
+            </p>
+            <p>
+              In the Reddit post composer, click the <strong>T↓</strong>{" "}
+              dropdown (top-right of the body field) and pick{" "}
+              <strong>Markdown Mode</strong>. Otherwise{" "}
+              <code className="text-[11px] bg-neutral-900/80 px-1 rounded">
+                [item](url)
+              </code>{" "}
+              renders as literal text instead of a link.
+            </p>
+            <p className="mt-1">
+              To make this the default everywhere:{" "}
+              <a
+                href="https://www.reddit.com/prefs/feed-options/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-300 hover:text-blue-200 underline inline-flex items-center gap-0.5"
+              >
+                Reddit Preferences → Feed Settings → &quot;Use Markdown by default&quot;
+                <ExternalLink className="h-2.5 w-2.5" />
+              </a>
+              .
+            </p>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="space-y-5">
         {drafts.map((d, i) => (

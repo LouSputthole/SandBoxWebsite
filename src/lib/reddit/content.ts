@@ -14,6 +14,17 @@ import { formatPrice } from "@/lib/utils";
  * that stays up and one that gets removed.
  */
 
+/**
+ * Escape characters that would break a `[text](url)` link's text portion
+ * if an item name ever contains them. Specifically: `[`, `]`, and the
+ * escape char itself. Without this, an item named "Limited [v2]" would
+ * truncate the link text at the first inner `]`. Item names today are
+ * clean, but defensive escaping is cheap and survives future renames.
+ */
+function escapeMdLinkText(text: string): string {
+  return text.replace(/[\\\[\]]/g, (c) => `\\${c}`);
+}
+
 export type RedditKind =
   | "weekly-analysis"
   | "item-spotlight"
@@ -212,7 +223,7 @@ export async function genWeeklyAnalysis(): Promise<RedditDraft | null> {
   }
 - Active listings: **${totalListings.toLocaleString()}**
 - Tracked skins: **${items.length}** (${priced.length} with a current market price)
-${biggest ? `\n**Biggest mover**\n\n[${biggest.item.name}](${SITE}/items/${biggest.item.slug}) went from ${formatPrice(biggest.baseline)} to ${formatPrice(biggest.item.currentPrice ?? 0)} — ${biggest.changePct >= 0 ? "+" : ""}${biggest.changePct.toFixed(1)}% on the week.\n\n- Total supply: ${biggest.item.totalSupply?.toLocaleString() ?? "unknown"}\n- Unique owners: ${biggest.item.uniqueOwners?.toLocaleString() ?? "unknown"}\n- Scarcity score: ${biggest.item.scarcityScore?.toFixed(0) ?? "—"}/100\n` : ""}
+${biggest ? `\n**Biggest mover**\n\n[${escapeMdLinkText(biggest.item.name)}](${SITE}/items/${biggest.item.slug}) went from ${formatPrice(biggest.baseline)} to ${formatPrice(biggest.item.currentPrice ?? 0)} — ${biggest.changePct >= 0 ? "+" : ""}${biggest.changePct.toFixed(1)}% on the week.\n\n- Total supply: ${biggest.item.totalSupply?.toLocaleString() ?? "unknown"}\n- Unique owners: ${biggest.item.uniqueOwners?.toLocaleString() ?? "unknown"}\n- Scarcity score: ${biggest.item.scarcityScore?.toFixed(0) ?? "—"}/100\n` : ""}
 
 **Context for CS/Rust traders**
 
@@ -306,7 +317,7 @@ export async function genScarcityGuide(): Promise<RedditDraft | null> {
   const rows = rarest
     .map(
       (r, i) =>
-        `| ${i + 1} | [${r.name}](${SITE}/items/${r.slug}) | ${r.scarcityScore?.toFixed(0) ?? "—"}/100 | ${r.totalSupply?.toLocaleString() ?? "—"} | ${r.uniqueOwners?.toLocaleString() ?? "—"} | ${formatPrice(r.currentPrice ?? 0)} |`,
+        `| ${i + 1} | [${escapeMdLinkText(r.name)}](${SITE}/items/${r.slug}) | ${r.scarcityScore?.toFixed(0) ?? "—"}/100 | ${r.totalSupply?.toLocaleString() ?? "—"} | ${r.uniqueOwners?.toLocaleString() ?? "—"} | ${formatPrice(r.currentPrice ?? 0)} |`,
     )
     .join("\n");
 
@@ -471,7 +482,7 @@ export async function genStoreRotation(): Promise<RedditDraft | null> {
               (24 * 60 * 60 * 1000),
           )
         : null;
-      return `| [${l.name}](${SITE}/items/${l.slug}) | ${days ?? "—"}d | ${formatPrice(l.currentPrice ?? 0)} | ${l.storePrice != null ? formatPrice(l.storePrice) : "—"} | ${l.totalSupply?.toLocaleString() ?? "—"} |`;
+      return `| [${escapeMdLinkText(l.name)}](${SITE}/items/${l.slug}) | ${days ?? "—"}d | ${formatPrice(l.currentPrice ?? 0)} | ${l.storePrice != null ? formatPrice(l.storePrice) : "—"} | ${l.totalSupply?.toLocaleString() ?? "—"} |`;
     })
     .join("\n");
 
