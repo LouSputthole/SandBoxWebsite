@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { deviceLabel } from "@/lib/auth/fingerprint";
+import { deviceLabel } from "@/lib/auth/device-label";
 
 export interface SerializedSession {
   id: string;

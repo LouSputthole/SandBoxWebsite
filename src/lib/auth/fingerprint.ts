@@ -77,34 +77,7 @@ export function getUserAgentFromRequest(
   return ua.slice(0, 200);
 }
 
-/**
- * Cheap "what device is this" label derived from a UA string. Not
- * accurate enough to block on, but good enough for /account/sessions
- * to render "Chrome on macOS" instead of a 200-char gibberish string.
- */
-export function deviceLabel(ua: string | null | undefined): string {
-  if (!ua) return "Unknown device";
-  const browser = /Edg\//.test(ua)
-    ? "Edge"
-    : /Chrome\//.test(ua)
-      ? "Chrome"
-      : /Firefox\//.test(ua)
-        ? "Firefox"
-        : /Safari\//.test(ua)
-          ? "Safari"
-          : /curl|wget|python|node/i.test(ua)
-            ? "CLI"
-            : "Browser";
-  const os = /Windows/i.test(ua)
-    ? "Windows"
-    : /Mac OS X/i.test(ua)
-      ? "macOS"
-      : /Android/i.test(ua)
-        ? "Android"
-        : /iPhone|iPad|iOS/i.test(ua)
-          ? "iOS"
-          : /Linux/i.test(ua)
-            ? "Linux"
-            : "";
-  return os ? `${browser} on ${os}` : browser;
-}
+// Pure UA → "Chrome on macOS" parser lives in ./device-label so client
+// components can import it without pulling in next/headers (which is
+// server-only and would break the bundle for the /account/sessions UI).
+export { deviceLabel } from "./device-label";
