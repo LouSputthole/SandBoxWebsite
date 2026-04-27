@@ -35,11 +35,20 @@ interface StoreItem {
   type: string;
   imageUrl: string | null;
   storePrice: number | null;
+  releasePrice: number | null;
   currentPrice: number | null;
   leavingStoreAt: Date | null;
   isPermanentStoreItem: boolean;
   category: string | null;
   itemDisplayName: string | null;
+}
+
+// Two columns hold the same concept ("original store price"): storePrice
+// came from the legacy sbox.game scraper, releasePrice from sbox.dev's
+// API (more reliable). Sync mirrors releasePrice → storePrice on each
+// refresh, but we coalesce here too so any stale row still renders.
+function effectiveStorePrice(item: StoreItem): number | null {
+  return item.storePrice ?? item.releasePrice ?? null;
 }
 
 function daysUntil(d: Date | null): number | null {
@@ -59,6 +68,7 @@ export default async function StorePage() {
       type: true,
       imageUrl: true,
       storePrice: true,
+      releasePrice: true,
       currentPrice: true,
       leavingStoreAt: true,
       isPermanentStoreItem: true,
@@ -85,8 +95,8 @@ export default async function StorePage() {
   const permanent = items
     .filter((i) => i.isPermanentStoreItem)
     .sort((a, b) => {
-      const ap = a.storePrice ?? 0;
-      const bp = b.storePrice ?? 0;
+      const ap = effectiveStorePrice(a) ?? 0;
+      const bp = effectiveStorePrice(b) ?? 0;
       if (ap !== bp) return bp - ap;
       return a.name.localeCompare(b.name);
     });
@@ -208,7 +218,7 @@ function Stat({
 function StoreCard({ item }: { item: StoreItem }) {
   const left = daysUntil(item.leavingStoreAt);
   const market = item.currentPrice;
-  const store = item.storePrice;
+  const store = effectiveStorePrice(item);
   const delta =
     market != null && store != null && store > 0
       ? ((market - store) / store) * 100

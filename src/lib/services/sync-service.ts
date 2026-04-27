@@ -851,6 +851,18 @@ export async function syncSboxData(
           leavingStoreAt: skin.leavingStoreAt ? new Date(skin.leavingStoreAt) : null,
           releaseDate: skin.release ? new Date(skin.release) : null,
           releasePrice: skin.releasePrice,
+          // sbox.dev's `releasePrice` is the authoritative "original store
+          // price" signal — populated for every item with a release record.
+          // The legacy `storePrice` column was sourced from the
+          // sbox.game Playwright scraper which often fails to extract a
+          // number from the live store HTML, leaving rows null. Mirror
+          // the sbox.dev value in so every consumer (item detail page,
+          // share card, /store, reddit, export) has a usable price.
+          // Using ?? so a null from sbox.dev doesn't clobber a value the
+          // scraper happened to capture.
+          ...(skin.releasePrice != null
+            ? { storePrice: skin.releasePrice }
+            : {}),
           itemDisplayName: skin.itemDisplayName,
           category: skin.category,
           itemSubType: skin.itemType,
