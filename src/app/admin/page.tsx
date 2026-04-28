@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Send,
   ChevronRight,
+  Bitcoin,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -64,6 +65,13 @@ const PAGES: AdminPage[] = [
     description:
       "Per-table sizes, projected growth, dry-run + live downsampler and PageView rollup.",
     icon: HardDrive,
+  },
+  {
+    href: "/admin/escrow",
+    label: "Escrow",
+    description:
+      "Live crypto-escrow trades, bot fleet load, dispute queue with one-click resolutions.",
+    icon: Bitcoin,
   },
 ];
 

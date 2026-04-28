@@ -10,6 +10,8 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { ArrowLeft, ExternalLink, Clock, Eye } from "lucide-react";
 import { OwnerActions } from "./owner-actions";
 import { CommentsThread, type ThreadComment } from "./comments-thread";
+import { BuyWithCryptoButton } from "@/components/escrow/buy-with-crypto-button";
+import { isEscrowEnabled, escrowMaxUsd } from "@/lib/escrow/config";
 
 export const dynamic = "force-dynamic";
 
@@ -212,6 +214,22 @@ export default async function TradeListingPage({ params }: PageProps) {
             <OwnerActions id={listing.id} />
           )}
         </div>
+
+        {/* Crypto escrow buy-now. Only renders for non-owner viewers on
+            an active sell-side listing where the seller has a trade URL.
+            Feature-flagged via ESCROW_ENABLED so the button only appears
+            once we've turned it on. */}
+        {tradeable && !isOwner && ["selling", "both"].includes(listing.side) && (
+          <div className="mb-4">
+            <BuyWithCryptoButton
+              listingId={listing.id}
+              enabled={isEscrowEnabled()}
+              priceUsd={offeringValue > 0 ? offeringValue : null}
+              maxUsd={escrowMaxUsd()}
+              isSelf={isOwner}
+            />
+          </div>
+        )}
 
         {/* Description */}
         {listing.description && (
