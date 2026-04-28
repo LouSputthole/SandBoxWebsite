@@ -164,6 +164,8 @@ model User {
   tradeComments  TradeComment[]
   loginEvents    LoginEvent[]
   notifications  Notification[]
+  buyerTrades    EscrowTrade[] @relation("EscrowTradeBuyer")
+  sellerTrades   EscrowTrade[] @relation("EscrowTradeSeller")
 }
 
 model Session {
@@ -324,8 +326,9 @@ model TradeListing {
   // "expired" once now() > expiresAt.
   expiresAt   DateTime
 
-  items    TradeListingItem[]
-  comments TradeComment[]
+  items        TradeListingItem[]
+  comments     TradeComment[]
+  escrowTrades EscrowTrade[]
 
   @@index([status, createdAt])
   @@index([status, expiresAt])
@@ -451,4 +454,210 @@ model NewsletterSubscription {
 
   @@index([verified])
   @@index([unsubscribedAt])
+}
+
+// ===========================================================================
+// CRYPTO ESCROW (Phase 2 of CSFloat-style trade facilitation)
+// ===========================================================================
+// User flow:
+//   1. Seller posts a TradeListing (existing model). Buyer hits "Buy with
+//      crypto" → creates an EscrowTrade in pending_deposit state.
+//   2. Bot sends a Steam trade offer to the seller asking for the item(s).
+//      Seller accepts → state → awaiting_payment.
+//   3. Buyer pays via Coinbase Commerce (USDC/BTC/ETH). Webhook fires →
+//      state → payment_confirmed.
+//   4. Bot sends item to buyer. Buyer accepts the offer → state → completed.
+//      We trigger the seller payout (manual for v1, automated later).
+//   5. Anything goes wrong → state → disputed (admin queue) or → refunded /
+//      cancelled depending on which side defaulted.
+//
+// All sensitive bot credentials (Steam shared/identity secrets, API keys)
+// stay in env vars, NOT the database. The DB only holds an opaque label
+// for which bot handled which trade.
+// ===========================================================================
+
+// One row per buy-now action. Central state machine; every webhook,
+// admin action, and bot poll updates this row.
+model EscrowTrade {
+  id          String   @id @default(cuid())
+  // The original listing this trade is fulfilling. We snapshot the items
+  // + price into this row at create time so a seller editing/cancelling
+  // the listing mid-trade can't mutate what's owed.
+  listingId   String
+  listing     TradeListing @relation(fields: [listingId], references: [id], onDelete: Restrict)
+
+  buyerId     String
+  buyer       User     @relation("EscrowTradeBuyer", fields: [buyerId], references: [id], onDelete: Restrict)
+  sellerId    String
+  seller      User     @relation("EscrowTradeSeller", fields: [sellerId], references: [id], onDelete: Restrict)
+
+  // Snapshot of what's being traded. JSON shape:
+  // { offering: [{ itemId, name, slug, quantity, unitPriceAtListing }],
+  //   wanting: [...] } — same shape as TradeListingItem rows but frozen.
+  itemSnapshot Json
+
+  // Pricing — locked at create time so market swings don't change what
+  // the buyer owes between create and payment.
+  priceUsd          Float    // total in USD at listing time
+  // Crypto-side detail set after Coinbase Commerce charge created.
+  // priceCryptoCurrency stays null until the buyer picks a currency in
+  // the Commerce hosted-checkout step (USDC vs BTC vs ETH).
+  priceCryptoCurrency String?
+  priceCryptoAmount   String?  // String to preserve decimal precision
+
+  // Our cut. Default 5% of priceUsd. Realized at payout time.
+  feeUsd      Float
+
+  // State machine. See state-machine.ts for valid transitions.
+  // pending_deposit → awaiting_payment → payment_confirmed →
+  //   completed | disputed | refunded | cancelled
+  state       String   @default("pending_deposit")
+
+  // Which bot account is holding the items in escrow for this trade.
+  // FK so we can join easily, but bot creds live in env vars.
+  botAccountId String?
+  botAccount   EscrowBotAccount? @relation(fields: [botAccountId], references: [id])
+
+  // Steam trade offer IDs — set as the bot acts. Helpful for support
+  // ("the deposit offer was 1234567890, here's the link to it").
+  depositTradeOfferId String?  // bot ← seller (item in)
+  releaseTradeOfferId String?  // bot → buyer (item out)
+  refundTradeOfferId  String?  // bot → seller (item back, on cancel)
+
+  // Timestamps for each transition — easier to query than a separate
+  // event log, and the only auditing we actually need at v1 scale.
+  createdAt          DateTime  @default(now())
+  depositedAt        DateTime?
+  paidAt             DateTime?
+  releasedAt         DateTime?
+  completedAt        DateTime?
+  disputedAt         DateTime?
+  refundedAt         DateTime?
+  cancelledAt        DateTime?
+
+  // Soft-deadlines. If the seller doesn't deposit within depositDeadline
+  // we cancel automatically. Same for buyer payment deadline.
+  depositDeadline    DateTime
+  paymentDeadline    DateTime?
+
+  payment Payment?
+  dispute Dispute?
+
+  @@index([buyerId, state])
+  @@index([sellerId, state])
+  @@index([state, createdAt])
+  @@index([listingId])
+}
+
+// One bot Steam account per row. We expect 2-4 bots load-balanced.
+// Status flag drives bot selection — "active" bots are eligible for
+// new trades; "banned" / "maintenance" are skipped until manually
+// flipped back.
+model EscrowBotAccount {
+  id        String   @id @default(cuid())
+  // Public Steam ID — fine to store in DB. Lets the bot worker find
+  // its credentials in env vars by `BOT_<steamId>_SHARED_SECRET` etc.
+  steamId   String   @unique
+  // Display name shown in admin UI. Not the Steam username (which can
+  // change); this is our internal handle.
+  label     String
+  status    String   @default("active") // "active" | "banned" | "maintenance"
+  // Soft cap so we don't pile every active trade onto one bot. Bot
+  // selection prefers the bot with fewest open trades under this cap.
+  maxConcurrentTrades Int @default(20)
+
+  // Optional metadata for ops: when we last verified the bot can log in.
+  lastHealthcheckAt DateTime?
+  lastHealthcheckOk Boolean?
+
+  trades    EscrowTrade[]
+  inventory BotInventoryItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+// Items currently held in escrow by a bot. One row per asset (Steam's
+// asset IDs are unique within a user's inventory). Lets the bot know
+// "this asset is reserved for trade X, don't include it in any other
+// release offer."
+model BotInventoryItem {
+  id           String   @id @default(cuid())
+  botAccountId String
+  botAccount   EscrowBotAccount @relation(fields: [botAccountId], references: [id], onDelete: Cascade)
+
+  steamAssetId String   // Steam's per-asset unique ID
+  marketHashName String // for matching with Item catalog
+  itemSlug     String?  // resolved against our catalog if possible
+  // Which trade this asset is reserved for. Null if the bot is holding
+  // surplus inventory (rare but happens after a partial dispute).
+  reservedForTradeId String?
+
+  acquiredAt   DateTime @default(now())
+
+  @@unique([botAccountId, steamAssetId])
+  @@index([botAccountId, reservedForTradeId])
+}
+
+// Crypto payment record. One row per EscrowTrade once the buyer hits
+// the Coinbase Commerce hosted checkout. Webhook events append to
+// `webhookEvents` JSON for audit.
+model Payment {
+  id        String   @id @default(cuid())
+  tradeId   String   @unique
+  trade     EscrowTrade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  processor String   // "coinbase_commerce" (today). bitpay/etc later.
+  // Coinbase Commerce charge id (e.g. "CHARGE_XYZ"). Used to look up
+  // status via API and to verify webhook payloads belong to this trade.
+  processorChargeId String  @unique
+  // Hosted-checkout URL the buyer is redirected to. Stored so we can
+  // resurrect the link if the user navigates away mid-flow.
+  hostedUrl String?
+
+  // "new" | "pending" | "confirmed" | "failed" | "expired" | "resolved"
+  // — closely follows Coinbase Commerce's own enum.
+  status    String   @default("new")
+  // Final settled amount + currency, set when status=confirmed/resolved.
+  amountSettled        String?
+  currencySettled      String?
+
+  // Append-only log of webhook events for audit. Each entry:
+  // { type, timestamp, raw }. Full raw payload preserved so a
+  // reconciliation script can replay state from scratch if needed.
+  webhookEvents Json    @default("[]")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  paidAt    DateTime?
+
+  @@index([status, createdAt])
+}
+
+// Manual-review queue. One row per disputed trade. Admins (lookup via
+// ANALYTICS_KEY) close disputes by setting `resolution` and triggering
+// the corresponding state transition on the parent trade.
+model Dispute {
+  id        String   @id @default(cuid())
+  tradeId   String   @unique
+  trade     EscrowTrade @relation(fields: [tradeId], references: [id], onDelete: Cascade)
+
+  // Who opened it. "buyer" or "seller". System-opened disputes
+  // (e.g. timeout from one side) record "system".
+  openedBy  String
+  // Free-form summary of the complaint. Capped at 4000 chars at API.
+  reason    String
+  // Admin's resolution note + how the trade was closed.
+  // resolution: "released_to_buyer" | "refunded_to_buyer" |
+  //   "returned_to_seller" | "split" | "rejected"
+  resolution String?
+  resolutionNote String?
+  resolvedBy String?  // free-form admin handle, "lou" / "support1"
+
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([resolvedAt, createdAt])
 }
