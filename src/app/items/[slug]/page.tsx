@@ -102,10 +102,26 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     ? `${item.description} Currently ${price} on the Steam Community Market.`
     : `${item.name} - ${item.type} for S&box. Currently ${price} on the Steam Community Market. View price history and trends.`;
 
+  // Index quality gate. Items with no price + no supply + no price
+  // history have nothing unique to offer crawlers — the template renders
+  // ~80 near-identical empty pages, which Google rightly demotes to
+  // "Crawled - currently not indexed". Mark these noindex (still
+  // followable so internal links keep flowing) until enrichment data
+  // shows up. Items recover index-eligibility automatically on the next
+  // page generation once any signal is present.
+  const isThin =
+    item.currentPrice == null &&
+    item.totalSupply == null &&
+    item.uniqueOwners == null &&
+    item.priceHistory.length === 0;
+
   return {
     title: `${item.name} - S&box Skins`,
     description,
     alternates: { canonical: `/items/${item.slug}` },
+    robots: isThin
+      ? { index: false, follow: true }
+      : { index: true, follow: true },
     openGraph: {
       title: `${item.name} (${price}) - S&box Skins`,
       description,
