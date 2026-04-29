@@ -209,7 +209,11 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
 
   // 7-day movers — compute from PricePoint timeseries, NOT the stale
   // priceChange24h column. Uses a centered ±12h window around 7-days-ago
-  // and picks the closest point per item for an accurate weekly baseline.
+  // and takes the median of every point in the window. Same outlier-
+  // resistant pattern we use in tweet/blog generators (PR #16): a single
+  // bad scrape sample at the baseline edge can otherwise produce
+  // +91000% movers when an item went $1.11 → $1011 because of one
+  // anomalous mid-week reading.
   const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const baselineStart = new Date(weekAgo.getTime() - 12 * 60 * 60 * 1000);
   const baselineEnd = new Date(weekAgo.getTime() + 12 * 60 * 60 * 1000);
@@ -228,21 +232,38 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
     }),
     prisma.pricePoint.findMany({
       where: { timestamp: { gte: baselineStart, lte: baselineEnd } },
-      select: { itemId: true, price: true, timestamp: true },
+      select: { itemId: true, price: true },
     }),
   ]);
 
-  const targetTime = weekAgo.getTime();
-  const priceWeekAgo = new Map<string, number>();
-  const bestDelta = new Map<string, number>();
+  // Group all points per item, then take the median. Drop any zero/
+  // negative prices first — those are scrape errors and corrupt the
+  // median if included.
+  const pointsByItem = new Map<string, number[]>();
   for (const p of weekAgoPoints) {
-    const delta = Math.abs(p.timestamp.getTime() - targetTime);
-    const prev = bestDelta.get(p.itemId);
-    if (prev === undefined || delta < prev) {
-      priceWeekAgo.set(p.itemId, p.price);
-      bestDelta.set(p.itemId, delta);
-    }
+    if (p.price <= 0) continue;
+    const arr = pointsByItem.get(p.itemId) ?? [];
+    arr.push(p.price);
+    pointsByItem.set(p.itemId, arr);
   }
+  // Need at least 2 points in the window to trust the baseline. With
+  // sync running every 15-30min, a 24h window normally contains
+  // 48-96 points per item; a row with <2 means the item wasn't being
+  // tracked yet (recent seed) and we shouldn't compute a 7d mover for
+  // it at all.
+  const priceWeekAgo = new Map<string, number>();
+  for (const [itemId, prices] of pointsByItem) {
+    if (prices.length < 2) continue;
+    const m = median(prices);
+    if (m != null && m > 0) priceWeekAgo.set(itemId, m);
+  }
+
+  // Hard sanity cap on % change. A real "we tracked this for a week"
+  // move past 1000% is essentially always a scrape artifact (illiquid
+  // item, exactly two clean syncs apart, one of them bogus). Excluding
+  // them from the public top-gainers list keeps the tracker credible
+  // without losing any signal — anything plausible falls under 1000%.
+  const MAX_PLAUSIBLE_WEEKLY_PCT = 1000;
 
   const weeklyMovers: WeeklyMover[] = itemsWithImages
     .map((i) => {
@@ -250,6 +271,7 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
       const current = i.currentPrice ?? 0;
       if (!baseline || baseline <= 0 || current <= 0) return null;
       const weeklyChangePct = ((current - baseline) / baseline) * 100;
+      if (Math.abs(weeklyChangePct) > MAX_PLAUSIBLE_WEEKLY_PCT) return null;
       return {
         name: i.name,
         slug: i.slug,
