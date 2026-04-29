@@ -42,26 +42,54 @@ const PERIOD_OPTIONS = [
 /** Map our normalized referrer buckets back to an openable hostname so
  * the "Referring URLs" section can render real clickable links. Multiple
  * sites collapse to one bucket (e.g. google → google.com) — we pick the
- * .com variant as the canonical link target. Anything not in this map
- * is treated as-is (niche referrers never get normalized). */
+ * canonical variant as the link target. Buckets that aggregate multiple
+ * sources where a captured path won't resolve universally (ai-chat is
+ * ChatGPT + Perplexity + Claude, twitter's t.co only takes shortcodes,
+ * etc.) are deliberately omitted — they fall through to the regex
+ * check below and render as non-clickable text. */
 const CANONICAL_HOST: Record<string, string> = {
   google: "google.com",
   bing: "bing.com",
   duckduckgo: "duckduckgo.com",
   yahoo: "search.yahoo.com",
   yandex: "yandex.com",
-  twitter: "t.co", // t.co doesn't host pages but preserves what was stored
+  // x.com — paths captured were normalized from twitter.com hostnames, so
+  // paths like /<user>/status/<id> resolve correctly there. Earlier
+  // mapping to t.co was wrong: t.co only accepts its own shortcodes,
+  // anything else redirects to twitter home (which often bounced
+  // through to whatever the user's last twitter.com page was — read
+  // by the operator as "the link took me back to my own site").
+  twitter: "x.com",
   facebook: "facebook.com",
   reddit: "reddit.com",
   youtube: "youtube.com",
   discord: "discord.com",
-  "ai-chat": "chatgpt.com",
+  // NOT mapping "ai-chat" — bucket conflates multiple LLM hosts and a
+  // path from one won't work on another. Better to render as text-only.
 };
+
+/** Hostnames that point back at our own site. Click-throughs to these
+ * just send the operator to their own admin → indistinguishable from a
+ * broken link. Render as non-clickable text instead. */
+const INTERNAL_HOSTS = new Set([
+  "sboxskins.gg",
+  "www.sboxskins.gg",
+  "localhost",
+]);
 
 function buildFullUrl(referrer: string, path: string): string | null {
   const host = CANONICAL_HOST[referrer] ?? referrer;
   // Defensive: reject anything that doesn't look like a hostname.
   if (!/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/i.test(host)) return null;
+  // Don't link back to ourselves — old rows captured before the
+  // www/subdomain internal-referrer fix may still have sboxskins.gg as
+  // the referrer host.
+  if (
+    INTERNAL_HOSTS.has(host.toLowerCase()) ||
+    host.toLowerCase().endsWith(".sboxskins.gg")
+  ) {
+    return null;
+  }
   const safePath = path.startsWith("/") ? path : `/${path}`;
   return `https://${host}${safePath}`;
 }
