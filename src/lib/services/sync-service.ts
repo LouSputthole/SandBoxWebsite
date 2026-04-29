@@ -519,6 +519,22 @@ export async function seedItemFromSboxDev(
     select: { id: true },
   });
 
+  // Description style mirrors the auto-generated text the regular Steam
+  // sync emits. Deliberately doesn't reference any third-party tracker
+  // — readers don't need to know our enrichment source, and namedropping
+  // a competitor in our own item descriptions would be silly.
+  const description = `${skin.name} is a${
+    /^[aeiou]/i.test(itemType) ? "n" : ""
+  } S&box ${itemType}${
+    skin.itemDisplayName ? ` (${skin.itemDisplayName})` : ""
+  }${
+    skin.category ? ` in the ${skin.category} category` : ""
+  }. ${
+    skin.totalSupply
+      ? `Total supply: ${skin.totalSupply.toLocaleString()}. `
+      : ""
+  }Track price history, supply, and ownership over time.`;
+
   const data = {
     name: skin.name,
     slug,
@@ -526,7 +542,8 @@ export async function seedItemFromSboxDev(
     // and the reconciliation pass in syncItems() will fill it in if
     // and when the item gets a Market listing.
     type: itemType,
-    description: `${skin.name} — sourced from sbox.dev. ${skin.itemDisplayName ? `${skin.itemDisplayName}. ` : ""}Steam Market data will populate when listings appear.`,
+    description,
+    imageUrl: pickSboxImage(skin),
     currentPrice: skin.price > 0 ? skin.price : null,
     storePrice: skin.releasePrice ?? null,
     releasePrice: skin.releasePrice ?? null,
@@ -791,6 +808,37 @@ interface SboxSkinData {
   itemType: string | null;
   workshopId: string | null;
   iconBackgroundColor: string | null;
+  // Image fields — sbox.dev's exact key here has churned over versions
+  // and we can't pin it down without poking the live API. Probe all
+  // plausible names; pickSboxImage() picks the first non-null.
+  iconUrl?: string | null;
+  icon?: string | null;
+  image?: string | null;
+  imageUrl?: string | null;
+  thumbnail?: string | null;
+  previewUrl?: string | null;
+}
+
+/**
+ * Pick the best image URL from a sbox.dev skin payload. The API has
+ * shipped under several field names ("iconUrl", "image", etc.) and we
+ * don't want a future field-rename to silently break Hard Hat-style
+ * seeded items. Probe in order of likelihood and return the first
+ * non-empty match.
+ */
+function pickSboxImage(skin: SboxSkinData): string | null {
+  const candidates = [
+    skin.iconUrl,
+    skin.imageUrl,
+    skin.image,
+    skin.icon,
+    skin.thumbnail,
+    skin.previewUrl,
+  ];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 0) return c;
+  }
+  return null;
 }
 
 interface SboxSupplyData {
@@ -860,7 +908,7 @@ export async function syncSboxData(
       : {
           OR: [{ sboxSyncedAt: null }, { sboxSyncedAt: { lt: cooldownCutoff } }],
         },
-    select: { id: true, slug: true, name: true },
+    select: { id: true, slug: true, name: true, imageUrl: true },
   });
 
   const skippedCount = opts.force
@@ -924,9 +972,18 @@ export async function syncSboxData(
             ? "delisted"
             : undefined;
 
+      // Backfill imageUrl when missing — items seeded from sbox.dev
+      // (Hard Hat-style, never on Steam Market) wouldn't otherwise get
+      // an image. Only writes when our row is null so a fresh Steam
+      // image isn't overwritten by a stale sbox.dev one.
+      const sboxImage = pickSboxImage(skin);
+      const fillImage =
+        !item.imageUrl && sboxImage ? { imageUrl: sboxImage } : {};
+
       await prisma.item.update({
         where: { id: item.id },
         data: {
+          ...fillImage,
           totalSupply: skin.totalSupply,
           uniqueOwners: skin.uniqueOwners,
           soldPast24h: skin.soldPast24H ?? skin.boughtInTheLast24H,
