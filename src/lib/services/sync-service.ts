@@ -458,21 +458,107 @@ export async function upsertItem(
 export async function seedItemByHashName(
   hashName: string,
   result: SyncResult,
-): Promise<{ itemId: string | null; matchedName: string | null }> {
+): Promise<{ itemId: string | null; matchedName: string | null; slug: string | null }> {
   const search = await searchMarketByQuery(hashName, 20);
   if (!search || !search.success) {
-    return { itemId: null, matchedName: null };
+    return { itemId: null, matchedName: null, slug: null };
   }
 
   const match = search.results.find(
     (r) => r.hash_name.toLowerCase() === hashName.toLowerCase(),
   );
   if (!match) {
-    return { itemId: null, matchedName: null };
+    return { itemId: null, matchedName: null, slug: null };
   }
 
   const itemId = await upsertItem(match, result);
-  return { itemId, matchedName: match.name };
+  return { itemId, matchedName: match.name, slug: itemId ? slugify(match.hash_name) : null };
+}
+
+/**
+ * Seed a single item directly from sbox.dev when Steam Market doesn't
+ * have it (e.g. brand-new drops, non-marketable items, or items with a
+ * different name on Steam vs sbox.dev). Creates a row with no
+ * `steamMarketId` — Steam-side enrichment fills in later if/when the
+ * item lands on the Market.
+ *
+ * Pass either the bare slug ("hard-hat") or a sbox.dev URL
+ * ("https://sbox.dev/skins/hard-hat") — we strip the prefix.
+ *
+ * Returns null if sbox.dev has no record under that slug.
+ */
+export async function seedItemFromSboxDev(
+  slugOrUrl: string,
+  result: SyncResult,
+): Promise<{ itemId: string | null; matchedName: string | null; slug: string | null }> {
+  // Accept full URL or bare slug.
+  const slug = slugOrUrl
+    .trim()
+    .replace(/^https?:\/\/(www\.)?sbox\.dev\/skins\//, "")
+    .replace(/^\//, "")
+    .split(/[?#]/)[0];
+
+  if (!slug || !/^[a-z0-9-]+$/.test(slug)) {
+    return { itemId: null, matchedName: null, slug: null };
+  }
+
+  const skin = await fetchSboxSkin(slug);
+  if (!skin) {
+    return { itemId: null, matchedName: null, slug: null };
+  }
+
+  // Use sbox.dev's slug verbatim — that way the next sbox.dev sync
+  // round can find this row by slug without ambiguity.
+  const itemType = inferItemType(
+    skin.itemType ?? "",
+    skin.name,
+  );
+
+  const existing = await prisma.item.findUnique({
+    where: { slug },
+    select: { id: true },
+  });
+
+  const data = {
+    name: skin.name,
+    slug,
+    // Leave steamMarketId null — non-marketable items don't have one,
+    // and the reconciliation pass in syncItems() will fill it in if
+    // and when the item gets a Market listing.
+    type: itemType,
+    description: `${skin.name} — sourced from sbox.dev. ${skin.itemDisplayName ? `${skin.itemDisplayName}. ` : ""}Steam Market data will populate when listings appear.`,
+    currentPrice: skin.price > 0 ? skin.price : null,
+    storePrice: skin.releasePrice ?? null,
+    releasePrice: skin.releasePrice ?? null,
+    releaseDate: skin.release ? new Date(skin.release) : null,
+    isActiveStoreItem: skin.isActiveStoreItem,
+    isPermanentStoreItem: skin.isPermanentStoreItem,
+    leavingStoreAt: skin.leavingStoreAt ? new Date(skin.leavingStoreAt) : null,
+    totalSupply: skin.totalSupply,
+    uniqueOwners: skin.uniqueOwners,
+    soldPast24h: skin.soldPast24H ?? skin.boughtInTheLast24H,
+    supplyOnMarket: skin.supplyOnMarket,
+    totalSales: skin.sales,
+    itemDisplayName: skin.itemDisplayName,
+    category: skin.category,
+    itemSubType: skin.itemType,
+    workshopId: skin.workshopId,
+    iconBackgroundColor: skin.iconBackgroundColor,
+    sboxSyncedAt: new Date(),
+  };
+
+  if (existing) {
+    await prisma.item.update({ where: { id: existing.id }, data });
+    result.itemsUpdated++;
+    return { itemId: existing.id, matchedName: skin.name, slug };
+  }
+
+  const created = await prisma.item.create({
+    data,
+    select: { id: true },
+  });
+  result.itemsCreated++;
+  return { itemId: created.id, matchedName: skin.name, slug };
 }
 
 /**

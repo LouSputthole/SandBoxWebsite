@@ -8,6 +8,7 @@ import {
   MessageSquare,
   Send,
   ChevronRight,
+  Sprout,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -64,6 +65,13 @@ const PAGES: AdminPage[] = [
     description:
       "Per-table sizes, projected growth, dry-run + live downsampler and PageView rollup.",
     icon: HardDrive,
+  },
+  {
+    href: "/admin/seed-item",
+    label: "Seed missing item",
+    description:
+      "Force-add a catalog gap (e.g. Hard Hat) by name or sbox.dev URL. Tries Steam Market then falls back to sbox.dev.",
+    icon: Sprout,
   },
 ];
 
