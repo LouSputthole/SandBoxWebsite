@@ -27,7 +27,7 @@ const TYPE_COLORS: Record<string, string> = {
   unknown: "#525252",
 };
 
-const VALID_PERIODS: TrendsPeriod[] = ["7d", "30d", "90d", "all"];
+const VALID_PERIODS: TrendsPeriod[] = ["live", "24h", "7d", "30d", "90d", "all"];
 
 function isValidPeriod(p: string | undefined): p is TrendsPeriod {
   return p !== undefined && (VALID_PERIODS as string[]).includes(p);
