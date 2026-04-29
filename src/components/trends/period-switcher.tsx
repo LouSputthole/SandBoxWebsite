@@ -4,6 +4,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 
 const periods = [
+  { label: "Live", value: "live" }, // last 6h, populated by 10-min snapshot cron
+  { label: "24H", value: "24h" },
   { label: "7D", value: "7d" },
   { label: "30D", value: "30d" },
   { label: "90D", value: "90d" },

@@ -62,22 +62,21 @@ function formatShortDate(dateStr: string): string {
 
 /**
  * Pick a candle bucket size based on the actual data window. Mirrors
- * the page-level PeriodSwitcher decisions without duplicating the UI:
+ * the page-level PeriodSwitcher decisions without duplicating the UI.
+ * Bucket math + label format live in candles.ts; this just maps a
+ * day-span to a Period bucket.
  *
- *   ≤24h span  → 1h candles
- *   ≤7d span   → 4h candles
- *   ≤30d span  → 1d candles
- *   ≤90d span  → 3d candles
- *   else       → 1w candles
- *
- * The Period type still drives bucket math + label format inside
- * candles.ts, so we just translate the data span into a Period value.
+ * "LIVE" is reserved for the in-component override below — when the
+ * user clicks the LIVE pill we fetch /api/trends?period=live (last
+ * 6h, 10-min candles).
  */
 function periodForSpan(snapshots: Snapshot[]): Period {
   if (snapshots.length < 2) return "30D";
   const first = new Date(snapshots[0].timestamp).getTime();
   const last = new Date(snapshots[snapshots.length - 1].timestamp).getTime();
-  const days = (last - first) / (24 * 60 * 60 * 1000);
+  const hours = (last - first) / (60 * 60 * 1000);
+  const days = hours / 24;
+  if (hours <= 6) return "LIVE";
   if (days <= 1) return "24H";
   if (days <= 7) return "7D";
   if (days <= 30) return "30D";
@@ -171,15 +170,17 @@ export function TrendsChartSection({ snapshots }: { snapshots: Snapshot[] }) {
         </div>
         {view === "candles" && (
           <span className="ml-3 text-[10px] uppercase tracking-wider text-neutral-600">
-            {candlePeriod === "24H"
-              ? "1h candles"
-              : candlePeriod === "7D"
-                ? "4h candles"
-                : candlePeriod === "30D"
-                  ? "1d candles"
-                  : candlePeriod === "90D"
-                    ? "3d candles"
-                    : "1w candles"}
+            {candlePeriod === "LIVE"
+              ? "10m candles"
+              : candlePeriod === "24H"
+                ? "30m candles"
+                : candlePeriod === "7D"
+                  ? "1h candles"
+                  : candlePeriod === "30D"
+                    ? "4h candles"
+                    : candlePeriod === "90D"
+                      ? "1d candles"
+                      : "3d candles"}
           </span>
         )}
       </div>

@@ -7,7 +7,7 @@ import { median } from "@/lib/utils";
  * page and the /api/trends client API.
  */
 
-export type TrendsPeriod = "7d" | "30d" | "90d" | "all";
+export type TrendsPeriod = "live" | "24h" | "7d" | "30d" | "90d" | "all";
 
 export interface TrendsData {
   currentStats: {
@@ -72,7 +72,21 @@ export interface WeeklyMover {
 }
 
 export function periodDays(period: TrendsPeriod): number {
-  return period === "7d" ? 7 : period === "90d" ? 90 : period === "all" ? 365 : 30;
+  switch (period) {
+    case "live":
+      return 0.25; // 6 hours, for the 10-min-cadence LIVE candles
+    case "24h":
+      return 1;
+    case "7d":
+      return 7;
+    case "90d":
+      return 90;
+    case "all":
+      return 365;
+    case "30d":
+    default:
+      return 30;
+  }
 }
 
 export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {

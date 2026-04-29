@@ -14,7 +14,7 @@
  * candles overlap visually.
  */
 
-export type Period = "24H" | "7D" | "30D" | "90D" | "ALL";
+export type Period = "LIVE" | "24H" | "7D" | "30D" | "90D" | "ALL";
 
 export interface RawSnapshot {
   timestamp: string;
@@ -50,16 +50,24 @@ export type CandleMetric =
   | "avgPrice"
   | "totalVolume";
 
+// Bucket sizes were tightened to give each candle real OHLC range
+// instead of compressing 50+ syncs into one wide candle. Sync runs
+// every 15-30min normally + a lightweight 10-min snapshot cron means
+// we have ~144-220 snapshots/day to aggregate.
+//
+// Sweet spot: 4-8 raw points per bucket. Anything fewer flattens the
+// candle to a doji; anything more averages out the variance.
 const BUCKET_MS: Record<Period, number> = {
-  "24H": 60 * 60 * 1000, // 1h × 24 = 24 candles
-  "7D": 4 * 60 * 60 * 1000, // 4h × 42 = 42 candles
-  "30D": 24 * 60 * 60 * 1000, // 1d × 30 = 30 candles
-  "90D": 3 * 24 * 60 * 60 * 1000, // 3d × 30 = 30 candles
-  ALL: 7 * 24 * 60 * 60 * 1000, // 1w buckets, count varies
+  LIVE: 10 * 60 * 1000, // 10m × 36 = last 6h, 1 snapshot/bucket from the 10m cron
+  "24H": 30 * 60 * 1000, // 30m × 48 = 48 candles, ~2 syncs/bucket
+  "7D": 60 * 60 * 1000, // 1h × 168 = 168 candles, ~4 syncs/bucket
+  "30D": 4 * 60 * 60 * 1000, // 4h × 180 = 180 candles, ~12 syncs/bucket
+  "90D": 24 * 60 * 60 * 1000, // 1d × 90 = 90 candles, ~144 syncs/bucket
+  ALL: 3 * 24 * 60 * 60 * 1000, // 3d buckets, count varies
 };
 
 function bucketLabel(start: Date, period: Period): string {
-  if (period === "24H") {
+  if (period === "LIVE" || period === "24H") {
     return start.toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
@@ -124,6 +132,18 @@ export function bucketize(
     const direction: Candle["direction"] =
       close > open ? "up" : close < open ? "down" : "flat";
     const start = new Date(key);
+
+    // When a bucket holds a single sync (common in LIVE / 24H views,
+    // where bucket width matches sync cadence), open/close/high/low
+    // collapse to one value and Recharts renders the body as a 0-px
+    // bar (invisible). Pad the body span by 0.05% of the value so the
+    // candle still shows up as a thin horizontal line — the
+    // conventional "doji" treatment.
+    const bodyMin = Math.min(open, close);
+    const bodyMax = Math.max(open, close);
+    const bodyEpsilon =
+      bodyMin === bodyMax ? Math.max(bodyMin * 0.0005, 0.0001) : 0;
+
     candles.push({
       bucket: start.toISOString(),
       label: bucketLabel(start, period),
@@ -133,7 +153,7 @@ export function bucketize(
       close,
       volume,
       lowHigh: [low, high],
-      openClose: [Math.min(open, close), Math.max(open, close)],
+      openClose: [bodyMin - bodyEpsilon, bodyMax + bodyEpsilon],
       direction,
     });
   }
