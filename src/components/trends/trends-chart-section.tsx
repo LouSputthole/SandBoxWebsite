@@ -94,18 +94,25 @@ export function TrendsChartSection({ snapshots }: { snapshots: Snapshot[] }) {
   );
   const [view, setView] = useState<ViewMode>("area");
 
-  const areaData = useMemo(
-    () =>
-      snapshots.map((s) => ({
-        date: formatShortDate(s.timestamp),
-        timestamp: s.timestamp,
-        estMarketCap: s.estMarketCap ?? 0,
-        listingsValue: s.listingsValue,
-        avgPrice: s.avgPrice,
-        totalVolume: s.totalVolume,
-      })),
-    [snapshots],
-  );
+  // Trim leading entries where the active metric is 0/null. Early
+  // MarketSnapshots predate some columns (estMarketCap was added after
+  // launch — rows from before that point store NULL → 0 here, which
+  // drew a giant artificial jump from $0 up to actual values when the
+  // metric started getting populated). Slicing from the first real
+  // value gives every chart a natural start at "first day this metric
+  // existed" without server-side schema gymnastics.
+  const areaData = useMemo(() => {
+    const all = snapshots.map((s) => ({
+      date: formatShortDate(s.timestamp),
+      timestamp: s.timestamp,
+      estMarketCap: s.estMarketCap ?? 0,
+      listingsValue: s.listingsValue,
+      avgPrice: s.avgPrice,
+      totalVolume: s.totalVolume,
+    }));
+    const firstReal = all.findIndex((d) => (d[chartMetric] ?? 0) > 0);
+    return firstReal <= 0 ? all : all.slice(firstReal);
+  }, [snapshots, chartMetric]);
 
   const candlePeriod = useMemo(() => periodForSpan(snapshots), [snapshots]);
   const candleData = useMemo(

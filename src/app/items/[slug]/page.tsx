@@ -138,6 +138,18 @@ export default async function ItemDetailPage({ params }: PageProps) {
     notFound();
   }
 
+  // Trim leading $0 / null price points. Early backfill seeds
+  // sometimes wrote zero-priced rows for items that had no price yet,
+  // which made the chart draw a huge spike from $0 up to the first
+  // real reading. Slicing from the first real price gives the chart
+  // a clean start at "first day this item had a real price".
+  const trimmedHistory = (() => {
+    const firstReal = item.priceHistory.findIndex((p) => p.price > 0);
+    return firstReal <= 0
+      ? item.priceHistory
+      : item.priceHistory.slice(firstReal);
+  })();
+
   // Serialize dates for the client component
   const serialized = {
     ...item,
@@ -145,7 +157,7 @@ export default async function ItemDetailPage({ params }: PageProps) {
     releaseDate: item.releaseDate?.toISOString() ?? null,
     leavingStoreAt: item.leavingStoreAt?.toISOString() ?? null,
     topHolders: parseTopHolders(item.topHolders),
-    priceHistory: item.priceHistory.map((p) => ({
+    priceHistory: trimmedHistory.map((p) => ({
       ...p,
       timestamp: p.timestamp.toISOString(),
     })),
