@@ -25,15 +25,48 @@ interface ToolDef {
   buildUrl: (input: string) => string;
 }
 
+/**
+ * Strip URL prefix + fragment + query so a pasted full URL becomes a
+ * bare slug. Accepts:
+ *   - "hard-hat"
+ *   - "/skins/hard-hat"
+ *   - "https://sbox.dev/skins/hard-hat"
+ *   - "https://sbox.dev/skins/paper-3d-glasses#overview"
+ *   - "https://sbox.dev/skins/foo?ref=bar"
+ * Returns just the slug. The API's strict regex won't accept the
+ * URL-paste forms, so we normalize client-side.
+ */
+function cleanSlug(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^https?:\/\/(?:www\.)?sbox\.dev\/skins\//, "")
+    .replace(/^https?:\/\/(?:www\.)?sbox\.game\/[a-z]+\//, "")
+    .replace(/^\//, "")
+    .split(/[?#]/)[0];
+}
+
+/**
+ * Same idea for the sbox.game metrics tool — accept a numeric id, a
+ * full URL, or a path. The API expects a bare numeric/alnum string.
+ */
+function cleanGameId(raw: string): string {
+  return raw
+    .trim()
+    .replace(/^https?:\/\/(?:www\.)?sbox\.game\/metrics\/skins\//, "")
+    .replace(/^\//, "")
+    .split(/[?#]/)[0];
+}
+
 const TOOLS: ToolDef[] = [
   {
     id: "sbox-skin",
     label: "sbox.dev per-skin",
-    hint: "Fetch a single skin's raw JSON from sbox.dev's API and show every URL-shaped field. Use to debug missing images on a specific item.",
+    hint: "Fetch a single skin's raw JSON from sbox.dev's API and show every URL-shaped field. You can paste a full sbox.dev/skins/... URL or just the slug.",
     needsInput: true,
-    inputLabel: "Skin slug",
-    inputPlaceholder: "e.g. hard-hat or cat-balaclava",
-    buildUrl: (s: string) => `/api/admin/debug-sbox?slug=${encodeURIComponent(s.trim())}`,
+    inputLabel: "Skin slug or sbox.dev URL",
+    inputPlaceholder: "e.g. hard-hat or https://sbox.dev/skins/...",
+    buildUrl: (s: string) =>
+      `/api/admin/debug-sbox?slug=${encodeURIComponent(cleanSlug(s))}`,
   },
   {
     id: "sbox-list",
@@ -45,11 +78,12 @@ const TOOLS: ToolDef[] = [
   {
     id: "sboxgame",
     label: "sbox.game metrics",
-    hint: "Fetch sbox.game/metrics/skins/<id> and run the metrics parser. Returns parsed values + first 4KB of HTML for visual inspection.",
+    hint: "Fetch sbox.game/metrics/skins/<id>. You can paste a full sbox.game URL or just the workshop id.",
     needsInput: true,
-    inputLabel: "Workshop ID or sbox.game item ID",
-    inputPlaceholder: "e.g. 756702",
-    buildUrl: (s: string) => `/api/admin/debug-sboxgame?id=${encodeURIComponent(s.trim())}`,
+    inputLabel: "Workshop ID or sbox.game URL",
+    inputPlaceholder: "e.g. 756702 or https://sbox.game/metrics/skins/...",
+    buildUrl: (s: string) =>
+      `/api/admin/debug-sboxgame?id=${encodeURIComponent(cleanGameId(s))}`,
   },
 ];
 
