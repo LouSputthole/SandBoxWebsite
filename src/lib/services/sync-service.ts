@@ -572,6 +572,7 @@ export async function seedItemFromSboxDev(
     itemSubType: skin.itemType,
     workshopId: skin.workshopId,
     iconBackgroundColor: skin.iconBackgroundColor,
+    itemDefinitionId: skin.itemDefinitionId ?? null,
     sboxSyncedAt: new Date(),
   };
 
@@ -819,6 +820,7 @@ interface SboxSkinData {
   itemType: string | null;
   workshopId: string | null;
   iconBackgroundColor: string | null;
+  itemDefinitionId: number | null;
   // Image fields — sbox.dev's exact key here has churned over versions
   // and we can't pin it down without poking the live API. Probe all
   // plausible names; pickSboxImage() picks the first non-null.
@@ -1842,6 +1844,7 @@ export async function syncSboxData(
           category: skin.category,
           itemSubType: skin.itemType,
           workshopId: skin.workshopId,
+          itemDefinitionId: skin.itemDefinitionId ?? null,
           priceChange6h: skin.priceChange6h,
           priceChange6hPercent: skin.priceChange6hPercent,
           iconBackgroundColor: skin.iconBackgroundColor,

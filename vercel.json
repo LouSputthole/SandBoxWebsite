@@ -64,6 +64,10 @@
     {
       "path": "/api/cron/sbox-discover",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/steam-itemdef-sync",
+      "schedule": "15 5 * * *"
     }
   ]
 }

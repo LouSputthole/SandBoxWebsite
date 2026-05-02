@@ -49,6 +49,12 @@ model Item {
   topHolders          Json?      // Top 10 holders from supply-sources endpoint
   sboxSyncedAt        DateTime?  // When we last successfully pulled sbox.dev data for this item
   scarcityScore       Float?     // 0-100 composite score: distribution + liquidity + momentum
+  // Steam Inventory Service item definition id. Surfaced by sbox.dev's
+  // per-skin API as `itemDefinitionId`. Lets us fetch authoritative
+  // store pricing from Steam's IGameInventory/GetItemDefArchive (the
+  // same backend the in-game store reads from) instead of relying on
+  // sbox.dev's releasePrice (often null for new drops).
+  itemDefinitionId    Int?
 
   supplySnapshots SupplySnapshot[]
   tradeListingItems TradeListingItem[]
@@ -64,6 +70,7 @@ model Item {
   @@index([isActiveStoreItem])
   @@index([sboxSyncedAt])
   @@index([scarcityScore])
+  @@index([itemDefinitionId])
 }
 
 model PricePoint {

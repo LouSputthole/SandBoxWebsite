@@ -13,7 +13,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 
-type Tool = "sbox-skin" | "sbox-list" | "sboxgame" | "run-discover" | "fetch";
+type Tool =
+  | "sbox-skin"
+  | "sbox-list"
+  | "sboxgame"
+  | "run-discover"
+  | "fetch"
+  | "steam-itemdef"
+  | "run-itemdef-sync";
 
 interface ToolDef {
   id: Tool;
@@ -101,6 +108,20 @@ const TOOLS: ToolDef[] = [
     inputPlaceholder: "e.g. https://sbox.dev/store",
     buildUrl: (s: string) =>
       `/api/admin/debug-fetch?url=${encodeURIComponent(s.trim())}`,
+  },
+  {
+    id: "steam-itemdef",
+    label: "Steam item-def archive",
+    hint: "Pull Steam's official item-def archive (same backend the in-game store reads from) and return the digest + a 10-def sample. Use to verify STEAM_API_KEY is wired up before running the full sync.",
+    needsInput: false,
+    buildUrl: () => "/api/admin/debug-itemdef",
+  },
+  {
+    id: "run-itemdef-sync",
+    label: "Run itemdef sync now",
+    hint: "Force-run the Steam item-def archive sync immediately. Backfills storePrice + description for every Item with an itemDefinitionId from the official Steamworks data — same backend the in-game store reads from. Returns counts + sample of any unmatched ids.",
+    needsInput: false,
+    buildUrl: () => "/api/admin/run-itemdef-sync",
   },
 ];
 
