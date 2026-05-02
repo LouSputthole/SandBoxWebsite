@@ -1444,29 +1444,31 @@ function extractSkinsFromHtml(html: string): SboxSkinData[] {
 function extractSlugsFromHtml(
   html: string,
 ): Array<{ slug: string; name?: string }> {
-  const seen = new Map<string, string | undefined>();
-  // Match <a ... href="/skins/<slug>" ...>name</a>. Greedy on
-  // attribute order; tolerant of self-closing or nested tags
-  // inside the anchor.
+  const seen = new Set<string>();
+  // Match the bare href="..." attribute anywhere in the doc — way
+  // more robust than trying to bracket-match a full <a>…</a>:
+  //   - sbox.dev's anchors include #fragment hashes (e.g.
+  //     /skins/paper-3d-glasses#overview), the previous regex required
+  //     a closing quote IMMEDIATELY after the slug and missed all of
+  //     them (debug-sbox-list returned 0 parsedCount on the 235KB
+  //     /store HTML for exactly this reason).
+  //   - Optional ?query and #fragment between the slug and the
+  //     closing quote handle every variant we've seen.
+  //   - Drops the </a> closer requirement so React-style void
+  //     anchors or anchors-around-images all match.
+  // Names are extracted via per-skin enrichment after seeding, so we
+  // don't bother capturing anchor text here.
   const re =
-    /<a\b[^>]*href=["']\/skins\/([a-z0-9][a-z0-9-]*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    /href=["']\/skins\/([a-z0-9][a-z0-9-]*)(?:[?#][^"']*)?["']/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
     const slug = m[1];
     if (!slug || seen.has(slug)) continue;
     // Skip obvious non-item slugs.
     if (slug === "categories" || slug === "featured" || slug === "new") continue;
-    // Best-effort name extraction: strip nested tags from inner HTML,
-    // collapse whitespace, take the first chunk that looks textual.
-    const inner = m[2] ?? "";
-    const text =
-      inner
-        .replace(/<[^>]+>/g, " ")
-        .replace(/\s+/g, " ")
-        .trim() || undefined;
-    seen.set(slug, text);
+    seen.add(slug);
   }
-  return [...seen.entries()].map(([slug, name]) => ({ slug, name }));
+  return [...seen].map((slug) => ({ slug }));
 }
 
 function findSkinArray(node: unknown): SboxSkinData[] {
