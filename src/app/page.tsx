@@ -128,32 +128,56 @@ const features = [
 async function getHomepageData() {
   // One roundtrip to the DB for everything we need on the homepage.
   // Running these in parallel so we don't stall the response.
-  const [allItems, trending, losers, expensive, rarest, limited] = await Promise.all([
-    prisma.item.findMany({
-      select: { currentPrice: true, volume: true, totalSupply: true, type: true },
-    }),
-    prisma.item.findMany({
-      orderBy: { priceChange24h: "desc" },
-      take: 6,
-    }),
-    prisma.item.findMany({
-      orderBy: { priceChange24h: "asc" },
-      take: 6,
-    }),
-    prisma.item.findMany({
-      orderBy: { currentPrice: "desc" },
-      take: 6,
-    }),
-    prisma.item.findMany({
-      where: { totalSupply: { not: null, gt: 0 } },
-      orderBy: { totalSupply: "asc" },
-      take: 6,
-    }),
-    prisma.item.findMany({
-      where: { isLimited: true },
-      take: 6,
-    }),
-  ]);
+  const [allItems, trending, losers, expensive, rarest, limited, storeDrops, mostTraded] =
+    await Promise.all([
+      prisma.item.findMany({
+        select: { currentPrice: true, volume: true, totalSupply: true, type: true },
+      }),
+      prisma.item.findMany({
+        orderBy: { priceChange24h: "desc" },
+        take: 6,
+      }),
+      prisma.item.findMany({
+        orderBy: { priceChange24h: "asc" },
+        take: 6,
+      }),
+      // Most Valuable — null currentPrice items get pushed to the bottom
+      // (was top by Postgres default for DESC), so the real high-priced
+      // items lead the list instead of the unpriced ones overriding them.
+      prisma.item.findMany({
+        orderBy: { currentPrice: { sort: "desc", nulls: "last" } },
+        take: 6,
+      }),
+      prisma.item.findMany({
+        where: { totalSupply: { not: null, gt: 0 } },
+        orderBy: { totalSupply: "asc" },
+        take: 6,
+      }),
+      prisma.item.findMany({
+        where: { isLimited: true },
+        take: 6,
+      }),
+      // New homepage section — items in the active store rotation, most
+      // recently released first. Only items with isActiveStoreItem so we
+      // don't show stuff that already left rotation.
+      prisma.item.findMany({
+        where: {
+          isActiveStoreItem: true,
+          releaseDate: { not: null },
+        },
+        orderBy: { releaseDate: "desc" },
+        take: 6,
+      }),
+      // New homepage section — most-traded by total sales count (sbox.dev's
+      // `sales` field). Falls back gracefully when totalSales is null
+      // because the orderBy uses nulls: "last". Filter to non-zero so
+      // brand-new untracked items don't accidentally lead.
+      prisma.item.findMany({
+        where: { totalSales: { not: null, gt: 0 } },
+        orderBy: { totalSales: { sort: "desc", nulls: "last" } },
+        take: 6,
+      }),
+    ]);
 
   const lastUpdatedRow = await prisma.item.findFirst({
     orderBy: { updatedAt: "desc" },
@@ -190,6 +214,8 @@ async function getHomepageData() {
     expensive: expensive as unknown as Item[],
     rarest: rarest as unknown as Item[],
     limited: limited as unknown as Item[],
+    storeDrops: storeDrops as unknown as Item[],
+    mostTraded: mostTraded as unknown as Item[],
     categoryCounts,
     stats: {
       totalItems: allItems.length,
@@ -204,7 +230,17 @@ async function getHomepageData() {
 }
 
 export default async function HomePage() {
-  const { trending, losers, expensive, rarest, limited, categoryCounts, stats } =
+  const {
+    trending,
+    losers,
+    expensive,
+    rarest,
+    limited,
+    storeDrops,
+    mostTraded,
+    categoryCounts,
+    stats,
+  } =
     await getHomepageData();
 
   return (
@@ -459,6 +495,66 @@ export default async function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* New Store Drops — items in the active rotation, freshest first.
+          Empty section is hidden so an empty post-rotation window doesn't
+          show a sad placeholder. */}
+      {storeDrops.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-500/10">
+                <Sparkles className="h-5 w-5 text-purple-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">New Store Drops</h2>
+                <p className="text-xs text-neutral-500">
+                  Latest skins live in the in-game store
+                </p>
+              </div>
+            </div>
+            <Link href="/store">
+              <Button variant="ghost" size="sm" className="text-neutral-400 gap-1">
+                View Store <ArrowRight className="h-3 w-3" />
+              </Button>
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {storeDrops.map((item) => (
+              <ItemCard key={item.id} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Most Traded — by total Steam-tracked sales lifetime. */}
+      {mostTraded.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-emerald-500/10">
+                <BarChart3 className="h-5 w-5 text-emerald-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">Most Traded</h2>
+                <p className="text-xs text-neutral-500">
+                  Highest lifetime sales across the catalog
+                </p>
+              </div>
+            </div>
+            <Link href="/items?sort=volume-desc">
+              <Button variant="ghost" size="sm" className="text-neutral-400 gap-1">
+                View All <ArrowRight className="h-3 w-3" />
+              </Button>
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {mostTraded.map((item) => (
+              <ItemCard key={item.id} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Rarest Items */}
       {rarest.length > 0 && (

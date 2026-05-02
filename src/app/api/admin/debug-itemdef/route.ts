@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
 import {
   fetchSteamItemDefsWithDiag,
-  parseSteamPrice,
+  pickItemPrice,
   pickItemDescription,
 } from "@/lib/steam/inventory";
 
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
       found: true,
       raw: def,
       parsed: {
-        priceUsd: parseSteamPrice(def.price, "USD"),
+        priceUsd: pickItemPrice(def, "USD"),
         description: pickItemDescription(def),
       },
     });
@@ -68,7 +68,7 @@ export async function GET(request: NextRequest) {
     itemdefid: d.itemdefid,
     name: d.name,
     description: pickItemDescription(d),
-    priceUsd: parseSteamPrice(d.price, "USD"),
+    priceUsd: pickItemPrice(d, "USD"),
     rawPrice: d.price,
   }));
 
