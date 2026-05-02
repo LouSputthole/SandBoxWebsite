@@ -1017,6 +1017,177 @@ function unwrapCdnCgi(url: string): string | null {
   return url;
 }
 
+/**
+ * Extract Facepunch-canonical metrics for an item from
+ * sbox.game/metrics/skins/<id>. The id can be either the workshopId
+ * we store on Item, or the sbox.game internal numeric id (some items
+ * route through both — sbox.game seems forgiving). We try both forms.
+ *
+ * Returns a partial Item-shape: only the fields we could parse out.
+ * Caller decides what to write — typically only fills nullables that
+ * sbox.dev didn't already provide.
+ *
+ * Implementation parses the HTML page rather than calling an API
+ * because sbox.game doesn't document a public API surface. The page
+ * is mostly server-side rendered with the data either in:
+ *   1. <script id="__NEXT_DATA__"> (Next.js)
+ *   2. inline <script type="application/json"> islands
+ *   3. plain HTML cells with class hints we can regex-match
+ *
+ * findSkinDataInJson() walks any JSON we extract looking for
+ * skin-shaped fields. Keys we care about: name, totalSupply,
+ * uniqueOwners, currentPrice, supplyOnMarket, totalSales, image.
+ */
+export interface SboxGameMetrics {
+  name?: string;
+  totalSupply?: number;
+  uniqueOwners?: number;
+  currentPrice?: number;
+  supplyOnMarket?: number;
+  totalSales?: number;
+  imageUrl?: string;
+  /** Diagnostics — surfaced via debug endpoint */
+  rawJsonKeys?: string[];
+  matchedSelector?: string;
+}
+
+export async function fetchSboxGameMetrics(
+  idOrWorkshopId: string,
+): Promise<SboxGameMetrics | null> {
+  if (!idOrWorkshopId) return null;
+  const url = `https://sbox.game/metrics/skins/${encodeURIComponent(idOrWorkshopId)}`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) return null;
+    const html = await res.text();
+    return parseSboxGameMetrics(html);
+  } catch {
+    return null;
+  }
+}
+
+export function parseSboxGameMetrics(html: string): SboxGameMetrics {
+  const out: SboxGameMetrics = {};
+
+  // 1. Try the Next.js / generic JSON island route first. Most reliable
+  //    when the page embeds its full state.
+  const jsonCandidates: string[] = [];
+  const nextMatch = html.match(
+    /<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i,
+  );
+  if (nextMatch?.[1]) jsonCandidates.push(nextMatch[1]);
+  const islandRe =
+    /<script[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let mIsland: RegExpExecArray | null;
+  while ((mIsland = islandRe.exec(html)) !== null) {
+    if (mIsland[1]) jsonCandidates.push(mIsland[1]);
+  }
+
+  for (const raw of jsonCandidates) {
+    try {
+      const parsed = JSON.parse(raw);
+      const found = findSkinDataInJson(parsed);
+      if (found) {
+        out.matchedSelector = "json-island";
+        out.rawJsonKeys = Object.keys(found);
+        if (typeof found.name === "string") out.name = found.name;
+        if (typeof found.totalSupply === "number") out.totalSupply = found.totalSupply;
+        if (typeof found.uniqueOwners === "number") out.uniqueOwners = found.uniqueOwners;
+        if (typeof found.currentPrice === "number") out.currentPrice = found.currentPrice;
+        if (typeof found.price === "number" && out.currentPrice == null)
+          out.currentPrice = found.price as number;
+        if (typeof found.supplyOnMarket === "number")
+          out.supplyOnMarket = found.supplyOnMarket;
+        if (typeof found.sales === "number") out.totalSales = found.sales;
+        if (typeof found.totalSales === "number") out.totalSales = found.totalSales;
+        break;
+      }
+    } catch {
+      // try next candidate
+    }
+  }
+
+  // 2. og:image (always works on Facepunch SSR'd pages even when JSON
+  //    is somewhere we didn't catch).
+  const ogMatch = html.match(
+    /<meta\s+(?:property|name)=["']og:image["']\s+content=["']([^"']+)["']/i,
+  );
+  if (ogMatch?.[1]) {
+    const u = unwrapCdnCgi(ogMatch[1]);
+    if (u) out.imageUrl = u;
+  }
+
+  // 3. Title fallback. <title>Item Name · sbox.game</title> pattern.
+  if (!out.name) {
+    const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+    if (titleMatch?.[1]) {
+      out.name = titleMatch[1]
+        .replace(/\s*[·|–-]\s*sbox\.game.*$/i, "")
+        .trim() || undefined;
+    }
+  }
+
+  // 4. Plain-HTML cell heuristics — last resort. The metrics page
+  //    likely has data-testid or class names like "supply" / "owners".
+  //    Pattern: <* class="...supply...">12,345</*>. Defensive against
+  //    layout changes — broad selector match, narrow value extraction.
+  if (out.totalSupply == null) {
+    const supplyMatch = html.match(
+      /(?:supply|total[\s_-]*supply)[\s\S]{0,200}?(\d[\d,]*)/i,
+    );
+    if (supplyMatch?.[1]) {
+      const n = parseInt(supplyMatch[1].replace(/,/g, ""), 10);
+      if (Number.isFinite(n) && n > 0) out.totalSupply = n;
+    }
+  }
+  if (out.uniqueOwners == null) {
+    const ownersMatch = html.match(
+      /(?:unique[\s_-]*owners|owners)[\s\S]{0,200}?(\d[\d,]*)/i,
+    );
+    if (ownersMatch?.[1]) {
+      const n = parseInt(ownersMatch[1].replace(/,/g, ""), 10);
+      if (Number.isFinite(n) && n > 0) out.uniqueOwners = n;
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Walk a parsed JSON tree looking for an object that smells like a
+ * skin record: has a `name` field plus at least one of the metrics
+ * we care about. BFS — shallowest match wins so we don't dive into
+ * a list of related items and pick the wrong one.
+ */
+function findSkinDataInJson(
+  root: unknown,
+): Record<string, unknown> | null {
+  const queue: unknown[] = [root];
+  while (queue.length) {
+    const node = queue.shift();
+    if (Array.isArray(node)) {
+      queue.push(...node);
+      continue;
+    }
+    if (node && typeof node === "object") {
+      const obj = node as Record<string, unknown>;
+      // Skin-record heuristic
+      if (
+        typeof obj.name === "string" &&
+        (typeof obj.totalSupply === "number" ||
+          typeof obj.uniqueOwners === "number" ||
+          typeof obj.supplyOnMarket === "number" ||
+          typeof obj.price === "number" ||
+          typeof obj.currentPrice === "number")
+      ) {
+        return obj;
+      }
+      for (const v of Object.values(obj)) queue.push(v);
+    }
+  }
+  return null;
+}
+
 async function fetchSboxSupply(slug: string): Promise<SboxSupplyData | null> {
   try {
     const res = await fetch(`https://api.sbox.dev/v1/skins/${slug}/supply-sources`, {
