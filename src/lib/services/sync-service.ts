@@ -820,11 +820,20 @@ interface SboxSkinData {
 }
 
 /**
- * Pick the best image URL from a sbox.dev skin payload. The API has
- * shipped under several field names ("iconUrl", "image", etc.) and we
- * don't want a future field-rename to silently break Hard Hat-style
- * seeded items. Probe in order of likelihood and return the first
- * non-empty match.
+ * Pick the best image URL from a sbox.dev skin payload. The API
+ * doesn't document its image field name + has shipped under several
+ * over time, so we do two passes:
+ *
+ *   1. Probe known-likely top-level field names (cheap, deterministic)
+ *   2. Recursively walk the whole response looking for any string
+ *      that looks like an image URL — handles nested shapes like
+ *      `media.icon`, `assets[0].url`, `images.preview`, etc.
+ *
+ * Pass-2 self-heals when sbox.dev renames a field or moves the icon
+ * into a sub-object — at the small cost of occasionally picking up
+ * an unrelated image (a contributor avatar, etc.) if the per-skin
+ * payload contains both. Tradeoff is worth it: empty image looks
+ * broken, wrong-but-similar image is acceptable until corrected.
  */
 function pickSboxImage(skin: SboxSkinData): string | null {
   const candidates = [
@@ -838,7 +847,53 @@ function pickSboxImage(skin: SboxSkinData): string | null {
   for (const c of candidates) {
     if (typeof c === "string" && c.length > 0) return c;
   }
-  return null;
+
+  // Pass 2: recursive walk. Looking for a string value whose key
+  // hints at "image" or whose value matches a URL pattern with an
+  // image extension. Skips obvious avatar/profile fields so we
+  // don't pick up a top-holder profile avatar by accident.
+  const found = findFirstImageUrl(skin as unknown);
+  return found;
+}
+
+const IMAGE_EXT_RE = /\.(?:png|jpe?g|webp|gif|avif)(?:\?|$)/i;
+const IMAGE_KEY_HINT_RE = /(?:^|[^a-z])(icon|image|thumb|preview)/i;
+const SKIP_KEY_RE = /(?:avatar|profile|owner|holder|user)/i;
+const URL_RE = /^https?:\/\//i;
+
+/**
+ * Walk an arbitrary JSON tree and return the first string value that
+ * looks like an image URL. Prefers values whose key contains an image
+ * hint ("icon", "image", etc.); fields that obviously belong to a
+ * person (avatar, profile, user) are skipped so a top-holder list
+ * can't pollute the item's own image. BFS so shallower wins.
+ */
+function findFirstImageUrl(root: unknown): string | null {
+  type Frame = { node: unknown; keyHint: boolean };
+  const queue: Frame[] = [{ node: root, keyHint: false }];
+  let fallback: string | null = null;
+  while (queue.length) {
+    const { node, keyHint } = queue.shift() as Frame;
+    if (typeof node === "string") {
+      if (URL_RE.test(node) && IMAGE_EXT_RE.test(node)) {
+        if (keyHint) return node;
+        if (!fallback) fallback = node;
+      }
+      continue;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) queue.push({ node: item, keyHint });
+      continue;
+    }
+    if (node && typeof node === "object") {
+      for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+        if (SKIP_KEY_RE.test(k)) continue;
+        const childHint = keyHint || IMAGE_KEY_HINT_RE.test(k);
+        queue.push({ node: v, keyHint: childHint });
+      }
+    }
+  }
+  return fallback;
 }
 
 interface SboxSupplyData {
