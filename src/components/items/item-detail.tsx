@@ -193,9 +193,29 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
             </div>
           </div>
           {item.releasePrice != null && (
-            <p className="text-xs text-neutral-500">
-              Store price: <Price amount={item.releasePrice} />
-            </p>
+            // Make the store price prominent when the item is currently
+            // in the store and the market price is N/A — the store
+            // price is the only real price signal in that case, so it
+            // should stand out instead of looking like a footnote.
+            // When market price exists, render as a small reference
+            // line so the market headline keeps the primary slot.
+            item.storeStatus === "available" && item.currentPrice == null ? (
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[10px] uppercase tracking-wider text-emerald-400/80 font-semibold">
+                  Store price
+                </span>
+                <span className="text-2xl font-bold text-emerald-300 tabular-nums">
+                  <Price amount={item.releasePrice} />
+                </span>
+                <span className="text-[11px] text-neutral-500">
+                  in-game
+                </span>
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-500">
+                Store price: <Price amount={item.releasePrice} />
+              </p>
+            )
           )}
 
           {/* Stats */}
