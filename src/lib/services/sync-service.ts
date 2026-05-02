@@ -986,10 +986,13 @@ function extractImageFromHtml(html: string): string | null {
   if (ogMatch?.[1]) candidates.push(ogMatch[1]);
 
   // Bare cdn.sbox.game URL anywhere in the doc — resilient if sbox.dev
-  // ever drops the og:image. Also captures avatars etc., so we filter
-  // to /asset/ paths which are the item icons (avatars sit under
-  // /steam/ or similar).
-  const cdnRe = /https:\/\/cdn\.sbox\.game\/asset\/[a-z0-9./_-]+\.(?:png|jpe?g|webp|gif|avif)/gi;
+  // ever drops the og:image. Captures both legacy /asset/ and current
+  // /upload/i/ path patterns since sbox.dev/sbox.game seem to use both
+  // (Cat Balaclava → /asset/<hash>.png, Paper 3D Glasses → /upload/i/
+  // <uuid>/<hash>.png). Avatars sit under /steam/ so they're filtered
+  // by us NOT matching that prefix.
+  const cdnRe =
+    /https:\/\/cdn\.sbox\.game\/[a-z0-9./_-]+\.(?:png|jpe?g|webp|gif|avif)/gi;
   let m: RegExpExecArray | null;
   while ((m = cdnRe.exec(html)) !== null) {
     candidates.push(m[0]);
