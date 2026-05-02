@@ -197,9 +197,13 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
             // in the store and the market price is N/A — the store
             // price is the only real price signal in that case, so it
             // should stand out instead of looking like a footnote.
-            // When market price exists, render as a small reference
-            // line so the market headline keeps the primary slot.
-            item.storeStatus === "available" && item.currentPrice == null ? (
+            //
+            // Gate on isActiveStoreItem (set from sbox.dev's API,
+            // reliable) rather than storeStatus (legacy column populated
+            // by the often-flaky sbox.game Playwright scraper). Same
+            // signal that powers the green "In Store" badge above —
+            // these two should agree.
+            item.isActiveStoreItem && item.currentPrice == null ? (
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[10px] uppercase tracking-wider text-emerald-400/80 font-semibold">
                   Store price
