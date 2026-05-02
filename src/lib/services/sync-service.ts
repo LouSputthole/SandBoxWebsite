@@ -954,35 +954,209 @@ const SBOX_SYNC_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
  * API is the long-term plan).
  */
 const SBOX_LIST_CANDIDATES: string[] = [
+  // sbox.dev API surface — broadest probe set since their list endpoint
+  // isn't documented anywhere we've found. Order: most-specific first
+  // so we don't pull the entire catalog when a smaller scope works.
   "https://api.sbox.dev/v1/skins?store=active",
+  "https://api.sbox.dev/v1/skins?activeStoreItem=true",
+  "https://api.sbox.dev/v1/skins?isActiveStoreItem=true",
   "https://api.sbox.dev/v1/skins?limit=500",
+  "https://api.sbox.dev/v1/skins?perPage=500",
+  "https://api.sbox.dev/v1/skins?page=1&limit=500",
   "https://api.sbox.dev/v1/skins",
+  "https://api.sbox.dev/v1/skins/list",
+  "https://api.sbox.dev/v1/skins/all",
+  "https://api.sbox.dev/v1/skins/index",
+  "https://api.sbox.dev/v1/store",
+  "https://api.sbox.dev/v1/store/skins",
+  "https://api.sbox.dev/v1/store/items",
+  // Versioning variants in case they bumped to v2 / unversioned
+  "https://api.sbox.dev/v2/skins",
+  "https://api.sbox.dev/skins",
+  // Some APIs route through the apex domain instead of an `api` subdomain
+  "https://sbox.dev/api/skins",
+  "https://sbox.dev/api/v1/skins",
+  "https://sbox.dev/api/store",
 ];
 
 /**
- * Probe sbox.dev for a list of skins. Tries each candidate URL in
- * order and returns the first non-empty array we find. Handles common
- * response shapes:
- *   - bare array: [...]
- *   - { data: [...] }
- *   - { skins: [...] }
- *   - { data: { skins: [...] } }
- *   - { items: [...] }
- * Returns [] if none work — caller treats empty as "no discovery this
- * run" and continues normally.
+ * URLs to try as an HTML scrape fallback if the API candidates whiff.
+ * Many SSR'd pages (especially Next.js / Nuxt) embed the catalog data
+ * inside a __NEXT_DATA__ / __NUXT__ / nuxt-data <script> tag — we can
+ * extract it without a JS runtime. The page-source approach is what we
+ * use as a last resort before giving up and emitting an error.
+ */
+const SBOX_HTML_CANDIDATES: string[] = [
+  "https://sbox.dev/store",
+  "https://sbox.dev/skins",
+];
+
+/**
+ * Probe sbox.dev for a list of skins. Three layers, in order:
+ *   1. Direct API candidates (SBOX_LIST_CANDIDATES) — fastest, most
+ *      structured, lowest chance of breakage when their HTML changes.
+ *   2. HTML scrape of sbox.dev/store and similar pages — pulls
+ *      __NEXT_DATA__ / __NUXT__ / inline JSON if their site embeds
+ *      the catalog SSR-style.
+ *   3. Returns diagnostic attempt log via fetchSboxSkinsListDetailed
+ *      below — used by the debug endpoint to surface what's working.
+ *
+ * Returns [] if everything fails — caller logs and continues. Per-
+ * slug enrichment still works for items already in our DB; only
+ * brand-new-item discovery is gated on this function succeeding.
  */
 async function fetchSboxSkinsList(): Promise<SboxSkinData[]> {
+  const detailed = await fetchSboxSkinsListDetailed();
+  return detailed.skins;
+}
+
+export interface ListProbeResult {
+  skins: SboxSkinData[];
+  source: string | null;
+  attempts: ProbeAttempt[];
+}
+
+interface ProbeAttempt {
+  url: string;
+  method: "api" | "html";
+  status: number | null;
+  bytes: number | null;
+  parsedCount: number;
+  error?: string;
+}
+
+export async function fetchSboxSkinsListDetailed(): Promise<ListProbeResult> {
+  const attempts: ProbeAttempt[] = [];
+
+  // --- Pass 1: API candidates ---
   for (const url of SBOX_LIST_CANDIDATES) {
+    const a: ProbeAttempt = {
+      url,
+      method: "api",
+      status: null,
+      bytes: null,
+      parsedCount: 0,
+    };
     try {
       const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
-      if (!res.ok) continue;
-      const json = (await res.json()) as unknown;
-      const arr = extractSkinList(json);
-      if (arr.length > 0) {
-        return arr;
+      a.status = res.status;
+      const text = await res.text();
+      a.bytes = text.length;
+      if (!res.ok) {
+        attempts.push(a);
+        continue;
       }
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch (err) {
+        a.error = `parse: ${err instanceof Error ? err.message : String(err)}`;
+        attempts.push(a);
+        continue;
+      }
+      const arr = extractSkinList(json);
+      a.parsedCount = arr.length;
+      attempts.push(a);
+      if (arr.length > 0) {
+        return { skins: arr, source: url, attempts };
+      }
+    } catch (err) {
+      a.error = err instanceof Error ? err.message : String(err);
+      attempts.push(a);
+    }
+  }
+
+  // --- Pass 2: HTML scrape fallback ---
+  for (const url of SBOX_HTML_CANDIDATES) {
+    const a: ProbeAttempt = {
+      url,
+      method: "html",
+      status: null,
+      bytes: null,
+      parsedCount: 0,
+    };
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      a.status = res.status;
+      const html = await res.text();
+      a.bytes = html.length;
+      if (!res.ok) {
+        attempts.push(a);
+        continue;
+      }
+      const arr = extractSkinsFromHtml(html);
+      a.parsedCount = arr.length;
+      attempts.push(a);
+      if (arr.length > 0) {
+        return { skins: arr, source: `${url} (html)`, attempts };
+      }
+    } catch (err) {
+      a.error = err instanceof Error ? err.message : String(err);
+      attempts.push(a);
+    }
+  }
+
+  return { skins: [], source: null, attempts };
+}
+
+/**
+ * Pull a skins array out of an HTML page by digging into common SSR
+ * data containers. Order:
+ *   1. <script id="__NEXT_DATA__">…</script>  (Next.js)
+ *   2. window.__NUXT__ = {...}                (Nuxt)
+ *   3. <script type="application/json">       (generic JSON island)
+ *
+ * For each, parse the JSON then walk for an array-of-skins. We don't
+ * know the exact key path so we use the same recursive scanner as the
+ * API extractor — find any array of objects whose first member has a
+ * `slug` and a `name`, on the assumption that's the skin list.
+ */
+function extractSkinsFromHtml(html: string): SboxSkinData[] {
+  const candidates: string[] = [];
+
+  const nextMatch = html.match(
+    /<script[^>]*id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i,
+  );
+  if (nextMatch?.[1]) candidates.push(nextMatch[1]);
+
+  const nuxtMatch = html.match(/window\.__NUXT__\s*=\s*({[\s\S]*?})\s*;\s*</);
+  if (nuxtMatch?.[1]) candidates.push(nuxtMatch[1]);
+
+  const islandRe =
+    /<script[^>]*type=["']application\/json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = islandRe.exec(html)) !== null) {
+    if (m[1]) candidates.push(m[1]);
+  }
+
+  for (const raw of candidates) {
+    try {
+      const json = JSON.parse(raw);
+      const arr = findSkinArray(json);
+      if (arr.length > 0) return arr;
     } catch {
-      // Try next candidate.
+      // Next candidate.
+    }
+  }
+  return [];
+}
+
+function findSkinArray(node: unknown): SboxSkinData[] {
+  if (Array.isArray(node)) {
+    if (
+      node.length > 0 &&
+      typeof node[0] === "object" &&
+      node[0] !== null &&
+      typeof (node[0] as Record<string, unknown>).slug === "string" &&
+      typeof (node[0] as Record<string, unknown>).name === "string"
+    ) {
+      return node as SboxSkinData[];
+    }
+  }
+  if (node && typeof node === "object") {
+    for (const v of Object.values(node as Record<string, unknown>)) {
+      const found = findSkinArray(v);
+      if (found.length > 0) return found;
     }
   }
   return [];
