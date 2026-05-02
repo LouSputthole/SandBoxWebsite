@@ -535,6 +535,17 @@ export async function seedItemFromSboxDev(
       : ""
   }Track price history, supply, and ownership over time.`;
 
+  // Image discovery cascade: API response → page-scrape fallback. The
+  // sbox.dev API doesn't reliably expose the icon URL in the per-skin
+  // payload, but their /skins/<slug> page renders it in og:image metadata
+  // pointing at cdn.sbox.game/asset/<hash>.png. Scraping per-item is
+  // cheap (one extra fetch on first seed, never repeated since we store
+  // the resolved URL).
+  let imageUrl: string | null = pickSboxImage(skin);
+  if (!imageUrl) {
+    imageUrl = await fetchSboxSkinImage(slug);
+  }
+
   const data = {
     name: skin.name,
     slug,
@@ -543,7 +554,7 @@ export async function seedItemFromSboxDev(
     // and when the item gets a Market listing.
     type: itemType,
     description,
-    imageUrl: pickSboxImage(skin),
+    imageUrl,
     currentPrice: skin.price > 0 ? skin.price : null,
     storePrice: skin.releasePrice ?? null,
     releasePrice: skin.releasePrice ?? null,
@@ -919,6 +930,91 @@ async function fetchSboxSkin(slug: string): Promise<SboxSkinData | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Per-item image scrape for slugs whose API response doesn't include
+ * the icon URL. sbox.dev/skins/<slug> is server-side rendered with the
+ * image in <meta property="og:image"> (and a main <img> fallback).
+ * Both point at sbox.dev's Cloudflare image-resize wrapper around
+ * cdn.sbox.game/asset/<hash>.png — which is the actual Facepunch CDN
+ * image.
+ *
+ * We prefer the unwrapped cdn.sbox.game URL when we can extract it
+ * (smaller dependency footprint — sbox.dev could pull their resizer
+ * tomorrow and our images would still resolve through Facepunch's CDN
+ * directly).
+ */
+async function fetchSboxSkinImage(slug: string): Promise<string | null> {
+  // Try sbox.dev's per-skin page first (richer SSR'd metadata) then
+  // fall back to sbox.game in case sbox.dev rate-limits us or the
+  // slug pattern differs.
+  const pages = [
+    `https://sbox.dev/skins/${slug}`,
+    `https://sbox.game/skins/${slug}`,
+  ];
+  for (const url of pages) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      if (!res.ok) continue;
+      const html = await res.text();
+      const found = extractImageFromHtml(html);
+      if (found) return found;
+    } catch {
+      // next page
+    }
+  }
+  return null;
+}
+
+/**
+ * Pull the canonical item icon out of an sbox.dev page's HTML. Tries:
+ *   1. <meta property="og:image" content="...">
+ *   2. <meta name="twitter:image" content="...">
+ *   3. The first cdn.sbox.game/asset URL anywhere in the HTML
+ *
+ * Returns the **unwrapped** cdn.sbox.game URL when it's nested inside
+ * a sbox.dev/cdn-cgi/image/ resize wrapper — that's what we want to
+ * store. The resize wrapper is just a CDN convenience and adds a
+ * sbox.dev dependency we don't need.
+ */
+function extractImageFromHtml(html: string): string | null {
+  const ogMatch = html.match(
+    /<meta\s+(?:property|name)=["'](?:og:image|twitter:image)["']\s+content=["']([^"']+)["']/i,
+  );
+  const candidates: string[] = [];
+  if (ogMatch?.[1]) candidates.push(ogMatch[1]);
+
+  // Bare cdn.sbox.game URL anywhere in the doc — resilient if sbox.dev
+  // ever drops the og:image. Also captures avatars etc., so we filter
+  // to /asset/ paths which are the item icons (avatars sit under
+  // /steam/ or similar).
+  const cdnRe = /https:\/\/cdn\.sbox\.game\/asset\/[a-z0-9./_-]+\.(?:png|jpe?g|webp|gif|avif)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = cdnRe.exec(html)) !== null) {
+    candidates.push(m[0]);
+  }
+
+  for (const c of candidates) {
+    const unwrapped = unwrapCdnCgi(c);
+    if (unwrapped) return unwrapped;
+  }
+  return null;
+}
+
+/**
+ * Unwrap sbox.dev/cdn-cgi/image/<options>/<real-url> back to <real-url>
+ * so we store the underlying Facepunch CDN URL rather than sbox.dev's
+ * resizer wrapper. Pass-through if the URL isn't a cdn-cgi wrapper.
+ */
+function unwrapCdnCgi(url: string): string | null {
+  if (!url) return null;
+  // Pattern: https://sbox.dev/cdn-cgi/image/<opts>/<inner-url>
+  const match = url.match(
+    /^https?:\/\/sbox\.dev\/cdn-cgi\/image\/[^/]+\/(https?:\/\/.+)$/i,
+  );
+  if (match?.[1]) return match[1];
+  return url;
 }
 
 async function fetchSboxSupply(slug: string): Promise<SboxSupplyData | null> {
@@ -1374,9 +1470,15 @@ export async function syncSboxData(
 
       // Backfill imageUrl when missing — items seeded from sbox.dev
       // (Hard Hat-style, never on Steam Market) wouldn't otherwise get
-      // an image. Only writes when our row is null so a fresh Steam
-      // image isn't overwritten by a stale sbox.dev one.
-      const sboxImage = pickSboxImage(skin);
+      // an image. Two-tier: try the API payload first, fall back to
+      // scraping the per-skin page's og:image metadata (which points at
+      // cdn.sbox.game/asset/<hash>.png — the actual Facepunch CDN
+      // image). Only writes when our row is null so a fresh Steam
+      // image isn't overwritten.
+      let sboxImage: string | null = pickSboxImage(skin);
+      if (!item.imageUrl && !sboxImage) {
+        sboxImage = await fetchSboxSkinImage(item.slug);
+      }
       const fillImage =
         !item.imageUrl && sboxImage ? { imageUrl: sboxImage } : {};
 
