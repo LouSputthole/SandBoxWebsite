@@ -887,6 +887,177 @@ function sleep(ms: number): Promise<void> {
 const SBOX_SYNC_COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
 
 /**
+ * List endpoint candidates — sbox.dev hasn't documented their public list
+ * surface, so we probe in order and use the first one that returns a
+ * usable shape. Order matters: the most-specific filter goes first so
+ * we don't pull the entire catalog when a smaller scope works.
+ *
+ * If none of these resolve, the caller logs and skips — we still have
+ * the per-slug enrichment path for items already in our DB. Discovery
+ * just won't pick up brand-new store entries until either sbox.dev
+ * exposes a list or we wire a different source (Facepunch services
+ * API is the long-term plan).
+ */
+const SBOX_LIST_CANDIDATES: string[] = [
+  "https://api.sbox.dev/v1/skins?store=active",
+  "https://api.sbox.dev/v1/skins?limit=500",
+  "https://api.sbox.dev/v1/skins",
+];
+
+/**
+ * Probe sbox.dev for a list of skins. Tries each candidate URL in
+ * order and returns the first non-empty array we find. Handles common
+ * response shapes:
+ *   - bare array: [...]
+ *   - { data: [...] }
+ *   - { skins: [...] }
+ *   - { data: { skins: [...] } }
+ *   - { items: [...] }
+ * Returns [] if none work — caller treats empty as "no discovery this
+ * run" and continues normally.
+ */
+async function fetchSboxSkinsList(): Promise<SboxSkinData[]> {
+  for (const url of SBOX_LIST_CANDIDATES) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      if (!res.ok) continue;
+      const json = (await res.json()) as unknown;
+      const arr = extractSkinList(json);
+      if (arr.length > 0) {
+        return arr;
+      }
+    } catch {
+      // Try next candidate.
+    }
+  }
+  return [];
+}
+
+function extractSkinList(json: unknown): SboxSkinData[] {
+  if (Array.isArray(json)) return json as SboxSkinData[];
+  if (json && typeof json === "object") {
+    const obj = json as Record<string, unknown>;
+    if (Array.isArray(obj.data)) return obj.data as SboxSkinData[];
+    if (Array.isArray(obj.skins)) return obj.skins as SboxSkinData[];
+    if (Array.isArray(obj.items)) return obj.items as SboxSkinData[];
+    if (obj.data && typeof obj.data === "object") {
+      const d = obj.data as Record<string, unknown>;
+      if (Array.isArray(d.skins)) return d.skins as SboxSkinData[];
+      if (Array.isArray(d.items)) return d.items as SboxSkinData[];
+    }
+  }
+  return [];
+}
+
+export interface DiscoverResult {
+  listSize: number;
+  newItemsSeeded: number;
+  rotationFlipped: number;
+  errors: string[];
+  elapsedMs: number;
+}
+
+/**
+ * Discover new skins from sbox.dev's catalog list and seed any that
+ * aren't already in our DB. Also force-updates `isActiveStoreItem` /
+ * `isPermanentStoreItem` / `leavingStoreAt` for items already known to
+ * us — bypasses the 1h per-item cooldown so a store rotation that
+ * happens between regular sync runs gets reflected immediately.
+ *
+ * Used by the /api/cron/sbox-discover cron (4x/day) and on demand from
+ * the admin UI. The regular /api/sync still does its own
+ * paginated-Steam-Market scrape — discovery is purely additive,
+ * filling the catalog gaps that Steam Market doesn't surface.
+ */
+export async function discoverSboxSkins(): Promise<DiscoverResult> {
+  const startedAt = Date.now();
+  const result: DiscoverResult = {
+    listSize: 0,
+    newItemsSeeded: 0,
+    rotationFlipped: 0,
+    errors: [],
+    elapsedMs: 0,
+  };
+
+  const list = await fetchSboxSkinsList();
+  result.listSize = list.length;
+  if (list.length === 0) {
+    result.errors.push(
+      "no list endpoint returned data (sbox.dev may not expose one)",
+    );
+    result.elapsedMs = Date.now() - startedAt;
+    return result;
+  }
+
+  // Snapshot existing slugs so we know what to skip vs seed.
+  const existing = await prisma.item.findMany({
+    select: { id: true, slug: true, isActiveStoreItem: true },
+  });
+  const bySlug = new Map(existing.map((i) => [i.slug, i]));
+
+  for (const skin of list) {
+    if (!skin || typeof skin.slug !== "string" || !skin.slug) continue;
+    const known = bySlug.get(skin.slug);
+
+    if (!known) {
+      // New item — seed it via the existing helper, which writes the
+      // full set of fields the per-item enrichment also writes.
+      try {
+        const seedResult: SyncResult = {
+          success: true,
+          itemsProcessed: 0,
+          itemsCreated: 0,
+          itemsUpdated: 0,
+          pricePointsCreated: 0,
+          errors: [],
+          duration: 0,
+        };
+        const r = await seedItemFromSboxDev(skin.slug, seedResult);
+        if (r.itemId) result.newItemsSeeded++;
+        if (seedResult.errors.length > 0) {
+          result.errors.push(...seedResult.errors);
+        }
+      } catch (err) {
+        result.errors.push(
+          `seed ${skin.slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+      continue;
+    }
+
+    // Known item — refresh just the rotation flags. Bypass the
+    // sboxSyncedAt cooldown so a freshly-rotated store change shows
+    // up within the discover-cron cadence rather than waiting for the
+    // 1h per-item enrichment window.
+    if (
+      typeof skin.isActiveStoreItem === "boolean" &&
+      skin.isActiveStoreItem !== known.isActiveStoreItem
+    ) {
+      try {
+        await prisma.item.update({
+          where: { id: known.id },
+          data: {
+            isActiveStoreItem: skin.isActiveStoreItem,
+            isPermanentStoreItem: !!skin.isPermanentStoreItem,
+            leavingStoreAt: skin.leavingStoreAt
+              ? new Date(skin.leavingStoreAt)
+              : null,
+          },
+        });
+        result.rotationFlipped++;
+      } catch (err) {
+        result.errors.push(
+          `flip ${skin.slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+  }
+
+  result.elapsedMs = Date.now() - startedAt;
+  return result;
+}
+
+/**
  * Enrich items with data from the sbox.dev API.
  *
  * Design choices (defensive — our data pipeline depends on this staying up):
