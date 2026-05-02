@@ -28,6 +28,7 @@ import { ItemCard } from "@/components/items/item-card";
 import { prisma } from "@/lib/db";
 import { formatRelativeTime } from "@/lib/utils";
 import { Price } from "@/components/ui/price";
+import { AnnouncementBanner } from "@/components/layout/announcement-banner";
 import { NewsletterSignupForm } from "@/components/newsletter/signup-form";
 
 // Render at request time — homepage data changes every sync cycle (15-30 min).
@@ -245,6 +246,12 @@ export default async function HomePage() {
 
   return (
     <div>
+      <AnnouncementBanner
+        id="store-rotation-april-29"
+        text="🎮 New store items available!"
+        ctaText="Check out the blog"
+        href="/blog/store-rotation-april-29"
+      />
       {/* Hero */}
       <section className="relative overflow-hidden border-b border-neutral-800">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-transparent to-blue-900/10" />
