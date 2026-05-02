@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 
-type Tool = "sbox-skin" | "sbox-list" | "sboxgame" | "run-discover";
+type Tool = "sbox-skin" | "sbox-list" | "sboxgame" | "run-discover" | "fetch";
 
 interface ToolDef {
   id: Tool;
@@ -91,6 +91,16 @@ const TOOLS: ToolDef[] = [
     hint: "Force-run the sbox.dev catalog discovery cron immediately instead of waiting for the next 6h tick. Pulls every store-item slug from sbox.dev/store and seeds anything new into our DB. Returns count of new items seeded + rotation flips.",
     needsInput: false,
     buildUrl: () => "/api/admin/run-discover",
+  },
+  {
+    id: "fetch",
+    label: "Fetch raw HTML",
+    hint: "Server-side fetch of any sbox.dev / sbox.game URL. Returns the response body (first 12KB) plus every /skins/* href found and a sample of other anchor patterns. Use to diagnose 'why isn't my regex matching' on unfamiliar HTML.",
+    needsInput: true,
+    inputLabel: "Full URL (sbox.dev or sbox.game only)",
+    inputPlaceholder: "e.g. https://sbox.dev/store",
+    buildUrl: (s: string) =>
+      `/api/admin/debug-fetch?url=${encodeURIComponent(s.trim())}`,
   },
 ];
 
