@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 
-type Tool = "sbox-skin" | "sbox-list" | "sboxgame";
+type Tool = "sbox-skin" | "sbox-list" | "sboxgame" | "run-discover";
 
 interface ToolDef {
   id: Tool;
@@ -84,6 +84,13 @@ const TOOLS: ToolDef[] = [
     inputPlaceholder: "e.g. 756702 or https://sbox.game/metrics/skins/...",
     buildUrl: (s: string) =>
       `/api/admin/debug-sboxgame?id=${encodeURIComponent(cleanGameId(s))}`,
+  },
+  {
+    id: "run-discover",
+    label: "Run discover now",
+    hint: "Force-run the sbox.dev catalog discovery cron immediately instead of waiting for the next 6h tick. Pulls every store-item slug from sbox.dev/store and seeds anything new into our DB. Returns count of new items seeded + rotation flips.",
+    needsInput: false,
+    buildUrl: () => "/api/admin/run-discover",
   },
 ];
 
