@@ -1379,6 +1379,10 @@ export async function fetchSboxSkinsListDetailed(): Promise<ListProbeResult> {
  * `slug` and a `name`, on the assumption that's the skin list.
  */
 function extractSkinsFromHtml(html: string): SboxSkinData[] {
+  // 1. Embedded-JSON paths (Next.js / Nuxt / generic islands). sbox.dev
+  //    doesn't appear to use any of these — debug-sbox-list returned
+  //    235KB of HTML with 0 parsed skins — but we keep the probe in
+  //    case they ever switch frameworks.
   const candidates: string[] = [];
 
   const nextMatch = html.match(
@@ -1405,7 +1409,61 @@ function extractSkinsFromHtml(html: string): SboxSkinData[] {
       // Next candidate.
     }
   }
-  return [];
+
+  // 2. Anchor-href fallback. sbox.dev/store renders skin cards as
+  //    <a href="/skins/<slug>">…</a> — extract every unique slug,
+  //    then return them as minimal skin records ({ slug, name }).
+  //    Per-skin enrichment fills in everything else when we
+  //    seedItemFromSboxDev() each.
+  //
+  //    Why this works: the discover loop only needs slugs to know
+  //    "is this in our DB yet?" — full data lands on the next
+  //    enrichment pass via fetchSboxSkin(slug).
+  const slugs = extractSlugsFromHtml(html);
+  return slugs.map(({ slug, name }) =>
+    ({
+      slug,
+      name: name ?? slug,
+    }) as SboxSkinData,
+  );
+}
+
+/**
+ * Extract unique skin slugs from a sbox.dev page's HTML by regex-
+ * matching `<a href="/skins/<slug>">…</a>` patterns. Captures the
+ * anchor's text content as a name hint when present, so the discover
+ * loop can show something useful before the per-skin enrichment lands.
+ *
+ * Filters out non-skin link patterns (e.g. /skins/categories/...,
+ * /skins/featured, etc.) by requiring the slug to be lowercase
+ * alphanumeric with dashes only.
+ */
+function extractSlugsFromHtml(
+  html: string,
+): Array<{ slug: string; name?: string }> {
+  const seen = new Map<string, string | undefined>();
+  // Match <a ... href="/skins/<slug>" ...>name</a>. Greedy on
+  // attribute order; tolerant of self-closing or nested tags
+  // inside the anchor.
+  const re =
+    /<a\b[^>]*href=["']\/skins\/([a-z0-9][a-z0-9-]*)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const slug = m[1];
+    if (!slug || seen.has(slug)) continue;
+    // Skip obvious non-item slugs.
+    if (slug === "categories" || slug === "featured" || slug === "new") continue;
+    // Best-effort name extraction: strip nested tags from inner HTML,
+    // collapse whitespace, take the first chunk that looks textual.
+    const inner = m[2] ?? "";
+    const text =
+      inner
+        .replace(/<[^>]+>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim() || undefined;
+    seen.set(slug, text);
+  }
+  return [...seen.entries()].map(([slug, name]) => ({ slug, name }));
 }
 
 function findSkinArray(node: unknown): SboxSkinData[] {
