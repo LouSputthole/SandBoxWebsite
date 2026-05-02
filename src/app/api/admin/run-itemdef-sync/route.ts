@@ -3,7 +3,7 @@ import { guardAdminRoute } from "@/lib/auth/admin-guard";
 import { prisma } from "@/lib/db";
 import {
   fetchSteamItemDefsWithDiag,
-  parseSteamPrice,
+  pickItemPrice,
   pickItemDescription,
 } from "@/lib/steam/inventory";
 
@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
 
     const data: Record<string, number | string> = {};
     if (it.storePrice == null && it.releasePrice == null) {
-      const price = parseSteamPrice(def.price, "USD");
+      const price = pickItemPrice(def, "USD");
       if (price != null && price > 0) {
         data.storePrice = price;
         data.releasePrice = price;

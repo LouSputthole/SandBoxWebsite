@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import {
   fetchSteamItemDefs,
-  parseSteamPrice,
+  pickItemPrice,
   pickItemDescription,
 } from "@/lib/steam/inventory";
 
@@ -89,7 +89,7 @@ async function handle(request: NextRequest) {
 
     // Price backfill — only when both columns are null.
     if (it.storePrice == null && it.releasePrice == null) {
-      const price = parseSteamPrice(def.price, "USD");
+      const price = pickItemPrice(def, "USD");
       if (price != null && price > 0) {
         data.storePrice = price;
         data.releasePrice = price;

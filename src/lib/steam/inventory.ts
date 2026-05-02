@@ -30,7 +30,11 @@ export interface SteamItemDef {
   display_type?: string;
   tradable?: boolean;
   marketable?: boolean;
-  price?: string; // "USD;1500;EUR;1500"
+  /** Per-currency breakdown, e.g. "USD;1500;EUR;1500". */
+  price?: string;
+  /** Steam tier code, e.g. "1;VLV500" (VLV500 = $5.00). S&box uses
+   *  this form for most items. */
+  price_category?: string;
   store_tags?: string;
   background_color?: string;
   icon_url?: string;
@@ -145,20 +149,18 @@ export async function fetchSteamItemDefsWithDiag(): Promise<ArchiveDiagnostic> {
           interpretation: `archive call returned ${res.status} — Steam may have rotated the digest mid-call; retry`,
         };
       }
-      const parsed = JSON.parse(text);
-      if (Array.isArray(parsed)) {
-        archive = parsed as SteamItemDef[];
-      } else if (parsed?.response?.itemdef && Array.isArray(parsed.response.itemdef)) {
-        archive = parsed.response.itemdef as SteamItemDef[];
-      } else {
+      const parsed = parseArchiveBody(text);
+      if (!parsed) {
         attempts.push(a);
         return {
           ok: false,
           result: null,
           attempts,
-          interpretation: "archive parse: unexpected shape (neither array nor response.itemdef)",
+          interpretation:
+            "archive parse failed even after trim. Steam response neither plain JSON array, response.itemdef wrapper, nor NDJSON.",
         };
       }
+      archive = parsed;
       attempts.push(a);
     } catch (err) {
       a.error = err instanceof Error ? err.message : String(err);
@@ -230,10 +232,22 @@ function interpretMetaFailure(status: number, body: string): string {
 }
 
 /**
- * Parse a Steam price string like "USD;1500;EUR;1400" and return the
- * value for the requested currency in dollars (or whatever unit the
- * cents-divided-by-100 is). Returns null if the currency isn't in
- * the string or the cents value isn't a number.
+ * Parse a Steam price-related string and return USD dollars.
+ *
+ * Steam's item-def archive uses two different price encodings:
+ *
+ *   1. Per-currency breakdown: "USD;1500;EUR;1400"
+ *      → each currency followed by cents.
+ *   2. Currency tier code: "1;VLV500"
+ *      → the VLV<N> token is Steam's price-tier id where N is
+ *        cents (VLV500 = $5.00, VLV1500 = $15.00, etc.).
+ *
+ * For S&box specifically, items mostly use the VLV form (we observed
+ * Prison Jumpsuit at price_category "1;VLV500"). We accept both to
+ * be safe and try the per-currency breakdown first since it's the
+ * more precise signal.
+ *
+ * Returns null if neither encoding produces a valid number.
  */
 export function parseSteamPrice(
   raw: string | undefined,
@@ -241,27 +255,137 @@ export function parseSteamPrice(
 ): number | null {
   if (!raw) return null;
   const parts = raw.split(";");
+
+  // Per-currency breakdown ("USD;500" or "USD;500;EUR;500").
   for (let i = 0; i + 1 < parts.length; i += 2) {
     if (parts[i].toUpperCase() === currency.toUpperCase()) {
       const cents = Number(parts[i + 1]);
       if (Number.isFinite(cents)) return cents / 100;
     }
   }
+
+  // VLV tier code anywhere in the string. The number after VLV is
+  // cents — VLV500 = $5.00.
+  for (const p of parts) {
+    const m = p.match(/^VLV(\d+)$/i);
+    if (m?.[1]) {
+      const cents = Number(m[1]);
+      if (Number.isFinite(cents) && cents > 0) return cents / 100;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Parse Steam's item-def archive body into a defs array, tolerating
+ * the trailing-character corruption that broke our previous strict
+ * JSON.parse (Steam appends a stray byte at the end of the response
+ * that's not valid JSON — verified at byte 70308 of a 70309-byte
+ * payload).
+ *
+ * Cascade:
+ *   1. Plain JSON.parse — works for clean responses.
+ *   2. Trim trailing non-array chars (whitespace, null bytes, BOMs)
+ *      back to the last `]` and parse again.
+ *   3. NDJSON — split on newlines, parse each line, collect array.
+ *   4. response.itemdef wrapper for any "modern" Steam wrapping.
+ *
+ * Returns null only if every strategy fails — caller surfaces a
+ * detailed error.
+ */
+export function parseArchiveBody(text: string): SteamItemDef[] | null {
+  // 1. Strict
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed as SteamItemDef[];
+    if (parsed?.response?.itemdef && Array.isArray(parsed.response.itemdef)) {
+      return parsed.response.itemdef as SteamItemDef[];
+    }
+  } catch {
+    /* try the trim path */
+  }
+
+  // 2. Trim back to the last ']' and retry.
+  const lastBracket = text.lastIndexOf("]");
+  if (lastBracket > 0) {
+    try {
+      const trimmed = text.slice(0, lastBracket + 1);
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed as SteamItemDef[];
+    } catch {
+      /* try NDJSON */
+    }
+  }
+
+  // 3. NDJSON fallback — line per def.
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length > 1) {
+    const out: SteamItemDef[] = [];
+    let parsedAny = false;
+    for (const line of lines) {
+      try {
+        const v = JSON.parse(line);
+        if (v && typeof v === "object") {
+          parsedAny = true;
+          out.push(v as SteamItemDef);
+        }
+      } catch {
+        /* skip line */
+      }
+    }
+    if (parsedAny) return out;
+  }
+
   return null;
 }
 
 /**
  * Pull a human-readable description from a Steam item def. Steam's
  * `description` field is the marketing tagline shown on the in-game
- * store ("Stay anonymous, yet adorable" etc.). Some items use
- * `display_type` instead. Returns null when neither has content.
+ * store ("Stay anonymous, yet adorable" etc.). It often contains
+ * BBCode markup (`[color=#3cba54]Available in store[/color]`,
+ * `[b]bold[/b]`) and a trailing "Available in store" callout we
+ * don't want in our copy. Strip both.
  */
 export function pickItemDescription(def: SteamItemDef): string | null {
-  if (typeof def.description === "string" && def.description.trim()) {
-    return def.description.trim();
-  }
-  if (typeof def.display_type === "string" && def.display_type.trim()) {
-    return def.display_type.trim();
-  }
-  return null;
+  const raw =
+    typeof def.description === "string" && def.description.trim()
+      ? def.description
+      : typeof def.display_type === "string" && def.display_type.trim()
+        ? def.display_type
+        : null;
+  if (!raw) return null;
+  return cleanBbcode(raw);
+}
+
+/**
+ * Strip BBCode tags + Facepunch's "Available in store" footer that
+ * Steam item-def descriptions carry. Collapses surplus whitespace
+ * and returns null when nothing usable remains.
+ */
+function cleanBbcode(s: string): string | null {
+  let out = s
+    // Strip [color=...]…[/color] / [b]…[/b] / etc. Two-pass — opening
+    // tags then closing tags — keeps the inner text intact.
+    .replace(/\[(?:[a-z]+)(?:=[^\]]*)?\]/gi, "")
+    .replace(/\[\/[a-z]+\]/gi, "")
+    // Drop the boilerplate callout Facepunch appends to in-store items.
+    .replace(/available in store/gi, "")
+    // Collapse whitespace.
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!out) return null;
+  return out;
+}
+
+/**
+ * Best-effort price lookup from a SteamItemDef. Tries `price` (per-
+ * currency breakdown) first since it's the more precise signal,
+ * then falls through to `price_category` (VLV tier code).
+ */
+export function pickItemPrice(def: SteamItemDef, currency = "USD"): number | null {
+  const fromPrice = parseSteamPrice(def.price, currency);
+  if (fromPrice != null) return fromPrice;
+  return parseSteamPrice(def.price_category, currency);
 }
