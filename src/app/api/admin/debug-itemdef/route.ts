@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
 import {
-  fetchSteamItemDefs,
+  fetchSteamItemDefsWithDiag,
   parseSteamPrice,
   pickItemDescription,
 } from "@/lib/steam/inventory";
@@ -23,17 +23,18 @@ export async function GET(request: NextRequest) {
   });
   if (!guard.ok) return guard.response;
 
-  const archive = await fetchSteamItemDefs();
-  if (!archive) {
+  const diag = await fetchSteamItemDefsWithDiag();
+  if (!diag.ok || !diag.result) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "fetch failed — check STEAM_API_KEY env var or Steam Web API status",
+        interpretation: diag.interpretation,
+        attempts: diag.attempts,
       },
       { status: 502 },
     );
   }
+  const archive = diag.result;
 
   const param = request.nextUrl.searchParams.get("itemdefid");
   if (param) {

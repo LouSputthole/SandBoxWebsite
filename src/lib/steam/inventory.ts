@@ -43,55 +43,133 @@ interface ArchiveResult {
   defsByItemdefid: Map<number, SteamItemDef>;
 }
 
-/**
- * Pull the full item-def archive for S&box. Two-call sequence:
- * meta → archive. Cached digest could be persisted later for
- * If-None-Match-style polling, but daily cadence + ~80 items
- * makes that premature optimization.
- */
-export async function fetchSteamItemDefs(): Promise<ArchiveResult | null> {
-  const key = process.env.STEAM_API_KEY;
-  if (!key) return null;
+export interface ArchiveAttempt {
+  step: "meta" | "archive";
+  url: string;
+  status: number | null;
+  bytes: number | null;
+  bodySnippet?: string;
+  error?: string;
+}
 
-  // Step 1: get the current digest.
-  let digest: string;
-  try {
-    const metaUrl = `https://api.steampowered.com/IInventoryService/GetItemDefMeta/v1/?key=${key}&appid=${APPID}`;
-    const metaRes = await fetch(metaUrl, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!metaRes.ok) return null;
-    const metaJson = (await metaRes.json()) as {
-      response?: { digest?: string };
+export interface ArchiveDiagnostic {
+  ok: boolean;
+  result: ArchiveResult | null;
+  attempts: ArchiveAttempt[];
+  /** Best-effort interpretation of why the call failed. Surfaced to
+   *  the operator on the debug page so we don't have to read between
+   *  the lines of an HTTP status. */
+  interpretation?: string;
+}
+
+/**
+ * Diagnostic variant — returns per-step status + body excerpts so we
+ * can see exactly what Steam is saying. Used by the debug endpoint
+ * + the run-now route for visibility into auth / API issues.
+ */
+export async function fetchSteamItemDefsWithDiag(): Promise<ArchiveDiagnostic> {
+  const attempts: ArchiveAttempt[] = [];
+  const key = process.env.STEAM_API_KEY;
+  if (!key) {
+    return {
+      ok: false,
+      result: null,
+      attempts,
+      interpretation: "STEAM_API_KEY env var is not set in this deployment",
     };
-    if (!metaJson.response?.digest) return null;
-    digest = metaJson.response.digest;
-  } catch {
-    return null;
   }
 
-  // Step 2: fetch the archive itself.
-  let archive: SteamItemDef[];
-  try {
-    const archiveUrl = `https://api.steampowered.com/IGameInventory/GetItemDefArchive/v0001/?appid=${APPID}&digest=${digest}`;
-    const archiveRes = await fetch(archiveUrl, {
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!archiveRes.ok) return null;
-
-    // Steam returns the archive sometimes as plain JSON array, sometimes
-    // wrapped in a single response object. Handle both.
-    const text = await archiveRes.text();
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) {
-      archive = parsed as SteamItemDef[];
-    } else if (parsed?.response?.itemdef && Array.isArray(parsed.response.itemdef)) {
-      archive = parsed.response.itemdef as SteamItemDef[];
-    } else {
-      return null;
+  // Step 1 — meta. Requires a publisher key.
+  const metaUrl = `https://api.steampowered.com/IInventoryService/GetItemDefMeta/v1/?key=${key}&appid=${APPID}`;
+  let digest = "";
+  {
+    const a: ArchiveAttempt = { step: "meta", url: redactKey(metaUrl), status: null, bytes: null };
+    try {
+      const res = await fetch(metaUrl, { signal: AbortSignal.timeout(10000) });
+      a.status = res.status;
+      const text = await res.text();
+      a.bytes = text.length;
+      a.bodySnippet = text.slice(0, 500);
+      if (!res.ok) {
+        attempts.push(a);
+        return {
+          ok: false,
+          result: null,
+          attempts,
+          interpretation: interpretMetaFailure(res.status, text),
+        };
+      }
+      const parsed = JSON.parse(text) as { response?: { digest?: string } };
+      const d = parsed.response?.digest;
+      if (!d || typeof d !== "string") {
+        attempts.push(a);
+        return {
+          ok: false,
+          result: null,
+          attempts,
+          interpretation:
+            "meta call succeeded but response had no digest field — Steam returned an unexpected shape",
+        };
+      }
+      digest = d;
+      attempts.push(a);
+    } catch (err) {
+      a.error = err instanceof Error ? err.message : String(err);
+      attempts.push(a);
+      return {
+        ok: false,
+        result: null,
+        attempts,
+        interpretation: `meta call threw: ${a.error}`,
+      };
     }
-  } catch {
-    return null;
+  }
+
+  // Step 2 — archive itself. No key needed (digest acts as access).
+  const archiveUrl = `https://api.steampowered.com/IGameInventory/GetItemDefArchive/v0001/?appid=${APPID}&digest=${digest}`;
+  let archive: SteamItemDef[] = [];
+  {
+    const a: ArchiveAttempt = { step: "archive", url: archiveUrl, status: null, bytes: null };
+    try {
+      const res = await fetch(archiveUrl, { signal: AbortSignal.timeout(15000) });
+      a.status = res.status;
+      const text = await res.text();
+      a.bytes = text.length;
+      a.bodySnippet = text.slice(0, 500);
+      if (!res.ok) {
+        attempts.push(a);
+        return {
+          ok: false,
+          result: null,
+          attempts,
+          interpretation: `archive call returned ${res.status} — Steam may have rotated the digest mid-call; retry`,
+        };
+      }
+      const parsed = JSON.parse(text);
+      if (Array.isArray(parsed)) {
+        archive = parsed as SteamItemDef[];
+      } else if (parsed?.response?.itemdef && Array.isArray(parsed.response.itemdef)) {
+        archive = parsed.response.itemdef as SteamItemDef[];
+      } else {
+        attempts.push(a);
+        return {
+          ok: false,
+          result: null,
+          attempts,
+          interpretation: "archive parse: unexpected shape (neither array nor response.itemdef)",
+        };
+      }
+      attempts.push(a);
+    } catch (err) {
+      a.error = err instanceof Error ? err.message : String(err);
+      attempts.push(a);
+      return {
+        ok: false,
+        result: null,
+        attempts,
+        interpretation: `archive call threw: ${a.error}`,
+      };
+    }
   }
 
   const map = new Map<number, SteamItemDef>();
@@ -102,7 +180,53 @@ export async function fetchSteamItemDefs(): Promise<ArchiveResult | null> {
     map.set(id, def);
   }
 
-  return { digest, fetchedAt: new Date(), defsByItemdefid: map };
+  return {
+    ok: true,
+    result: { digest, fetchedAt: new Date(), defsByItemdefid: map },
+    attempts,
+  };
+}
+
+/**
+ * Backwards-compat wrapper for callers that only care about the
+ * happy-path result. New diagnostic-aware paths use
+ * fetchSteamItemDefsWithDiag() directly.
+ */
+export async function fetchSteamItemDefs(): Promise<ArchiveResult | null> {
+  const diag = await fetchSteamItemDefsWithDiag();
+  return diag.result;
+}
+
+function redactKey(url: string): string {
+  return url.replace(/key=[^&]+/i, "key=***REDACTED***");
+}
+
+/**
+ * Translate a meta-call HTTP status into something actionable. The
+ * most common gotcha: IInventoryService requires a *publisher* API
+ * key (Steamworks partner backend), not the regular Web API key
+ * (steamcommunity.com/dev/apikey). Publisher keys are issued to game
+ * developers — Facepunch — and we don't get one as a third party.
+ */
+function interpretMetaFailure(status: number, body: string): string {
+  if (status === 401 || status === 403) {
+    return (
+      "Steam returned " +
+      status +
+      " on meta call. Most likely cause: STEAM_API_KEY is a regular Web API key, but " +
+      "IInventoryService/GetItemDefMeta requires a *publisher* API key (Steamworks partner key, " +
+      "issued to the game developer). We can't get one as a third party — Facepunch would need " +
+      "to issue it. Alternative paths needed: scrape sbox.game/itemstore (Blazor — needs headless " +
+      "browser) or wait for Facepunch to expose the catalog publicly."
+    );
+  }
+  if (status === 429) {
+    return "Steam returned 429 — rate limited. Back off and retry.";
+  }
+  if (status === 503 || status >= 500) {
+    return `Steam returned ${status} — Steam Web API is having issues. Try again later.`;
+  }
+  return `Steam returned ${status}. Body excerpt: ${body.slice(0, 200)}`;
 }
 
 /**

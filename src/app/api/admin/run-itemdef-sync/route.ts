@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
 import { prisma } from "@/lib/db";
 import {
-  fetchSteamItemDefs,
+  fetchSteamItemDefsWithDiag,
   parseSteamPrice,
   pickItemDescription,
 } from "@/lib/steam/inventory";
@@ -26,17 +26,18 @@ export async function POST(request: NextRequest) {
   if (!guard.ok) return guard.response;
 
   const startedAt = Date.now();
-  const archive = await fetchSteamItemDefs();
-  if (!archive) {
+  const diag = await fetchSteamItemDefsWithDiag();
+  if (!diag.ok || !diag.result) {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          "Steam item-def archive fetch failed — check STEAM_API_KEY and Steam Web API status",
+        interpretation: diag.interpretation,
+        attempts: diag.attempts,
       },
       { status: 502 },
     );
   }
+  const archive = diag.result;
 
   const items = await prisma.item.findMany({
     where: { itemDefinitionId: { not: null } },
