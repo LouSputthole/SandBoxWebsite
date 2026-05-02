@@ -1382,10 +1382,16 @@ export async function fetchSboxSkinsListDetailed(): Promise<ListProbeResult> {
  * `slug` and a `name`, on the assumption that's the skin list.
  */
 function extractSkinsFromHtml(html: string): SboxSkinData[] {
-  // 1. Embedded-JSON paths (Next.js / Nuxt / generic islands). sbox.dev
-  //    doesn't appear to use any of these — debug-sbox-list returned
-  //    235KB of HTML with 0 parsed skins — but we keep the probe in
-  //    case they ever switch frameworks.
+  // 1. JSON-LD ItemList — sbox.dev embeds the full current store
+  //    rotation as Schema.org structured data on /store. Most reliable
+  //    source: it's literally a structured list of { name, url } pairs
+  //    with no anchor-markup ambiguity.
+  const fromJsonLd = extractSkinsFromJsonLd(html);
+  if (fromJsonLd.length > 0) return fromJsonLd;
+
+  // 2. Embedded-app-state probes (Next.js / Nuxt / generic JSON
+  //    islands). sbox.dev is SvelteKit so none of these match, but
+  //    cheap to keep in case they ever switch.
   const candidates: string[] = [];
 
   const nextMatch = html.match(
@@ -1413,15 +1419,10 @@ function extractSkinsFromHtml(html: string): SboxSkinData[] {
     }
   }
 
-  // 2. Anchor-href fallback. sbox.dev/store renders skin cards as
-  //    <a href="/skins/<slug>">…</a> — extract every unique slug,
-  //    then return them as minimal skin records ({ slug, name }).
-  //    Per-skin enrichment fills in everything else when we
-  //    seedItemFromSboxDev() each.
-  //
-  //    Why this works: the discover loop only needs slugs to know
-  //    "is this in our DB yet?" — full data lands on the next
-  //    enrichment pass via fetchSboxSkin(slug).
+  // 3. Anchor-href fallback. Last resort if structured data goes
+  //    away. Handles both absolute /skins/<slug> and relative
+  //    ./skins/<slug> hrefs (sbox.dev uses the relative form on
+  //    /store — confirmed by /admin/debug → Fetch raw HTML).
   const slugs = extractSlugsFromHtml(html);
   return slugs.map(({ slug, name }) =>
     ({
@@ -1429,6 +1430,96 @@ function extractSkinsFromHtml(html: string): SboxSkinData[] {
       name: name ?? slug,
     }) as SboxSkinData,
   );
+}
+
+/**
+ * Pull skin records out of <script type="application/ld+json"> blocks.
+ * Looks for Schema.org ItemList objects and extracts each member's
+ * url + name. The url ends in /skins/<slug> which we slugify back.
+ *
+ * Why this works perfectly on sbox.dev: their /store page has a
+ * structured ItemList describing the full current rotation for SEO,
+ * with each item rendered as { name, url, position }. We get every
+ * current store item with names included — no per-skin enrichment
+ * needed just for discovery.
+ */
+function extractSkinsFromJsonLd(html: string): SboxSkinData[] {
+  const out: { slug: string; name: string }[] = [];
+  const seen = new Set<string>();
+
+  const scriptRe =
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = scriptRe.exec(html)) !== null) {
+    const raw = m[1];
+    if (!raw) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      continue;
+    }
+    // The block can be a single object or an array of objects;
+    // each object can have a @graph for nested schemas. Walk
+    // everything and collect anything that looks like ItemList.
+    walkForItemList(parsed, (lists) => {
+      for (const list of lists) {
+        for (const entry of list) {
+          const item =
+            (entry as { item?: { url?: string; name?: string } }).item ??
+            (entry as { url?: string; name?: string });
+          const url = typeof item?.url === "string" ? item.url : null;
+          const name = typeof item?.name === "string" ? item.name : null;
+          if (!url) continue;
+          // Extract slug from .../skins/<slug>
+          const slugMatch = url.match(
+            /\/skins\/([a-z0-9][a-z0-9-]*)(?:[?#]|$)/i,
+          );
+          if (!slugMatch?.[1]) continue;
+          const slug = slugMatch[1];
+          if (seen.has(slug)) continue;
+          seen.add(slug);
+          out.push({ slug, name: name ?? slug });
+        }
+      }
+    });
+  }
+
+  return out.map(
+    (s) => ({ slug: s.slug, name: s.name }) as SboxSkinData,
+  );
+}
+
+/**
+ * Walk a JSON-LD payload (single object, array, or nested @graph)
+ * and yield every itemListElement array we find. The visitor pattern
+ * keeps the caller flat and lets us collect across multi-block docs.
+ */
+function walkForItemList(
+  node: unknown,
+  visit: (lists: unknown[][]) => void,
+): void {
+  const collected: unknown[][] = [];
+  function walk(n: unknown): void {
+    if (Array.isArray(n)) {
+      for (const item of n) walk(item);
+      return;
+    }
+    if (n && typeof n === "object") {
+      const obj = n as Record<string, unknown>;
+      const t = obj["@type"];
+      if (
+        (t === "ItemList" || t === "Collection") &&
+        Array.isArray(obj.itemListElement)
+      ) {
+        collected.push(obj.itemListElement);
+      }
+      // Recurse — JSON-LD nests via @graph, mainEntity, etc.
+      for (const v of Object.values(obj)) walk(v);
+    }
+  }
+  walk(node);
+  if (collected.length > 0) visit(collected);
 }
 
 /**
@@ -1458,8 +1549,13 @@ function extractSlugsFromHtml(
   //     anchors or anchors-around-images all match.
   // Names are extracted via per-skin enrichment after seeding, so we
   // don't bother capturing anchor text here.
+  // Match both absolute (/skins/<slug>) and relative (./skins/<slug>)
+  // hrefs. sbox.dev's /store actually uses the relative form — confirmed
+  // by debug-fetch which showed `./skins/...` in sampleOtherHrefs and
+  // 0 hits for absolute `/skins/...`. The (?:\.?\/)? makes the leading
+  // ./ or / optional, covering all three forms.
   const re =
-    /href=["']\/skins\/([a-z0-9][a-z0-9-]*)(?:[?#][^"']*)?["']/gi;
+    /href=["'](?:\.?\/)?skins\/([a-z0-9][a-z0-9-]*)(?:[?#][^"']*)?["']/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
     const slug = m[1];
