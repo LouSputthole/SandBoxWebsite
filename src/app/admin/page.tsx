@@ -9,6 +9,7 @@ import {
   Send,
   ChevronRight,
   Sprout,
+  Bug,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -72,6 +73,13 @@ const PAGES: AdminPage[] = [
     description:
       "Force-add a catalog gap (e.g. Hard Hat) by name or sbox.dev URL. Tries Steam Market then falls back to sbox.dev.",
     icon: Sprout,
+  },
+  {
+    href: "/admin/debug",
+    label: "Debug",
+    description:
+      "Run sbox.dev / sbox.game diagnostic endpoints from the browser. Mobile-friendly, with a Copy button on the JSON output.",
+    icon: Bug,
   },
 ];
 
