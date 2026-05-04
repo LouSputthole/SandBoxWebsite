@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { TradeListingCard } from "@/components/trade/listing-card";
 import { TradeFeedFilters } from "./filters";
+import { TradingHubBanner } from "@/components/trade/trading-hub-banner";
 import { ArrowRightLeft, PlusCircle } from "lucide-react";
 
 // Listings are dynamic per filter combination; let Next stream the page.
@@ -109,6 +110,8 @@ export default async function TradePage({ searchParams }: PageProps) {
       </div>
 
       <TradeFeedFilters initialQ={q} initialSide={side} />
+
+      <TradingHubBanner />
 
       {/* Results */}
       {listings.length === 0 ? (
