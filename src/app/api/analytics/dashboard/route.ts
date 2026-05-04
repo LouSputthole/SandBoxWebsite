@@ -13,7 +13,16 @@ export async function GET(request: NextRequest) {
   if (!guard.ok) return guard.response;
 
   const period = request.nextUrl.searchParams.get("period") ?? "7d";
-  const days = period === "30d" ? 30 : period === "24h" ? 1 : 7;
+  // Keep this map in sync with PERIOD_OPTIONS in the dashboard page.
+  const PERIOD_DAYS: Record<string, number> = {
+    "24h": 1,
+    "7d": 7,
+    "30d": 30,
+    "60d": 60,
+    "90d": 90,
+    "180d": 180,
+  };
+  const days = PERIOD_DAYS[period] ?? 7;
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
   // Run all aggregations in parallel at the database layer instead of pulling

@@ -37,6 +37,9 @@ const PERIOD_OPTIONS = [
   { value: "24h", label: "Last 24h" },
   { value: "7d", label: "Last 7 days" },
   { value: "30d", label: "Last 30 days" },
+  { value: "60d", label: "Last 60 days" },
+  { value: "90d", label: "Last 90 days" },
+  { value: "180d", label: "Last 180 days" },
 ];
 
 /** Map our normalized referrer buckets back to an openable hostname so
@@ -258,42 +261,56 @@ export default function AnalyticsDashboard() {
           </div>
 
           {/* Views by Day Chart (simple bar chart) */}
-          {data.viewsByDay.length > 0 && (
-            <Card className="bg-neutral-900/80 mb-8">
-              <CardContent className="p-6">
-                <h3 className="text-sm font-medium text-neutral-300 mb-4">
-                  Views Over Time
-                </h3>
-                <div className="flex items-end gap-1 h-40">
-                  {data.viewsByDay.map((day) => {
-                    const maxViews = Math.max(
-                      ...data.viewsByDay.map((d) => d.views),
-                    );
-                    const height =
-                      maxViews > 0 ? (day.views / maxViews) * 100 : 0;
-                    return (
-                      <div
-                        key={day.date}
-                        className="flex-1 flex flex-col items-center gap-1"
-                      >
-                        <span className="text-[9px] text-neutral-500">
-                          {day.views}
-                        </span>
+          {data.viewsByDay.length > 0 && (() => {
+            // Past ~30 days the per-bar count + every-day date label
+            // become an unreadable smudge. Drop the count, then thin
+            // x-axis labels to ~12 evenly-spaced ticks (matches how a
+            // 90-day range would otherwise paint a label every other
+            // day). gap-1 also collapses to gap-px so the bars stay
+            // distinguishable when you have 180 of them.
+            const n = data.viewsByDay.length;
+            const showCounts = n <= 31;
+            const labelStride =
+              n <= 31 ? 1 : Math.max(1, Math.ceil(n / 12));
+            const barGap = n <= 31 ? "gap-1" : "gap-px";
+            const maxViews = Math.max(...data.viewsByDay.map((d) => d.views));
+            return (
+              <Card className="bg-neutral-900/80 mb-8">
+                <CardContent className="p-6">
+                  <h3 className="text-sm font-medium text-neutral-300 mb-4">
+                    Views Over Time
+                  </h3>
+                  <div className={`flex items-end ${barGap} h-40`}>
+                    {data.viewsByDay.map((day, idx) => {
+                      const height =
+                        maxViews > 0 ? (day.views / maxViews) * 100 : 0;
+                      const showLabel = idx % labelStride === 0;
+                      return (
                         <div
-                          className="w-full bg-purple-500/60 rounded-t hover:bg-purple-500/80 transition-colors"
-                          style={{ height: `${Math.max(height, 2)}%` }}
-                          title={`${day.date}: ${day.views} views, ${day.visitors} visitors`}
-                        />
-                        <span className="text-[8px] text-neutral-600">
-                          {day.date.slice(5)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+                          key={day.date}
+                          className="flex-1 flex flex-col items-center gap-1 min-w-0"
+                        >
+                          {showCounts && (
+                            <span className="text-[9px] text-neutral-500">
+                              {day.views}
+                            </span>
+                          )}
+                          <div
+                            className="w-full bg-purple-500/60 rounded-t hover:bg-purple-500/80 transition-colors"
+                            style={{ height: `${Math.max(height, 2)}%` }}
+                            title={`${day.date}: ${day.views} views, ${day.visitors} visitors`}
+                          />
+                          <span className="text-[8px] text-neutral-600 h-3">
+                            {showLabel ? day.date.slice(5) : ""}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })()}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Top Pages */}
