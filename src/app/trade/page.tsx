@@ -25,7 +25,12 @@ export const metadata: Metadata = {
 };
 
 interface PageProps {
-  searchParams: Promise<{ q?: string; side?: string; page?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    side?: string;
+    meeting?: string;
+    page?: string;
+  }>;
 }
 
 const PAGE_SIZE = 20;
@@ -34,26 +39,43 @@ export default async function TradePage({ searchParams }: PageProps) {
   const sp = await searchParams;
   const q = sp.q?.trim() ?? "";
   const side = sp.side ?? "";
+  const meeting = sp.meeting ?? "";
   const page = Math.max(1, Number(sp.page ?? "1"));
 
   const where: Prisma.TradeListingWhereInput = { status: "active" };
+  const andClauses: Prisma.TradeListingWhereInput[] = [];
   if (side === "selling" || side === "buying" || side === "both") {
     where.side = side;
   }
+  // Meeting place is optional. "steam_trade" matches legacy null
+  // rows too (they behaved as Steam-only), so users picking "Steam
+  // trade" still see every listing posted before Phase B.
+  if (meeting === "steam_trade") {
+    andClauses.push({
+      OR: [{ meetingPlace: "steam_trade" }, { meetingPlace: null }],
+    });
+  } else if (meeting === "trading_hub" || meeting === "either") {
+    where.meetingPlace = meeting;
+  }
   if (q.length > 0) {
-    where.OR = [
-      { description: { contains: q, mode: "insensitive" } },
-      {
-        items: {
-          some: {
-            OR: [
-              { customName: { contains: q, mode: "insensitive" } },
-              { item: { name: { contains: q, mode: "insensitive" } } },
-            ],
+    andClauses.push({
+      OR: [
+        { description: { contains: q, mode: "insensitive" } },
+        {
+          items: {
+            some: {
+              OR: [
+                { customName: { contains: q, mode: "insensitive" } },
+                { item: { name: { contains: q, mode: "insensitive" } } },
+              ],
+            },
           },
         },
-      },
-    ];
+      ],
+    });
+  }
+  if (andClauses.length > 0) {
+    where.AND = andClauses;
   }
 
   const [listings, total] = await Promise.all([
@@ -109,7 +131,11 @@ export default async function TradePage({ searchParams }: PageProps) {
         </Link>
       </div>
 
-      <TradeFeedFilters initialQ={q} initialSide={side} />
+      <TradeFeedFilters
+        initialQ={q}
+        initialSide={side}
+        initialMeetingPlace={meeting}
+      />
 
       <TradingHubBanner />
 
@@ -155,6 +181,7 @@ export default async function TradePage({ searchParams }: PageProps) {
             disabled={page <= 1}
             q={q}
             side={side}
+            meeting={meeting}
             label="Previous"
           />
           <span className="text-sm text-neutral-500 px-3">
@@ -165,6 +192,7 @@ export default async function TradePage({ searchParams }: PageProps) {
             disabled={page >= totalPages}
             q={q}
             side={side}
+            meeting={meeting}
             label="Next"
           />
         </div>
@@ -178,12 +206,14 @@ function PageLink({
   disabled,
   q,
   side,
+  meeting,
   label,
 }: {
   page: number;
   disabled: boolean;
   q: string;
   side: string;
+  meeting: string;
   label: string;
 }) {
   if (disabled) {
@@ -196,6 +226,7 @@ function PageLink({
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (side) params.set("side", side);
+  if (meeting) params.set("meeting", meeting);
   if (page > 1) params.set("page", String(page));
   const qs = params.toString();
   return (

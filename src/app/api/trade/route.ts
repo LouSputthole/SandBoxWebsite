@@ -16,6 +16,7 @@ const MAX_LINE_ITEMS = 30;
 interface PostBody {
   side?: "selling" | "buying" | "both";
   description?: string;
+  meetingPlace?: "steam_trade" | "trading_hub" | "either";
   durationDays?: number;
   // If the user hasn't set their trade URL yet (or wants to update it), they
   // can include it in the create call. Saved to User.steamTradeUrl.
@@ -40,30 +41,46 @@ interface LineItemInput {
 export async function GET(request: NextRequest) {
   const url = request.nextUrl;
   const side = url.searchParams.get("side"); // selling|buying|both|null
+  const meeting = url.searchParams.get("meeting"); // steam_trade|trading_hub|either|null
   const q = url.searchParams.get("q")?.trim() ?? "";
   const page = Math.max(1, Number(url.searchParams.get("page") ?? "1"));
   const PAGE_SIZE = 20;
 
   const where: Record<string, unknown> = { status: "active" };
+  const andClauses: Record<string, unknown>[] = [];
   if (side === "selling" || side === "buying" || side === "both") {
     where.side = side;
+  }
+  // Steam-trade filter must include legacy null rows so pre-Phase B
+  // listings keep matching it. Hub/either filters are exact.
+  if (meeting === "steam_trade") {
+    andClauses.push({
+      OR: [{ meetingPlace: "steam_trade" }, { meetingPlace: null }],
+    });
+  } else if (meeting === "trading_hub" || meeting === "either") {
+    where.meetingPlace = meeting;
   }
   if (q.length > 0) {
     // Match either an item name in the line-items, a customName, or the
     // listing description (covers users who write everything as text).
-    where.OR = [
-      { description: { contains: q, mode: "insensitive" } },
-      {
-        items: {
-          some: {
-            OR: [
-              { customName: { contains: q, mode: "insensitive" } },
-              { item: { name: { contains: q, mode: "insensitive" } } },
-            ],
+    andClauses.push({
+      OR: [
+        { description: { contains: q, mode: "insensitive" } },
+        {
+          items: {
+            some: {
+              OR: [
+                { customName: { contains: q, mode: "insensitive" } },
+                { item: { name: { contains: q, mode: "insensitive" } } },
+              ],
+            },
           },
         },
-      },
-    ];
+      ],
+    });
+  }
+  if (andClauses.length > 0) {
+    where.AND = andClauses;
   }
 
   const [listings, total] = await Promise.all([
@@ -148,7 +165,27 @@ export async function POST(request: NextRequest) {
     Math.max(1, Math.round(body.durationDays ?? DEFAULT_DURATION_DAYS)),
   );
 
-  // --- trade URL (must be set, either previously or in this request) ---
+  // --- meetingPlace ---
+  // Default to steam_trade for back-compat with clients that don't set
+  // the field. Only the three known values are accepted; anything else
+  // is a 400.
+  const meetingPlace = body.meetingPlace ?? "steam_trade";
+  if (
+    meetingPlace !== "steam_trade" &&
+    meetingPlace !== "trading_hub" &&
+    meetingPlace !== "either"
+  ) {
+    return NextResponse.json(
+      { error: "meetingPlace must be 'steam_trade', 'trading_hub', or 'either'" },
+      { status: 400 },
+    );
+  }
+
+  // --- trade URL ---
+  // Required when the user wants Steam trades (steam_trade or either).
+  // For trading_hub-only listings, the swap happens in-game — no trade
+  // URL needed. Validate + canonicalize anything supplied regardless,
+  // since users often paste it for later use.
   let tradeUrl = user.steamTradeUrl;
   if (body.steamTradeUrl) {
     const parsed = validateTradeUrlForSteamId(body.steamTradeUrl, user.steamId);
@@ -167,7 +204,8 @@ export async function POST(request: NextRequest) {
       data: { steamTradeUrl: tradeUrl },
     });
   }
-  if (!tradeUrl) {
+  const tradeUrlRequired = meetingPlace !== "trading_hub";
+  if (tradeUrlRequired && !tradeUrl) {
     return NextResponse.json(
       {
         error:
@@ -267,6 +305,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       side: body.side,
       description,
+      meetingPlace,
       expiresAt,
       items: {
         create: [...offeringRows, ...wantingRows],

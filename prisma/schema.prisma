@@ -325,6 +325,14 @@ model TradeListing {
   description String
   // active → completed (owner mark) | cancelled (owner cancel) | expired (cron)
   status      String   @default("active")
+  // Where the trade physically happens. Three values:
+  //   "steam_trade"  — Steam trade offer (default; legacy null treated
+  //                    as this for back-compat)
+  //   "trading_hub"  — meet at the S&box Trading Hub partner space
+  //   "either"       — listing accepts both
+  // When trading_hub-only, the steamTradeUrl requirement is relaxed
+  // since coordination happens in-game.
+  meetingPlace String?  @default("steam_trade")
   viewCount   Int      @default(0)
   createdAt   DateTime @default(now())
   // Default 14d, max 30d (enforced at the API layer). Cron flips status to

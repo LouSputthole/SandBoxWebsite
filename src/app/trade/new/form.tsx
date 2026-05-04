@@ -64,6 +64,26 @@ const SIDE_OPTIONS: { value: Side; label: string; hint: string }[] = [
   { value: "both", label: "Item ↔ item", hint: "Trading specific items for specific items" },
 ];
 
+type MeetingPlace = "steam_trade" | "trading_hub" | "either";
+
+const MEETING_OPTIONS: { value: MeetingPlace; label: string; hint: string }[] = [
+  {
+    value: "steam_trade",
+    label: "Steam trade offer",
+    hint: "Standard — buyer hits your trade URL on Steam.",
+  },
+  {
+    value: "trading_hub",
+    label: "S&box Trading Hub",
+    hint: "Coordinate the swap in-game at the Hub. No trade URL needed — just show up.",
+  },
+  {
+    value: "either",
+    label: "Either",
+    hint: "Both options offered. Buyer picks whichever they prefer.",
+  },
+];
+
 let nextKey = 0;
 const newKey = () => `${Date.now()}-${++nextKey}`;
 
@@ -80,6 +100,7 @@ export function NewListingForm({
 }) {
   const router = useRouter();
   const [side, setSide] = useState<Side>("selling");
+  const [meetingPlace, setMeetingPlace] = useState<MeetingPlace>("steam_trade");
   const [description, setDescription] = useState("");
   const [durationDays, setDurationDays] = useState(14);
   const [tradeUrl, setTradeUrl] = useState(existingTradeUrl ?? "");
@@ -227,6 +248,7 @@ export function NewListingForm({
         side,
         description,
         durationDays,
+        meetingPlace,
         steamTradeUrl: showTradeUrlEdit ? tradeUrl : undefined,
         offering: offering.map((li) => ({
           itemId: li.itemId,
@@ -275,6 +297,44 @@ export function NewListingForm({
                 }`}
               >
                 <div className={`text-sm font-semibold ${active ? "text-purple-200" : "text-white"}`}>
+                  {opt.label}
+                </div>
+                <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">
+                  {opt.hint}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Field>
+
+      {/* Meeting place selector — where the trade actually happens.
+          Steam trade is the default + traditional path. Trading Hub
+          partner option lets users coordinate face-to-face in-game,
+          which is good for users without a Steam trade URL set up
+          and for anyone who'd rather meet a real person than send a
+          trade offer. "Either" shows both CTAs on the listing. */}
+      <Field
+        label="Meeting place"
+        hint="How buyers complete the trade with you."
+      >
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          {MEETING_OPTIONS.map((opt) => {
+            const active = meetingPlace === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setMeetingPlace(opt.value)}
+                className={`text-left rounded-lg border px-3 py-2 transition ${
+                  active
+                    ? "border-purple-500/50 bg-purple-500/10"
+                    : "border-neutral-800 bg-neutral-900/50 hover:border-neutral-700"
+                }`}
+              >
+                <div
+                  className={`text-sm font-semibold ${active ? "text-purple-200" : "text-white"}`}
+                >
                   {opt.label}
                 </div>
                 <div className="text-[11px] text-neutral-500 mt-0.5 leading-tight">
@@ -342,13 +402,22 @@ export function NewListingForm({
         </div>
       </Field>
 
-      {/* Trade URL */}
+      {/* Trade URL — required for Steam-trade listings, optional for
+          Trading-Hub-only ones (the in-game meet-up doesn't need a
+          trade URL). Field stays visible either way so users can still
+          paste it for future use even if this listing won't use it. */}
       <Field
-        label="Steam trade URL"
+        label={
+          meetingPlace === "trading_hub"
+            ? "Steam trade URL (optional)"
+            : "Steam trade URL"
+        }
         hint={
-          hasTradeUrl
-            ? "We have your trade URL on file. Edit it only if it changed."
-            : "Required so other users can open a trade with you. Get yours at: Steam → Inventory → Trade Offers → 'Who can send me Trade Offers?' → bottom of the page."
+          meetingPlace === "trading_hub"
+            ? "Not needed for Trading Hub meet-ups, but you can paste it here for future Steam-trade listings."
+            : hasTradeUrl
+              ? "We have your trade URL on file. Edit it only if it changed."
+              : "Required so other users can open a trade with you. Get yours at: Steam → Inventory → Trade Offers → 'Who can send me Trade Offers?' → bottom of the page."
         }
       >
         {hasTradeUrl && !showTradeUrlEdit ? (
@@ -407,7 +476,11 @@ export function NewListingForm({
           disabled={
             submitting ||
             description.trim().length === 0 ||
-            (showTradeUrlEdit && tradeUrl.trim().length === 0)
+            // Trade URL is only required when the listing accepts
+            // Steam trades — trading_hub-only listings work without it.
+            (meetingPlace !== "trading_hub" &&
+              showTradeUrlEdit &&
+              tradeUrl.trim().length === 0)
           }
           className="bg-purple-600 hover:bg-purple-700 text-white gap-2"
         >

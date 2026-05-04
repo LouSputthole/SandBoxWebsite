@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/auth/session";
 import { ArrowLeft, ExternalLink, Clock, Eye } from "lucide-react";
 import { OwnerActions } from "./owner-actions";
 import { CommentsThread, type ThreadComment } from "./comments-thread";
+import { PARTNER, partnerUrl } from "@/lib/partner/config";
 
 export const dynamic = "force-dynamic";
 
@@ -133,7 +134,24 @@ export default async function TradeListingPage({ params }: PageProps) {
   );
 
   const isOwner = currentUser?.id === listing.userId;
-  const tradeable = listing.status === "active" && !!listing.user.steamTradeUrl;
+  // Meeting place determines which CTA(s) we render. Legacy rows
+  // (pre-Phase B) default to "steam_trade" and behave exactly like
+  // before. Hub-only rows hide the Steam button — no trade URL is
+  // even required for those. "either" shows both buttons.
+  const meetingPlace =
+    (listing.meetingPlace as "steam_trade" | "trading_hub" | "either" | null) ??
+    "steam_trade";
+  const isActive = listing.status === "active";
+  const showSteamCta =
+    isActive &&
+    !isOwner &&
+    !!listing.user.steamTradeUrl &&
+    meetingPlace !== "trading_hub";
+  const showHubCta =
+    isActive &&
+    !isOwner &&
+    PARTNER.enabled &&
+    (meetingPlace === "trading_hub" || meetingPlace === "either");
 
   return (
     <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-8">
@@ -193,7 +211,7 @@ export default async function TradeListingPage({ params }: PageProps) {
 
         {/* CTA + side badge */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
-          {tradeable && !isOwner && (
+          {showSteamCta && (
             <a
               href={listing.user.steamTradeUrl ?? "#"}
               target="_blank"
@@ -202,6 +220,25 @@ export default async function TradeListingPage({ params }: PageProps) {
               <Button className="bg-purple-600 hover:bg-purple-700 text-white gap-2">
                 <ExternalLink className="h-4 w-4" />
                 Open trade on Steam
+              </Button>
+            </a>
+          )}
+          {showHubCta && (
+            <a
+              href={partnerUrl("listing_detail")}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <Button
+                variant={meetingPlace === "either" ? "outline" : "default"}
+                className={
+                  meetingPlace === "either"
+                    ? "border-purple-500/40 text-purple-200 hover:bg-purple-500/10 gap-2"
+                    : "bg-purple-600 hover:bg-purple-700 text-white gap-2"
+                }
+              >
+                <ExternalLink className="h-4 w-4" />
+                Meet at {PARTNER.shortName}
               </Button>
             </a>
           )}
