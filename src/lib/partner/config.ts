@@ -6,7 +6,7 @@
  * placeholders below and every consumer updates in one go.
  *
  * Phase A landing checklist (parallel to the partner's own work):
- *   - PARTNER.discordUrl  → real Discord invite link
+ *   - PARTNER.url         → DONE: permanent Discord invite supplied
  *   - PARTNER.logoSrc     → drop their PNG/SVG into /public/partners/
  *                           and update the path
  *   - PARTNER.brandColor  → their accent hex if they want our
@@ -44,10 +44,10 @@ export const PARTNER: PartnerConfig = {
   enabled: true,
   name: "S&box Trading Hub",
   shortName: "Trading Hub",
-  // PLACEHOLDER — replace with the Hub's real Discord invite
-  // when they confirm. The UTM params let us measure outbound
-  // traffic from each surface (footer, banner, nav, blog).
-  url: "https://discord.gg/PLACEHOLDER",
+  // Permanent (non-expiring) Discord invite supplied by the Hub.
+  // The UTM params let us measure outbound traffic from each
+  // surface (footer, banner, nav, blog, newsletter, listing CTA).
+  url: "https://discord.gg/XeUYHQDXt6",
   logoSrc: "/partners/trading-hub.svg",
   logoAlt: "S&box Trading Hub",
   brandColor: "#8b5cf6",
