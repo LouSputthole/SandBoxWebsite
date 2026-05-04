@@ -383,6 +383,8 @@ ${rarestLines || "_Scarcity data still populating._"}
 
 ${whaleSection}
 
+${partnerSpotlightSection()}
+
 ## What This Means
 
 ${narrative.closing ?? fallbackClosing}
@@ -392,6 +394,22 @@ For live data, check [Trends](/trends) and set [price alerts](/items) on items y
 ---
 
 _Auto-generated from our market data every Friday. Signals pulled from the Steam Community Market, sbox.dev, and our own daily supply snapshots._`;
+}
+
+/**
+ * Optional Partner Spotlight section in the Friday wrap. Renders a
+ * one-paragraph callout pointing readers at the Trading Hub for
+ * face-to-face trading. Gated on PARTNER_HUB_ENABLED env var so dev
+ * + test report runs don't accidentally advertise the partnership
+ * before launch. Once we go live, set PARTNER_HUB_ENABLED=1 in
+ * production env and every Friday's report includes the section.
+ */
+function partnerSpotlightSection(): string {
+  if (process.env.PARTNER_HUB_ENABLED !== "1") return "";
+  return `## Partner Spotlight: S&box Trading Hub
+
+Need to coordinate a trade in person? Our partner the [S&box Trading Hub](/go/hub?from=newsletter) is where the community meets up — in-game lounge + Discord, no fees, no escrow, just traders showing up to deal directly. Worth bookmarking if you're posting on our [trading board](/trade).
+`;
 }
 
 function getIsoWeek(date: Date): { year: number; week: number } {
