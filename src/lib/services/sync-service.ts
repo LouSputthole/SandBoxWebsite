@@ -366,17 +366,48 @@ export async function upsertItem(
     : null;
 
   // Single query for everything we need about the existing row
-  const existing = await prisma.item.findUnique({
+  let existing = await prisma.item.findUnique({
     where: { steamMarketId: hashName },
     select: {
       id: true,
       name: true,
+      slug: true,
       isLimited: true,
       currentPrice: true,
       description: true,
       imageUrl: true,
     },
   });
+
+  // Fallback link-up: an item may already exist in our DB with
+  // steamMarketId=null, typically because sbox.dev's discover cron
+  // seeded it (e.g. a new store drop) before Steam Market listed
+  // it. Steam's hash_name == the display name for S&box items, so
+  // a case-insensitive name match is reliable. If found, treat it
+  // as the existing row so the update branch below sets steamMarketId
+  // and Steam-side fields (price, volume, marketUrl) without
+  // clobbering sbox.dev metadata. Without this, every new store
+  // item gets a duplicate row created here and the original sbox-
+  // seeded row never gets a price.
+  let matchedByName = false;
+  if (!existing) {
+    existing = await prisma.item.findFirst({
+      where: {
+        steamMarketId: null,
+        name: { equals: steamItem.name, mode: "insensitive" },
+      },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        isLimited: true,
+        currentPrice: true,
+        description: true,
+        imageUrl: true,
+      },
+    });
+    matchedByName = !!existing;
+  }
 
   const generatedDescription = generateDescription(
     steamItem.name,
@@ -420,14 +451,32 @@ export async function upsertItem(
       existing.description.startsWith(`${existing.name} is a`) ||
       existing.description.startsWith(`${existing.name} — `);
 
+    // When this row was first seeded from sbox.dev (matched-by-name
+    // path), keep the sbox slug + name + description we already wrote
+    // so existing /items/<slug> URLs stay valid and we don't trash
+    // hand-curated copy. Steam contributes only the market-side
+    // fields: steamMarketId, marketUrl, currentPrice, volume — and
+    // the image, since Steam's icon is the canonical render of the
+    // marketable item.
+    const updateData = matchedByName
+      ? {
+          steamMarketId: hashName,
+          marketUrl: getMarketUrl(hashName),
+          currentPrice: priceInDollars,
+          volume: steamItem.sell_listings,
+          priceChange24h: Math.round(priceChange * 100) / 100,
+          imageUrl: iconUrl || existing.imageUrl,
+        }
+      : {
+          ...data,
+          priceChange24h: Math.round(priceChange * 100) / 100,
+          description: isGeneratedDescription ? generatedDescription : existing.description,
+          imageUrl: iconUrl || existing.imageUrl, // prefer fresh Steam image
+        };
+
     await prisma.item.update({
       where: { id: existing.id },
-      data: {
-        ...data,
-        priceChange24h: Math.round(priceChange * 100) / 100,
-        description: isGeneratedDescription ? generatedDescription : existing.description,
-        imageUrl: iconUrl || existing.imageUrl, // prefer fresh Steam image
-      },
+      data: updateData,
     });
     result.itemsUpdated++;
     return existing.id;
