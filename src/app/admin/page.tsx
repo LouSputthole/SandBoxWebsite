@@ -12,6 +12,7 @@ import {
   Bug,
   GitMerge,
   Tag,
+  Hash,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -89,6 +90,13 @@ const PAGES: AdminPage[] = [
     description:
       "Rename + reslug a single Item row by id. Use to undo a wrong merge (e.g. Brown Leather Coat row ended up holding the Leather Coat Steam data).",
     icon: Tag,
+  },
+  {
+    href: "/admin/scrape-nameids",
+    label: "Scrape order-book nameids",
+    description:
+      "Manually trigger the daily cron that fills steamItemNameId for items missing it. Required before the buy/sell order book renders on item pages.",
+    icon: Hash,
   },
   {
     href: "/admin/debug",

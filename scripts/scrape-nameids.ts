@@ -1,12 +1,11 @@
 /**
  * Scrape Steam item_nameid values for all items in the database.
  *
- * These numeric IDs are required for the order histogram endpoint.
- * Steam blocks HTML page scraping from Vercel's data center IPs,
- * so this script must be run from a local machine.
- *
- * Setup:
- *   Copy .env with DATABASE_URL to local machine
+ * DEPRECATED — kept for emergency use only. The same scrape now
+ * runs server-side via /api/cron/scrape-nameids (daily) and the
+ * /admin/scrape-nameids manual trigger. The original assumption
+ * that Steam IP-blocked Vercel turned out to be wrong; verified
+ * via /api/admin/nameid-scrape probe (200 OK in ~250ms).
  *
  * Run:
  *   npx tsx scripts/scrape-nameids.ts

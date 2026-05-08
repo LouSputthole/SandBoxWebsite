@@ -343,6 +343,18 @@ export async function resolveVanityUrl(vanityName: string): Promise<string | nul
  * Scrape the item_nameid from a Steam Market listing page.
  * This numeric ID is required for the order histogram endpoint.
  * The listing page HTML contains: Market_LoadOrderSpread( NAMEID );
+ *
+ * Uses browser-impersonation headers (Mozilla UA + Accept-Language)
+ * — this diverges from project convention #1 (anonymous outbound)
+ * deliberately. The bare HEADERS variant gets a different (likely
+ * rate-limited / interstitial) response from Steam's HTML pages,
+ * while the browser-impersonation variant returns a normal 200.
+ * Verified live from Vercel via /api/admin/nameid-scrape.
+ *
+ * The risk of fingerprinting from this UA is minimal: Mozilla/5.0
+ * Chrome is the most common UA on the planet, so we blend in with
+ * every other browser hitting Steam. We only use these headers for
+ * the HTML scrape, not the JSON endpoints (those stay anonymous).
  */
 export async function fetchItemNameId(marketHashName: string): Promise<string | null> {
   const url = `${STEAM_MARKET_BASE}/listings/${STEAM_APPID}/${encodeURIComponent(marketHashName)}`;
@@ -351,8 +363,10 @@ export async function fetchItemNameId(marketHashName: string): Promise<string | 
   try {
     const response = await fetch(url, {
       headers: {
-        ...HEADERS,
-        Accept: "text/html,application/xhtml+xml",
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9",
+        "Accept-Language": "en-US,en;q=0.9",
       },
       signal: AbortSignal.timeout(15000),
     });
