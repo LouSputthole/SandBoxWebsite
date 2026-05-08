@@ -188,8 +188,12 @@ async function scan(): Promise<ScanResult> {
 
 /**
  * Fold one phantom row into one orphan row inside a transaction.
- * Re-points PricePoints, copies Steam-side fields onto the orphan,
- * deletes the phantom. Returns {pricePointsMoved}.
+ * Re-points PricePoints, deletes the phantom (frees its
+ * steamMarketId from the @unique constraint), then copies the
+ * Steam-side fields onto the orphan. Order matters: if we updated
+ * the orphan before deleting the phantom, the orphan's UPDATE
+ * would fail with a unique violation on steamMarketId because the
+ * phantom still owns the value.
  */
 async function mergePair(
   orphanId: string,
@@ -203,10 +207,16 @@ async function mergePair(
   orphan: { imageUrl: string | null },
 ): Promise<{ pricePointsMoved: number }> {
   return prisma.$transaction(async (tx) => {
+    // 1. Move price history off the phantom so it survives the delete.
     const ppMove = await tx.pricePoint.updateMany({
       where: { itemId: phantom.id },
       data: { itemId: orphanId },
     });
+    // 2. Delete phantom — releases its hold on the unique
+    //    steamMarketId. Any remaining FKs (PriceAlert with Cascade,
+    //    TradeListItem with SetNull, etc.) resolve cleanly here.
+    await tx.item.delete({ where: { id: phantom.id } });
+    // 3. Now the orphan can claim the freed steamMarketId.
     await tx.item.update({
       where: { id: orphanId },
       data: {
@@ -219,7 +229,6 @@ async function mergePair(
         imageUrl: phantom.imageUrl ?? orphan.imageUrl,
       },
     });
-    await tx.item.delete({ where: { id: phantom.id } });
     return { pricePointsMoved: ppMove.count };
   });
 }
