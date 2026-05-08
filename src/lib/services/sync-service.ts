@@ -563,10 +563,27 @@ export async function seedItemFromSboxDev(
     skin.name,
   );
 
-  const existing = await prisma.item.findUnique({
+  let existing = await prisma.item.findUnique({
     where: { slug },
-    select: { id: true },
+    select: { id: true, slug: true, name: true },
   });
+
+  // Name-fallback for slug-rename situations. If sbox-discover sees
+  // a slug that no longer exists in our DB (because an operator
+  // relabeled the row, e.g. toothpick → cat-balaclava), look for a
+  // sibling row matching by exact name. If found, refresh that row's
+  // sbox.dev fields instead of seeding a new orphan with the old
+  // slug — otherwise we'd resurrect the duplicate every cron run.
+  // Mirrors the upsertItem name-fallback added in PR #68 for the
+  // Steam-side equivalent.
+  let matchedByName = false;
+  if (!existing) {
+    existing = await prisma.item.findFirst({
+      where: { name: { equals: skin.name, mode: "insensitive" } },
+      select: { id: true, slug: true, name: true },
+    });
+    matchedByName = !!existing;
+  }
 
   // Description style mirrors the auto-generated text the regular Steam
   // sync emits. Deliberately doesn't reference any third-party tracker
@@ -626,9 +643,19 @@ export async function seedItemFromSboxDev(
   };
 
   if (existing) {
-    await prisma.item.update({ where: { id: existing.id }, data });
+    // When matched-by-name (operator deliberately reslugged this
+    // row), don't overwrite slug or name — keep their canonical
+    // identity. All other sbox.dev fields are safe to refresh from
+    // the source, that's the whole point of the cron.
+    const updateData = matchedByName
+      ? (() => {
+          const { slug: _slug, name: _name, ...rest } = data;
+          return rest;
+        })()
+      : data;
+    await prisma.item.update({ where: { id: existing.id }, data: updateData });
     result.itemsUpdated++;
-    return { itemId: existing.id, matchedName: skin.name, slug };
+    return { itemId: existing.id, matchedName: skin.name, slug: existing.slug };
   }
 
   const created = await prisma.item.create({
