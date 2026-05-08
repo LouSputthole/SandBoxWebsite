@@ -11,6 +11,7 @@ import {
   Sprout,
   Bug,
   GitMerge,
+  Tag,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -81,6 +82,13 @@ const PAGES: AdminPage[] = [
     description:
       "Fold phantom Steam-row dupes into matching sbox-row originals. Auto-pairs by name; manual pair-by-id for items where sbox.dev and Steam disagree on the display name (e.g. Cat Balaclava ↔ Toothpick).",
     icon: GitMerge,
+  },
+  {
+    href: "/admin/relabel-item",
+    label: "Relabel item",
+    description:
+      "Rename + reslug a single Item row by id. Use to undo a wrong merge (e.g. Brown Leather Coat row ended up holding the Leather Coat Steam data).",
+    icon: Tag,
   },
   {
     href: "/admin/debug",
