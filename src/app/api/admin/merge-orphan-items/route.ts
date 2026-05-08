@@ -50,7 +50,30 @@ interface OrphanPair {
   };
 }
 
-async function findOrphanPairs(): Promise<OrphanPair[]> {
+interface UnpairedOrphan {
+  id: string;
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+}
+
+interface UnpairedPhantom {
+  id: string;
+  name: string;
+  slug: string;
+  steamMarketId: string;
+  currentPrice: number | null;
+  volume: number | null;
+  pricePointCount: number;
+}
+
+interface ScanResult {
+  pairs: OrphanPair[];
+  unpairedOrphans: UnpairedOrphan[];
+  unpairedPhantoms: UnpairedPhantom[];
+}
+
+async function scan(): Promise<ScanResult> {
   // Pull the two halves separately and join in Node. ~80 items
   // total in our DB; this is microseconds either way and keeps the
   // SQL out of $queryRaw territory.
@@ -83,25 +106,28 @@ async function findOrphanPairs(): Promise<OrphanPair[]> {
   for (const p of phantoms) {
     phantomsByName.set(p.name.toLowerCase(), p);
   }
-
-  // For each orphan, look for a phantom with the same name.
-  const pairs: OrphanPair[] = [];
-  const orphanIdsWithPair = new Set<string>();
-  const phantomIdsToCount: string[] = [];
+  const orphansByName = new Map<string, typeof orphans[number]>();
   for (const o of orphans) {
-    const p = phantomsByName.get(o.name.toLowerCase());
-    if (!p) continue;
-    if (p.id === o.id) continue; // sanity — shouldn't happen but be defensive
-    orphanIdsWithPair.add(o.id);
-    phantomIdsToCount.push(p.id);
+    orphansByName.set(o.name.toLowerCase(), o);
   }
 
-  // Single grouped count of price points across all phantom IDs.
+  // Identify pairs (name-matched) and the unpaired residue on both
+  // sides. The unpaired phantoms are the ones we'd want to inspect
+  // for manual pairing — they have the live Steam data but no
+  // matching sbox row by name (e.g. sbox.dev stored the item under
+  // a quirky display name like "Toothpick" while Steam lists it as
+  // "Cat Balaclava").
+  const matchedPhantomIds = new Set<string>();
+  const matchedOrphanIds = new Set<string>();
+
+  // Single grouped count of price points across all phantom IDs —
+  // used both for paired and unpaired phantom rendering.
+  const phantomIds = phantoms.map((p) => p.id);
   const pricePointCounts =
-    phantomIdsToCount.length > 0
+    phantomIds.length > 0
       ? await prisma.pricePoint.groupBy({
           by: ["itemId"],
-          where: { itemId: { in: phantomIdsToCount } },
+          where: { itemId: { in: phantomIds } },
           _count: { _all: true },
         })
       : [];
@@ -109,10 +135,12 @@ async function findOrphanPairs(): Promise<OrphanPair[]> {
     pricePointCounts.map((r) => [r.itemId, r._count._all as number]),
   );
 
+  const pairs: OrphanPair[] = [];
   for (const o of orphans) {
-    if (!orphanIdsWithPair.has(o.id)) continue;
     const p = phantomsByName.get(o.name.toLowerCase());
-    if (!p) continue;
+    if (!p || p.id === o.id) continue;
+    matchedPhantomIds.add(p.id);
+    matchedOrphanIds.add(o.id);
     pairs.push({
       name: o.name,
       orphan: {
@@ -132,7 +160,157 @@ async function findOrphanPairs(): Promise<OrphanPair[]> {
       },
     });
   }
-  return pairs;
+
+  const unpairedOrphans: UnpairedOrphan[] = orphans
+    .filter((o) => !matchedOrphanIds.has(o.id))
+    .map((o) => ({
+      id: o.id,
+      name: o.name,
+      slug: o.slug,
+      imageUrl: o.imageUrl,
+    }));
+
+  const unpairedPhantoms: UnpairedPhantom[] = phantoms
+    .filter((p) => !matchedPhantomIds.has(p.id))
+    .filter((p) => orphansByName.get(p.name.toLowerCase()) === undefined)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      slug: p.slug,
+      steamMarketId: p.steamMarketId as string,
+      currentPrice: p.currentPrice,
+      volume: p.volume,
+      pricePointCount: countByItem.get(p.id) ?? 0,
+    }));
+
+  return { pairs, unpairedOrphans, unpairedPhantoms };
+}
+
+/**
+ * Fold one phantom row into one orphan row inside a transaction.
+ * Re-points PricePoints, copies Steam-side fields onto the orphan,
+ * deletes the phantom. Returns {pricePointsMoved}.
+ */
+async function mergePair(
+  orphanId: string,
+  phantom: {
+    id: string;
+    steamMarketId: string;
+    currentPrice: number | null;
+    volume: number | null;
+    imageUrl: string | null;
+  },
+  orphan: { imageUrl: string | null },
+): Promise<{ pricePointsMoved: number }> {
+  return prisma.$transaction(async (tx) => {
+    const ppMove = await tx.pricePoint.updateMany({
+      where: { itemId: phantom.id },
+      data: { itemId: orphanId },
+    });
+    await tx.item.update({
+      where: { id: orphanId },
+      data: {
+        steamMarketId: phantom.steamMarketId,
+        marketUrl: `https://steamcommunity.com/market/listings/590830/${encodeURIComponent(
+          phantom.steamMarketId,
+        )}`,
+        currentPrice: phantom.currentPrice,
+        volume: phantom.volume,
+        imageUrl: phantom.imageUrl ?? orphan.imageUrl,
+      },
+    });
+    await tx.item.delete({ where: { id: phantom.id } });
+    return { pricePointsMoved: ppMove.count };
+  });
+}
+
+async function runManualMerge(orphanId: string, phantomId: string) {
+  if (orphanId === phantomId) {
+    return NextResponse.json(
+      { error: "orphanId and phantomId must differ" },
+      { status: 400 },
+    );
+  }
+  const [orphan, phantom] = await Promise.all([
+    prisma.item.findUnique({
+      where: { id: orphanId },
+      select: { id: true, name: true, steamMarketId: true, imageUrl: true },
+    }),
+    prisma.item.findUnique({
+      where: { id: phantomId },
+      select: {
+        id: true,
+        name: true,
+        steamMarketId: true,
+        currentPrice: true,
+        volume: true,
+        imageUrl: true,
+      },
+    }),
+  ]);
+  if (!orphan || !phantom) {
+    return NextResponse.json(
+      { error: "orphan or phantom not found by id" },
+      { status: 404 },
+    );
+  }
+  if (orphan.steamMarketId !== null) {
+    return NextResponse.json(
+      {
+        error:
+          "orphan already has a steamMarketId — refusing to merge into a non-orphan row",
+      },
+      { status: 400 },
+    );
+  }
+  if (phantom.steamMarketId === null) {
+    return NextResponse.json(
+      {
+        error:
+          "phantom has no steamMarketId — there's nothing to fold in. Did you swap the IDs?",
+      },
+      { status: 400 },
+    );
+  }
+  try {
+    const result = await mergePair(
+      orphan.id,
+      {
+        id: phantom.id,
+        steamMarketId: phantom.steamMarketId,
+        currentPrice: phantom.currentPrice,
+        volume: phantom.volume,
+        imageUrl: phantom.imageUrl,
+      },
+      { imageUrl: orphan.imageUrl },
+    );
+    return NextResponse.json({
+      success: true,
+      merged: 1,
+      pairs: [
+        {
+          name: orphan.name,
+          keptId: orphan.id,
+          deletedId: phantom.id,
+          pricePointsMoved: result.pricePointsMoved,
+        },
+      ],
+      errors: [],
+    });
+  } catch (err) {
+    return NextResponse.json(
+      {
+        success: false,
+        merged: 0,
+        errors: [
+          `manual merge ${orphan.name} ↔ ${phantom.name}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        ],
+      },
+      { status: 500 },
+    );
+  }
 }
 
 export async function GET(request: NextRequest) {
@@ -141,14 +319,18 @@ export async function GET(request: NextRequest) {
   });
   if (!guard.ok) return guard.response;
 
-  const pairs = await findOrphanPairs();
+  const { pairs, unpairedOrphans, unpairedPhantoms } = await scan();
   return NextResponse.json({
     pairCount: pairs.length,
     pairs,
+    unpairedOrphans,
+    unpairedPhantoms,
     hint:
       pairs.length === 0
-        ? "No orphan/phantom pairs detected — nothing to merge."
-        : "POST to this endpoint to fold each phantom into its orphan.",
+        ? unpairedOrphans.length > 0 || unpairedPhantoms.length > 0
+          ? "No name-matched pairs. Some unpaired rows exist — POST { orphanId, phantomId } to merge a specific pair manually."
+          : "Catalog is clean — no orphan or phantom rows."
+        : "POST with no body to fold every name-matched pair, or POST { orphanId, phantomId } to merge a specific pair.",
   });
 }
 
@@ -158,12 +340,29 @@ export async function POST(request: NextRequest) {
   });
   if (!guard.ok) return guard.response;
 
-  const pairs = await findOrphanPairs();
+  // Optional explicit pair body. When provided, do exactly that
+  // one merge regardless of whether the names match — useful for
+  // items whose sbox.dev display name diverges from the Steam
+  // hash_name (e.g. Cat Balaclava under sbox slug "toothpick").
+  let body: { orphanId?: string; phantomId?: string } = {};
+  try {
+    if (request.headers.get("content-length") !== "0") {
+      body = (await request.json().catch(() => ({}))) as typeof body;
+    }
+  } catch {
+    body = {};
+  }
+
+  if (body.orphanId && body.phantomId) {
+    return await runManualMerge(body.orphanId, body.phantomId);
+  }
+
+  const { pairs } = await scan();
   if (pairs.length === 0) {
     return NextResponse.json({
       success: true,
       merged: 0,
-      message: "No orphan/phantom pairs to merge.",
+      message: "No name-matched pairs to merge.",
     });
   }
 
@@ -172,39 +371,17 @@ export async function POST(request: NextRequest) {
 
   for (const pair of pairs) {
     try {
-      // Run the merge as a single transaction so a failure mid-way
-      // doesn't leave us with half-migrated price history or an
-      // updated orphan + still-existing phantom.
-      const result = await prisma.$transaction(async (tx) => {
-        // 1. Re-point price points from phantom → orphan.
-        const ppMove = await tx.pricePoint.updateMany({
-          where: { itemId: pair.phantom.id },
-          data: { itemId: pair.orphan.id },
-        });
-
-        // 2. Copy Steam-side fields onto the orphan. Don't overwrite
-        //    the orphan image if Steam's image is missing.
-        await tx.item.update({
-          where: { id: pair.orphan.id },
-          data: {
-            steamMarketId: pair.phantom.steamMarketId,
-            marketUrl: `https://steamcommunity.com/market/listings/590830/${encodeURIComponent(
-              pair.phantom.steamMarketId,
-            )}`,
-            currentPrice: pair.phantom.currentPrice,
-            volume: pair.phantom.volume,
-            imageUrl: pair.phantom.imageUrl ?? pair.orphan.imageUrl,
-          },
-        });
-
-        // 3. Delete phantom. Cascade clears any straggler rows
-        //    (PriceAlerts, etc.) that were attached to the phantom
-        //    — these are unlikely for fresh items but we accept
-        //    losing them rather than silently leaving FKs dangling.
-        await tx.item.delete({ where: { id: pair.phantom.id } });
-
-        return { pricePointsMoved: ppMove.count };
-      });
+      const result = await mergePair(
+        pair.orphan.id,
+        {
+          id: pair.phantom.id,
+          steamMarketId: pair.phantom.steamMarketId,
+          currentPrice: pair.phantom.currentPrice,
+          volume: pair.phantom.volume,
+          imageUrl: pair.phantom.imageUrl,
+        },
+        { imageUrl: pair.orphan.imageUrl },
+      );
 
       merged.push({
         name: pair.name,

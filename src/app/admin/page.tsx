@@ -10,6 +10,7 @@ import {
   ChevronRight,
   Sprout,
   Bug,
+  GitMerge,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -73,6 +74,13 @@ const PAGES: AdminPage[] = [
     description:
       "Force-add a catalog gap (e.g. Hard Hat) by name or sbox.dev URL. Tries Steam Market then falls back to sbox.dev.",
     icon: Sprout,
+  },
+  {
+    href: "/admin/merge-orphan-items",
+    label: "Merge orphan items",
+    description:
+      "Fold phantom Steam-row dupes into matching sbox-row originals. Auto-pairs by name; manual pair-by-id for items where sbox.dev and Steam disagree on the display name (e.g. Cat Balaclava ↔ Toothpick).",
+    icon: GitMerge,
   },
   {
     href: "/admin/debug",
