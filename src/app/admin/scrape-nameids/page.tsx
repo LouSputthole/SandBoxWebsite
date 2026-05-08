@@ -47,8 +47,12 @@ export default function ScrapeNameidsPage() {
         headers: { Authorization: `Bearer ${key}` },
       });
       if (res.status === 401) {
-        setError("Wrong CRON_SECRET");
-        setAuthed(false);
+        // Stay on the page so the user can correct the key without
+        // retyping. The other admin endpoints accept either
+        // CRON_SECRET or ANALYTICS_KEY — this one now does too.
+        setError(
+          "Auth rejected. Try the other admin key (CRON_SECRET or ANALYTICS_KEY).",
+        );
         return;
       }
       const data = (await res.json()) as RunResult;
@@ -79,7 +83,7 @@ export default function ScrapeNameidsPage() {
         >
           <Input
             type="password"
-            placeholder="CRON_SECRET"
+            placeholder="Admin key (CRON_SECRET or ANALYTICS_KEY)"
             value={key}
             onChange={(e) => setKey(e.target.value)}
           />

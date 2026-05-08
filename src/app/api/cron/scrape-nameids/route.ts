@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { fetchItemNameId } from "@/lib/steam/client";
+import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
  * GET/POST /api/cron/scrape-nameids
@@ -21,7 +22,8 @@ import { fetchItemNameId } from "@/lib/steam/client";
  * so a backlog of 80 items finishes in 2 days. POST without a body
  * triggers a manual run from the admin UI.
  *
- * CRON_SECRET-gated.
+ * Auth: accepts either CRON_SECRET (Vercel cron) or ANALYTICS_KEY
+ * (operator triggering from /admin/scrape-nameids).
  */
 export const maxDuration = 300;
 
@@ -33,16 +35,10 @@ async function sleep(ms: number) {
 }
 
 async function handle(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) {
-    return NextResponse.json(
-      { error: "CRON_SECRET not configured" },
-      { status: 500 },
-    );
-  }
-  if (request.headers.get("authorization") !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const guard = await guardAdminRoute(request, {
+    allowedKeys: ["cron", "analytics"],
+  });
+  if (!guard.ok) return guard.response;
 
   const startedAt = Date.now();
   const items = await prisma.item.findMany({
