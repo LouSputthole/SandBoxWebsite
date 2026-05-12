@@ -1,10 +1,47 @@
 import Link from "next/link";
 import { Gamepad2 } from "lucide-react";
+import { PARTNER, partnerUrl } from "@/lib/partner/config";
 
 export function Footer() {
   return (
     <footer className="border-t border-neutral-800 bg-[#0a0a0f] mt-auto">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
+        {PARTNER.enabled && (
+          // Partner callout — single source of truth in lib/partner/
+          // config.ts, so when the Hub confirms their assets we update
+          // one file and every surface updates with it.
+          <div className="rounded-xl border border-purple-500/20 bg-gradient-to-br from-purple-500/10 to-transparent p-4 sm:p-5 mb-8 flex items-center gap-4 flex-wrap">
+            <div
+              className="flex items-center justify-center h-12 w-12 rounded-lg bg-neutral-900 border border-neutral-800 shrink-0"
+              style={{ color: PARTNER.brandColor }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={PARTNER.logoSrc}
+                alt={PARTNER.logoAlt}
+                className="h-7 w-7"
+              />
+            </div>
+            <div className="flex-1 min-w-[180px]">
+              <p className="text-[10px] uppercase tracking-wider text-purple-300/80 font-semibold">
+                Trading Partner
+              </p>
+              <p className="text-sm font-semibold text-white">{PARTNER.name}</p>
+              <p className="text-xs text-neutral-400 leading-relaxed mt-0.5">
+                Coordinate trades in person at the in-game Trading Hub. Discord
+                community + dedicated meet-up area for S&amp;box traders.
+              </p>
+            </div>
+            <a
+              href={partnerUrl("footer")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs font-semibold text-purple-200 hover:text-white border border-purple-500/30 rounded-md px-3 py-2 transition-colors shrink-0"
+            >
+              Join the Hub →
+            </a>
+          </div>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-8">
           <div>
             <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Browse</h3>

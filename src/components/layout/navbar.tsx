@@ -17,7 +17,10 @@ import {
   User as UserIcon,
   ArrowRightLeft,
   Store,
+  Users,
+  ExternalLink,
 } from "lucide-react";
+import { PARTNER, partnerUrl } from "@/lib/partner/config";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/context";
@@ -102,6 +105,18 @@ export function Navbar() {
               <Store className="h-3.5 w-3.5" />
               Store
             </Link>
+            {PARTNER.enabled && (
+              <a
+                href={partnerUrl("nav_desktop")}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-neutral-400 hover:text-purple-300 transition-colors flex items-center gap-1.5"
+              >
+                <Users className="h-3.5 w-3.5" />
+                {PARTNER.shortName}
+                <ExternalLink className="h-3 w-3 opacity-60" />
+              </a>
+            )}
             <Link
               href="/whales"
               className="text-sm text-neutral-400 hover:text-white transition-colors"
@@ -294,6 +309,17 @@ export function Navbar() {
             >
               Store
             </Link>
+            {PARTNER.enabled && (
+              <a
+                href={partnerUrl("nav_mobile")}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block px-3 py-2 text-sm text-neutral-400 hover:text-purple-300 transition-colors"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {PARTNER.shortName} ↗
+              </a>
+            )}
             <Link
               href="/whales"
               className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
