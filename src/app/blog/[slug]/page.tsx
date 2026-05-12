@@ -183,13 +183,17 @@ function renderInline(text: string): React.ReactNode {
       parts.push(text.slice(lastIndex, start));
     }
     if (m[1] !== undefined) {
+      // Recurse into the bold content so nested links/italics still
+      // render — without this, "**[Hard Hat](/items/hard-hat)**"
+      // would match the bold alternation first and emit the markdown
+      // link as literal text.
       parts.push(
         <strong key={key++} className="text-white">
-          {m[1]}
+          {renderInline(m[1])}
         </strong>,
       );
     } else if (m[2] !== undefined) {
-      parts.push(<em key={key++}>{m[2]}</em>);
+      parts.push(<em key={key++}>{renderInline(m[2])}</em>);
     } else if (m[3] !== undefined && m[4] !== undefined) {
       const href = m[4];
       // Internal link → Next Link. External → plain <a> with rel safety.
