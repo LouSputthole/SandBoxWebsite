@@ -1,38 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
-import { fetchItemNameId } from "@/lib/steam/client";
+import { backfillItemNameIds } from "@/lib/steam/nameids";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
  * GET/POST /api/cron/scrape-nameids
  *
- * Auto-fills Item.steamItemNameId for any item that has a
- * steamMarketId but no nameid yet. The numeric nameid is required
- * for Steam's order-histogram endpoint (buy/sell orders on item
- * detail pages). Until 2026-05, the codebase assumed Steam blocks
- * HTML scrapes from Vercel datacenter IPs and required a manual
- * Windows-side script (scripts/scrape-nameids.ts). The probe at
- * /api/admin/nameid-scrape proved that assumption wrong — Vercel
- * returns 200 in ~250ms with browser-impersonation headers — so
- * the local script is now retired in favor of this cron.
+ * Backfills Item.steamItemNameId for items that have a steamMarketId but no
+ * nameid yet. The numeric nameid is required for Steam's order-histogram
+ * endpoint (buy/sell orders on item detail pages).
  *
- * Rate limiting: 2s between requests, matching the local script's
- * cadence. Capped at 40 items per run so a single cron call
- * finishes inside Vercel's function timeout. The cron runs daily,
- * so a backlog of 80 items finishes in 2 days. POST without a body
- * triggers a manual run from the admin UI.
+ * Selection is newest-first with a retry backoff (see backfillItemNameIds),
+ * so brand-new drops jump the queue and chronically-unfetchable items can't
+ * starve it. Capped at MAX_PER_RUN per call to stay inside the function
+ * timeout. Runs every 6h (vercel.json); the /api/sync cron also tops up a
+ * few each cycle so new drops get an order book within minutes.
  *
  * Auth: accepts either CRON_SECRET (Vercel cron) or ANALYTICS_KEY
  * (operator triggering from /admin/scrape-nameids).
  */
 export const maxDuration = 300;
 
-const MAX_PER_RUN = 40;
-const DELAY_MS = 2000;
-
-async function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
+// ~75 × 2s spacing ≈ 150s, comfortably inside maxDuration.
+const MAX_PER_RUN = 75;
 
 async function handle(request: NextRequest) {
   const guard = await guardAdminRoute(request, {
@@ -41,65 +30,11 @@ async function handle(request: NextRequest) {
   if (!guard.ok) return guard.response;
 
   const startedAt = Date.now();
-  const items = await prisma.item.findMany({
-    where: { steamMarketId: { not: null }, steamItemNameId: null },
-    select: { id: true, name: true, steamMarketId: true },
-    orderBy: { name: "asc" },
-    take: MAX_PER_RUN,
-  });
-
-  if (items.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      message: "No items missing steamItemNameId.",
-      updated: 0,
-      failed: 0,
-      remaining: 0,
-      elapsedMs: Date.now() - startedAt,
-    });
-  }
-
-  let updated = 0;
-  let failed = 0;
-  const failures: { name: string; reason: string }[] = [];
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    try {
-      const nameId = await fetchItemNameId(item.steamMarketId!);
-      if (nameId) {
-        await prisma.item.update({
-          where: { id: item.id },
-          data: { steamItemNameId: nameId },
-        });
-        updated++;
-      } else {
-        failed++;
-        failures.push({ name: item.name, reason: "nameid not found in HTML" });
-      }
-    } catch (err) {
-      failed++;
-      failures.push({
-        name: item.name,
-        reason: err instanceof Error ? err.message : String(err),
-      });
-    }
-    // Rate limit: skip the wait after the last item.
-    if (i < items.length - 1) await sleep(DELAY_MS);
-  }
-
-  // How many remain after this run? Useful so the cron can self-
-  // report whether a single pass cleared the backlog.
-  const remaining = await prisma.item.count({
-    where: { steamMarketId: { not: null }, steamItemNameId: null },
-  });
+  const result = await backfillItemNameIds(MAX_PER_RUN);
 
   return NextResponse.json({
-    ok: failed === 0,
-    updated,
-    failed,
-    remaining,
-    failures,
+    ok: result.failed === 0,
+    ...result,
     elapsedMs: Date.now() - startedAt,
   });
 }

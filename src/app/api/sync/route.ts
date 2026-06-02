@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { syncItems, syncPriceBatch, cleanupNonSteamItems, captureMarketSnapshot, syncSboxData } from "@/lib/services/sync-service";
 import { checkPriceAlerts } from "@/lib/services/alert-service";
 import { invalidatePattern } from "@/lib/redis/cache";
+import { backfillItemNameIds } from "@/lib/steam/nameids";
 
 /**
  * POST /api/sync — Trigger a data sync from the Steam Market.
@@ -110,11 +111,24 @@ export async function GET(request: NextRequest) {
       // Step 3: Enrich with sbox.dev data (supply, store status, holders, etc.)
       const sboxResult = await syncSboxData();
 
+      // Step 4: Top up Steam nameids for the newest just-linked items so a
+      // brand-new drop gets its buy/sell order book within a sync cycle
+      // rather than waiting for the 6h nameid cron. Bounded + best-effort —
+      // never let it break the core sync.
+      let nameIdsBackfilled = 0;
+      try {
+        const nameIds = await backfillItemNameIds(10);
+        nameIdsBackfilled = nameIds.updated;
+      } catch (err) {
+        console.error("[cron] nameid backfill failed (ignored):", err);
+      }
+
       const result = {
         ...itemResult,
         pricePointsCreated: itemResult.pricePointsCreated + priceResult.pricePointsCreated,
         priceBatchProcessed: priceResult.itemsProcessed,
         sboxEnriched: sboxResult.updated,
+        nameIdsBackfilled,
         errors: [...itemResult.errors, ...priceResult.errors, ...sboxResult.errors],
         duration: itemResult.duration + priceResult.duration,
       };
