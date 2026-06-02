@@ -17,6 +17,7 @@ import {
   User as UserIcon,
   ArrowRightLeft,
   Store,
+  Sparkles,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -74,6 +75,13 @@ export function Navbar() {
               className="text-sm text-neutral-400 hover:text-white transition-colors"
             >
               Browse
+            </Link>
+            <Link
+              href="/new"
+              className="text-sm text-neutral-400 hover:text-white transition-colors flex items-center gap-1.5"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              New
             </Link>
             <Link
               href="/trends"
@@ -265,6 +273,13 @@ export function Navbar() {
               onClick={() => setMobileMenuOpen(false)}
             >
               Browse
+            </Link>
+            <Link
+              href="/new"
+              className="block px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              New Drops
             </Link>
             <Link
               href="/trends"
