@@ -59,11 +59,24 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Defense-in-depth: a healthy store scrape always matches at least some
+  // items we already track. Zero matches means the scrape was blocked, hit
+  // the Steam login wall, or sbox.game changed its layout — NOT that the
+  // entire store emptied overnight. Delisting on a zero-match run would flip
+  // every currently-available item to "delisted" (mass data corruption), so
+  // we only delist when at least one scraped item matched. The sbox.dev API
+  // sync (Item.isActiveStoreItem) is the source of truth for store rotation;
+  // this scraper is a legacy fallback.
+  const matched = availableUpdates.length;
+  const safeToDelist = matched > 0;
+
   // Previously-available items not in the store this run are now delisted
   const now = new Date();
-  const delistedIds = dbItems
-    .filter((i) => i.storeStatus === "available" && !foundIds.has(i.id))
-    .map((i) => i.id);
+  const delistedIds = safeToDelist
+    ? dbItems
+        .filter((i) => i.storeStatus === "available" && !foundIds.has(i.id))
+        .map((i) => i.id)
+    : [];
 
   // Run all updates in parallel — single roundtrip per update instead of serial waits
   const availablePromises = availableUpdates.map((u) =>
@@ -84,7 +97,6 @@ export async function POST(request: NextRequest) {
   );
   await Promise.all([...availablePromises, ...delistedPromises]);
 
-  const matched = availableUpdates.length;
   const delisted = delistedIds.length;
 
   return NextResponse.json({
@@ -92,6 +104,7 @@ export async function POST(request: NextRequest) {
     matched,
     unmatched,
     delisted,
+    delistSkipped: !safeToDelist,
     unmatchedNames: unmatchedNames.slice(0, 20),
   });
 }

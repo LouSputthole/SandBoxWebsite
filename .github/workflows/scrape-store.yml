@@ -1,9 +1,14 @@
 name: Scrape S&box Store Availability
 
 on:
-  schedule:
-    # Run daily at 10:00 UTC (after supply scrape at 08:00)
-    - cron: "0 10 * * *"
+  # Scheduled cron disabled — the in-game shop now sits behind a Steam login
+  # wall, so the unauthenticated headless scrape only ever sees the
+  # "Log in with Steam" page. Store availability is sourced from the sbox.dev
+  # API sync instead (Item.isActiveStoreItem drives /store and is mirrored to
+  # the legacy storeStatus column). Kept as workflow_dispatch so we can still
+  # run it manually if sbox.game ever exposes an unauthenticated catalog again.
+  # schedule:
+  #   - cron: "0 10 * * *"
   workflow_dispatch:
     inputs:
       dry_run:

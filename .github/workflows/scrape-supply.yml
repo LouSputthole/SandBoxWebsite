@@ -31,10 +31,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install Playwright + Chromium
-        run: |
-          npm install -D playwright
-          npx playwright install --with-deps chromium
+      - name: Install Playwright Chromium
+        # playwright (the npm package) now comes from devDependencies via
+        # `npm ci` above; here we only need the browser binaries.
+        run: npx playwright install --with-deps chromium
 
       - name: Scrape supply data
         env:
