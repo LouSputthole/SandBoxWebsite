@@ -5,8 +5,9 @@
  * `asset_description.name_color` — a hex tint stored verbatim (no leading
  * '#') in `Item.rarityColor` by the sync. Steam ships NO human-readable
  * rarity name for these items (`market_bucket_group_name` just echoes the
- * item's own name and there are no rarity `tags`), so any tier *label* is
- * derived here from the known Valve color palette rather than stored.
+ * item's own name and there are no rarity `tags`). We therefore render the
+ * faithful colored dot and omit tier *labels* until S&box's official rarity
+ * names are confirmed.
  *
  * "Rarity exists" for an item ≡ `rarityColor` is a non-empty string. These
  * helpers are intentionally pure (no Date/Math.random) so they're safe to
@@ -14,21 +15,13 @@
  */
 
 /**
- * Canonical Valve item-quality palette → tier name. These are the exact
- * hex tints Steam returns in `name_color` (the same grading scale CS uses),
- * observed on live S&box market data (e.g. d32ce6, 4b69ff, 5e98d9, b0c3d9).
- * Lower-case, no '#', matching how the column is stored.
+ * Hex `name_color` → tier name, used by rarityLabel(). Intentionally EMPTY
+ * for now: Steam ships only a rarity COLOR for S&box items (observed tints:
+ * d32ce6, 4b69ff, 5e98d9, b0c3d9), never a tier name, so any label here would
+ * be invented. Populate with the real names once S&box's taxonomy is known,
+ * e.g. `{ "d32ce6": "<official name>" }`. Lower-case, no '#', matching storage.
  */
-const RARITY_NAMES: Record<string, string> = {
-  b0c3d9: "Common",
-  "5e98d9": "Uncommon",
-  "4b69ff": "Rare",
-  "8847ff": "Mythical",
-  d32ce6: "Legendary",
-  eb4b4b: "Ancient",
-  e4ae39: "Immortal",
-  ffd700: "Exotic",
-};
+const RARITY_NAMES: Record<string, string> = {};
 
 /** Normalize a stored rarity color to a CSS-usable `#rrggbb` string, or null. */
 export function rarityCssColor(rarityColor: string | null | undefined): string | null {
