@@ -57,6 +57,19 @@ model Item {
   // sbox.dev's releasePrice (often null for new drops).
   itemDefinitionId    Int?
 
+  // Steam-sourced rarity color. Steam's market search/render feed returns
+  // `asset_description.name_color` — a hex string (no leading '#', e.g.
+  // "d32ce6") that Valve uses to tint the item name by rarity tier. Newer
+  // S&box items carry one of a small CS-style palette; older/event items
+  // (Wizard Hat, Pumpkin Head, …) return an empty string. We store the raw
+  // hex ONLY when present, so the UI can render a rarity indicator strictly
+  // for items that actually have one. There is NO human-readable rarity
+  // *name* in Steam's payload for these items — `market_bucket_group_name`
+  // just echoes the item's own name and there are no rarity `tags` — so we
+  // deliberately store only the color and derive any display label client-
+  // side from the known palette. Sourced directly from Steam, never sbox.dev.
+  rarityColor         String?
+
   supplySnapshots SupplySnapshot[]
   tradeListingItems TradeListingItem[]
 

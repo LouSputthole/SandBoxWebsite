@@ -3,6 +3,7 @@ import { TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
 import { ItemImage } from "@/components/items/item-image";
 import { WatchlistButton } from "@/components/items/watchlist-button";
 import { formatPriceChange } from "@/lib/utils";
+import { rarityCssColor, rarityLabel } from "@/lib/rarity";
 import { Price } from "@/components/ui/price";
 
 interface ItemCardProps {
@@ -16,11 +17,18 @@ interface ItemCardProps {
     priceChange24h: number | null;
     volume: number | null;
     isLimited: boolean;
+    // Steam-sourced rarity tint, when the item has one. Optional so call
+    // sites that don't select it (or items with no rarity) just omit it.
+    rarityColor?: string | null;
   };
 }
 
 export function ItemCard({ item }: ItemCardProps) {
   const change = item.priceChange24h ?? 0;
+  // Pure helpers — safe in the render body. Both return null when the item
+  // has no (valid) rarity color, which is how we gate the indicator below.
+  const rarityColor = rarityCssColor(item.rarityColor);
+  const rarityName = rarityLabel(item.rarityColor);
 
   return (
     <Link href={`/items/${item.slug}`}>
@@ -53,7 +61,22 @@ export function ItemCard({ item }: ItemCardProps) {
             </h3>
           </div>
 
-          <span className="text-[10px] text-neutral-500 capitalize">{item.type}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-neutral-500 capitalize">{item.type}</span>
+            {rarityColor && (
+              <span
+                className="inline-flex items-center gap-1 text-[10px] font-medium text-neutral-400"
+                title={rarityName ? `Rarity: ${rarityName}` : "Rarity"}
+              >
+                <span
+                  className="h-2 w-2 rounded-full ring-1 ring-inset ring-white/10"
+                  style={{ backgroundColor: rarityColor }}
+                  aria-hidden
+                />
+                {rarityName && <span>{rarityName}</span>}
+              </span>
+            )}
+          </div>
 
           <div className="flex items-end justify-between pt-1">
             <span className="text-lg font-bold text-white">

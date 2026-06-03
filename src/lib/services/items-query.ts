@@ -32,6 +32,7 @@ export interface ItemsQueryResult {
     volume: number | null;
     totalSupply: number | null;
     isLimited: boolean;
+    rarityColor: string | null;
   }[];
   total: number;
   page: number;
@@ -96,6 +97,7 @@ export async function getItems(params: ItemsQueryParams): Promise<ItemsQueryResu
         volume: true,
         totalSupply: true,
         isLimited: true,
+        rarityColor: true,
       },
     }),
     prisma.item.count({ where }),

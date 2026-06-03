@@ -30,6 +30,7 @@ import { PriceSignals } from "@/components/items/price-signals";
 import { WatchlistButton } from "@/components/items/watchlist-button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { formatPriceChange } from "@/lib/utils";
+import { rarityCssColor, rarityLabel } from "@/lib/rarity";
 import { Price } from "@/components/ui/price";
 
 interface PricePoint {
@@ -84,10 +85,16 @@ export interface ItemDetailData {
   priceChange6h: number | null;
   priceChange6hPercent: number | null;
   topHolders: TopHolder[] | null;
+  // Steam-sourced rarity tint (asset_description.name_color), when present.
+  rarityColor: string | null;
 }
 
 export function ItemDetail({ item }: { item: ItemDetailData }) {
   const change = item.priceChange24h ?? 0;
+  // Pure helpers (no Date/random) — fine to call in the render body. Both
+  // return null when there's no valid rarity color, gating the badge below.
+  const rarityColor = rarityCssColor(item.rarityColor);
+  const rarityName = rarityLabel(item.rarityColor);
 
   return (
     <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8">
@@ -135,6 +142,19 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
             {item.itemDisplayName && (
               <div className="bg-neutral-800/80 text-neutral-300 border border-neutral-700/50 rounded-full px-3 py-1 text-xs font-medium">
                 {item.itemDisplayName}
+              </div>
+            )}
+            {rarityColor && (
+              <div
+                className="flex items-center gap-1.5 bg-neutral-800/80 text-neutral-200 border border-neutral-700/50 rounded-full px-3 py-1 text-xs font-medium"
+                title={rarityName ? `Rarity: ${rarityName}` : "Rarity"}
+              >
+                <span
+                  className="h-2.5 w-2.5 rounded-full ring-1 ring-inset ring-white/15"
+                  style={{ backgroundColor: rarityColor }}
+                  aria-hidden
+                />
+                {rarityName ?? "Rarity"}
               </div>
             )}
           </div>

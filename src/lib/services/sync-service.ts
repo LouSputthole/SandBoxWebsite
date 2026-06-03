@@ -102,6 +102,24 @@ export function inferItemType(steamType: string, itemName = ""): string {
 }
 
 /**
+ * Normalize Steam's `asset_description.name_color` into a clean rarity hex,
+ * or null when the item has no rarity.
+ *
+ * Steam returns the color WITHOUT a leading '#', as a 3- or 6-digit hex
+ * (e.g. "d32ce6"). Items with no assigned rarity (older/event drops) come
+ * back as "" (or, defensively, undefined). We return null for those so the
+ * caller can skip the write entirely and the UI can treat "rarity exists"
+ * as simply `rarityColor != null`. Anything that isn't a valid hex is
+ * rejected too, so a malformed feed can't poison the column.
+ */
+export function normalizeRarityColor(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const hex = raw.trim().replace(/^#/, "").toLowerCase();
+  if (!/^[0-9a-f]{3}$|^[0-9a-f]{6}$/.test(hex)) return null;
+  return hex;
+}
+
+/**
  * Sync all items from the Steam Community Market.
  * Fetches the item list, then optionally fetches price details for each.
  * NEVER falls back to mock data — only real Steam data.
@@ -365,6 +383,13 @@ export async function upsertItem(
     ? getSteamImageUrl(steamItem.asset_description.icon_url)
     : null;
 
+  // Steam-sourced rarity color (asset_description.name_color). Newer items
+  // carry a hex tint; older/event items return "". Normalize to either a
+  // clean hex string or null so we can decide whether to write it at all —
+  // we never overwrite an existing color with an empty value (Steam dropping
+  // the field on one response shouldn't wipe a rarity we already captured).
+  const rarityColor = normalizeRarityColor(steamItem.asset_description?.name_color);
+
   // Single query for everything we need about the existing row
   let existing = await prisma.item.findUnique({
     where: { steamMarketId: hashName },
@@ -427,6 +452,9 @@ export async function upsertItem(
     marketUrl: getMarketUrl(hashName),
     currentPrice: priceInDollars,
     volume: steamItem.sell_listings,
+    // Only include when Steam actually gave us a color — omitting the key
+    // (vs. writing null) preserves any previously captured rarity.
+    ...(rarityColor ? { rarityColor } : {}),
   };
 
   if (existing) {
@@ -466,6 +494,9 @@ export async function upsertItem(
           volume: steamItem.sell_listings,
           priceChange24h: Math.round(priceChange * 100) / 100,
           imageUrl: iconUrl || existing.imageUrl,
+          // Steam contributes the rarity color even on sbox-seeded rows,
+          // but only when present so we don't clobber an existing value.
+          ...(rarityColor ? { rarityColor } : {}),
         }
       : {
           ...data,

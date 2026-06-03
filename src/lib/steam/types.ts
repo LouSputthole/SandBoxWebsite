@@ -59,11 +59,19 @@ export interface SteamSearchResult {
     icon_url: string;
     tradable: number;
     name: string;
+    // Rarity tint (hex, no leading '#', e.g. "d32ce6"). Empty string for
+    // items Steam assigns no rarity (older/event items). Sourced directly
+    // from Steam — this is what drives our rarity indicator.
     name_color: string;
     type: string;
     market_name: string;
     market_hash_name: string;
     commodity: number;
+    // Steam groups market variants under a "bucket". For S&box items this
+    // just echoes the item's own name (NOT a human-readable rarity label),
+    // so we type it for completeness but don't use it as a rarity name.
+    market_bucket_group_name?: string;
+    market_bucket_group_id?: string;
   };
   sale_price_text: string;
 }

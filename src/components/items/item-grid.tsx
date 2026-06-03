@@ -14,6 +14,7 @@ interface Item {
   priceChange24h: number | null;
   volume: number | null;
   isLimited: boolean;
+  rarityColor?: string | null;
 }
 
 interface ItemGridProps {
