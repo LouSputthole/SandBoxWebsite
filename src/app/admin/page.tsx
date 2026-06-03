@@ -99,6 +99,13 @@ const PAGES: AdminPage[] = [
     icon: Hash,
   },
   {
+    href: "/admin/set-nameid",
+    label: "Set item nameid",
+    description:
+      "Manually set steamItemNameId for one item by slug (with a worklist of items still missing it). For when the scrape cron can't fetch a nameid and you grab it by hand from a logged-in Steam Market page.",
+    icon: Hash,
+  },
+  {
     href: "/admin/debug",
     label: "Debug",
     description:
