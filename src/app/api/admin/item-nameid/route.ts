@@ -12,18 +12,27 @@ import { guardAdminRoute } from "@/lib/auth/admin-guard";
  * POSTs it here. That nameid unblocks the anonymous order-histogram
  * endpoint (itemordershistogram) so the buy/sell order book renders.
  *
- * Accepts either a single { slug, nameid } or a batch { items: [...] }.
+ * Accepts a single entry or a batch { items: [...] }. Each entry identifies
+ * its item by EITHER `slug` OR `hash` (the Steam market_hash_name, which is
+ * stored as Item.steamMarketId) — so the body may be { slug, nameid },
+ * { hash, nameid }, or { items: [...] } mixing the two. The `hash` form is
+ * what the one-click bookmarklet sends, since a Steam Market page exposes the
+ * market_hash_name but not our internal slug.
+ *
  * Each nameid must be all digits (Steam ids are numeric). A non-numeric
- * nameid rejects the WHOLE request with 400 — partial writes from a typo'd
- * batch are worse than making the caller resend a clean payload.
+ * nameid — or an entry missing both an identifier and a nameid — rejects the
+ * WHOLE request with 400; partial writes from a typo'd batch are worse than
+ * making the caller resend a clean payload.
  *
  * Auth: ANALYTICS_KEY (operator UI) or CRON_SECRET.
  */
 
 const NUMERIC = /^\d+$/;
 
+// Each entry resolves to exactly one of slug / hash (slug wins if both given).
 interface Entry {
-  slug: string;
+  slug?: string;
+  hash?: string;
   nameid: string;
 }
 
@@ -55,42 +64,53 @@ export async function POST(request: NextRequest) {
 
   const entries: Entry[] = [];
   for (const item of raw) {
+    const isObj = item && typeof item === "object";
     const slug =
-      item && typeof item === "object" && typeof (item as Entry).slug === "string"
-        ? (item as Entry).slug.trim()
+      isObj && typeof (item as Entry).slug === "string"
+        ? (item as Entry).slug!.trim()
+        : "";
+    const hash =
+      isObj && typeof (item as Entry).hash === "string"
+        ? (item as Entry).hash!.trim()
         : "";
     const nameid =
-      item && typeof item === "object" && typeof (item as Entry).nameid === "string"
-        ? (item as Entry).nameid.trim()
+      isObj && typeof (item as Entry).nameid === "string"
+        ? (item as Entry).nameid!.trim()
         : "";
 
-    if (!slug || !nameid) {
+    // Each entry needs a nameid AND at least one identifier (slug or hash).
+    if (!nameid || (!slug && !hash)) {
       return NextResponse.json(
-        { error: "Each item needs a non-empty slug and nameid" },
+        { error: "Each item needs a nameid and a slug or hash" },
         { status: 400 },
       );
     }
     if (!NUMERIC.test(nameid)) {
       return NextResponse.json(
-        { error: `nameid must be all digits (got "${nameid}" for "${slug}")` },
+        {
+          error: `nameid must be all digits (got "${nameid}" for "${slug || hash}")`,
+        },
         { status: 400 },
       );
     }
-    entries.push({ slug, nameid });
+    // Slug wins if both are supplied.
+    entries.push(slug ? { slug, nameid } : { hash, nameid });
   }
 
   let updated = 0;
   const notFound: string[] = [];
 
-  for (const { slug, nameid } of entries) {
-    // updateMany returns a count instead of throwing on a missing row, so
-    // an unknown slug lands in notFound rather than aborting the batch.
+  for (const { slug, hash, nameid } of entries) {
+    // Slug → exact slug match; otherwise resolve by steamMarketId (the Steam
+    // market_hash_name). updateMany returns a count instead of throwing on a
+    // missing row, so an unknown identifier lands in notFound rather than
+    // aborting the batch.
     const res = await prisma.item.updateMany({
-      where: { slug },
+      where: slug ? { slug } : { steamMarketId: hash },
       data: { steamItemNameId: nameid },
     });
     if (res.count > 0) updated += res.count;
-    else notFound.push(slug);
+    else notFound.push(slug ?? hash ?? "");
   }
 
   return NextResponse.json({ ok: true, updated, notFound });

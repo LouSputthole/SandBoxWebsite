@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Lock,
   Loader2,
@@ -9,10 +9,18 @@ import {
   Info,
   Save,
   RefreshCw,
+  Bookmark,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+
+// One-click "grabber" bookmarklet. Drag it to the bookmarks bar; on a
+// logged-in Steam Market item page it reads the nameid out of the
+// Market_LoadOrderSpread(<id>) call and the market_hash_name out of the URL,
+// then opens this page pre-filled. Intentionally backslash-free so it stays a
+// safe double-quoted TS string — DO NOT alter this string.
+const BOOKMARKLET = "javascript:(function(){var s=document.documentElement.innerHTML,k='Market_LoadOrderSpread(',i=s.indexOf(k);if(i<0){alert('No nameid found. Open a Steam Market item page while logged in, then click this again.');return;}var j=s.indexOf(')',i),id=s.slice(i+k.length,j).trim();var p=location.pathname.split('/'),h=decodeURIComponent(p[p.length-1]||'');if(!/^[0-9]+$/.test(id)||!h){alert('Could not read the nameid. Make sure you are on a Steam Market item listing page.');return;}window.open('https://sboxskins.gg/admin/set-nameid?hash='+encodeURIComponent(h)+'&nameid='+id,'_blank');})();";
 
 interface MissingItem {
   slug: string;
@@ -53,6 +61,29 @@ export default function SetNameidPage() {
   const [result, setResult] = useState<PostResult | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  // When arriving from the bookmarklet we get a Steam market_hash_name (and
+  // nameid) in the query string instead of a slug. We resolve the item by
+  // hash server-side, so we just stash the hash and submit it instead of slug.
+  const [bookmarkletHash, setBookmarkletHash] = useState<string | null>(null);
+
+  // React strips javascript: hrefs, so we set the draggable link's href
+  // imperatively after mount (see the install card below).
+  const linkRef = useRef<HTMLAnchorElement | null>(null);
+
+  // Pre-fill from the bookmarklet's ?hash=&nameid= query params on mount.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const qHash = params.get("hash");
+    const qNameid = params.get("nameid");
+    if (qNameid) setNameid(qNameid);
+    if (qHash) setBookmarkletHash(qHash);
+  }, []);
+
+  // Install the javascript: href onto the draggable link after render.
+  useEffect(() => {
+    linkRef.current?.setAttribute("href", BOOKMARKLET);
+  }, []);
+
   // Same admin-key mechanism as scrape-nameids/page.tsx: the key the user
   // typed on the gate is sent as a bearer on every request.
   const loadMissing = useCallback(async () => {
@@ -82,13 +113,20 @@ export default function SetNameidPage() {
     setSubmitError(null);
     setResult(null);
     try {
+      const trimmedSlug = slug.trim();
+      // Prefer the typed slug; fall back to the bookmarklet's hash when the
+      // slug field is empty. The endpoint resolves a hash via steamMarketId.
+      const payload =
+        !trimmedSlug && bookmarkletHash
+          ? { hash: bookmarkletHash, nameid: nameid.trim() }
+          : { slug: trimmedSlug, nameid: nameid.trim() };
       const res = await fetch("/api/admin/item-nameid", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${key}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ slug: slug.trim(), nameid: nameid.trim() }),
+        body: JSON.stringify(payload),
       });
       if (res.status === 401) {
         setSubmitError(
@@ -104,9 +142,10 @@ export default function SetNameidPage() {
       setResult(data);
       if (data.updated > 0) {
         // Clear the form and refresh the worklist so the item we just set
-        // drops off the list.
+        // drops off the list. Also drop the bookmarklet hash now it's saved.
         setSlug("");
         setNameid("");
+        setBookmarkletHash(null);
         void loadMissing();
       }
     } catch (err) {
@@ -114,7 +153,7 @@ export default function SetNameidPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [key, slug, nameid, loadMissing]);
+  }, [key, slug, nameid, bookmarkletHash, loadMissing]);
 
   if (!authed) {
     return (
@@ -158,6 +197,44 @@ export default function SetNameidPage() {
         </p>
       </div>
 
+      {/* One-click grabber install */}
+      <Card className="bg-purple-500/5 border-purple-500/30">
+        <CardContent className="p-5">
+          <div className="flex items-start gap-3">
+            <Bookmark className="h-4 w-4 text-purple-300 mt-0.5 shrink-0" />
+            <div className="text-xs text-purple-100/90 leading-relaxed space-y-3 flex-1 min-w-0">
+              <p className="font-semibold text-purple-200">
+                Install the 1-click grabber
+              </p>
+              {/* Draggable bookmarklet. React strips javascript: hrefs, so the
+                  href is set imperatively via linkRef in a useEffect above;
+                  onClick preventDefault stops a click from navigating. */}
+              <a
+                ref={linkRef}
+                href="#"
+                onClick={(e) => e.preventDefault()}
+                draggable
+                className="inline-flex cursor-grab items-center gap-2 rounded-md border border-purple-400/40 bg-purple-600/30 px-3 py-2 font-semibold text-purple-50 transition hover:bg-purple-600/50 active:cursor-grabbing"
+              >
+                <Bookmark className="h-3.5 w-3.5" />
+                📌 Grab nameid &rarr; sbox
+              </a>
+              <p>
+                Drag the button to your bookmarks bar (or make a new bookmark
+                and paste the code below as its URL). Then on any S&box
+                item&apos;s Steam Market page (logged in), click it &mdash; it
+                reads the nameid and opens this page pre-filled.
+              </p>
+              <pre className="overflow-x-auto rounded bg-black/40 p-2">
+                <code className="font-mono text-[10px] leading-snug text-purple-100/80 break-all whitespace-pre-wrap">
+                  {BOOKMARKLET}
+                </code>
+              </pre>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="bg-blue-500/5 border-blue-500/30">
         <CardContent className="p-5">
           <div className="flex items-start gap-3">
@@ -195,10 +272,22 @@ export default function SetNameidPage() {
       {/* Submit form */}
       <Card className="bg-neutral-900/40 border-neutral-800">
         <CardContent className="p-5">
+          {bookmarkletHash && (
+            <div className="mb-3 rounded-md border border-purple-500/30 bg-purple-500/10 px-3 py-2 text-xs text-purple-200">
+              From bookmarklet &mdash; Steam item:{" "}
+              <span className="font-mono break-all text-purple-100">
+                {bookmarkletHash}
+              </span>
+              <span className="block text-purple-200/70 mt-0.5">
+                Leave the slug blank to save against this item.
+              </span>
+            </div>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              if (slug.trim() && nameid.trim()) void submit();
+              if (nameid.trim() && (slug.trim() || bookmarkletHash))
+                void submit();
             }}
             className="space-y-3"
           >
@@ -235,7 +324,11 @@ export default function SetNameidPage() {
             </div>
             <Button
               type="submit"
-              disabled={submitting || !slug.trim() || !nameid.trim()}
+              disabled={
+                submitting ||
+                !nameid.trim() ||
+                (!slug.trim() && !bookmarkletHash)
+              }
               className="w-full bg-purple-600 hover:bg-purple-700 text-white gap-2"
             >
               {submitting ? (
