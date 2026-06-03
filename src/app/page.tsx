@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ItemCard } from "@/components/items/item-card";
+import { NewDropCard, type NewDropItem } from "@/components/items/new-drop-card";
 import { prisma } from "@/lib/db";
 import { formatRelativeTime } from "@/lib/utils";
 import { Price } from "@/components/ui/price";
@@ -34,6 +35,14 @@ import { NewsletterSignupForm } from "@/components/newsletter/signup-form";
 // Render at request time — homepage data changes every sync cycle (15-30 min).
 // Next.js will cache the rendered HTML briefly at the edge anyway.
 export const revalidate = 300; // 5 minutes
+
+// New Drops teaser mirrors the /new page's 30-day createdAt window.
+const NEW_DROPS_WINDOW_DAYS = 30;
+
+// Helper keeps Date.now() out of the component render body (react-hooks/purity).
+function windowStart(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+}
 
 interface Item {
   id: string;
@@ -129,7 +138,7 @@ const features = [
 async function getHomepageData() {
   // One roundtrip to the DB for everything we need on the homepage.
   // Running these in parallel so we don't stall the response.
-  const [allItems, trending, losers, expensive, rarest, limited, storeDrops, mostTraded] =
+  const [allItems, trending, losers, expensive, rarest, limited, storeDrops, mostTraded, newDrops] =
     await Promise.all([
       prisma.item.findMany({
         select: { currentPrice: true, volume: true, totalSupply: true, type: true },
@@ -178,6 +187,27 @@ async function getHomepageData() {
         orderBy: { totalSales: { sort: "desc", nulls: "last" } },
         take: 6,
       }),
+      // New Drops teaser — newest items added in the last 30 days, newest
+      // first. Mirrors the /new feed; NewDropCard needs createdAt +
+      // steamItemNameId for the "added Xd ago" / syncing badges.
+      prisma.item.findMany({
+        where: { createdAt: { gte: windowStart(NEW_DROPS_WINDOW_DAYS) } },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          type: true,
+          imageUrl: true,
+          currentPrice: true,
+          priceChange24h: true,
+          volume: true,
+          isLimited: true,
+          createdAt: true,
+          steamItemNameId: true,
+        },
+      }),
     ]);
 
   const lastUpdatedRow = await prisma.item.findFirst({
@@ -217,6 +247,7 @@ async function getHomepageData() {
     limited: limited as unknown as Item[],
     storeDrops: storeDrops as unknown as Item[],
     mostTraded: mostTraded as unknown as Item[],
+    newDrops: newDrops as NewDropItem[],
     categoryCounts,
     stats: {
       totalItems: allItems.length,
@@ -239,6 +270,7 @@ export default async function HomePage() {
     limited,
     storeDrops,
     mostTraded,
+    newDrops,
     categoryCounts,
     stats,
   } =
@@ -502,6 +534,38 @@ export default async function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* New Drops — freshest items added to the tracker (by createdAt) in
+          the last 30 days. Distinct from "New Store Drops" below (which is
+          the live in-game store rotation). Hidden entirely when empty so the
+          homepage never shows an empty placeholder. */}
+      {newDrops.length > 0 && (
+        <section className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-purple-500/10">
+                <Sparkles className="h-5 w-5 text-purple-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">New Drops</h2>
+                <p className="text-xs text-neutral-500">
+                  Freshest S&box skins added to the tracker
+                </p>
+              </div>
+            </div>
+            <Link href="/new">
+              <Button variant="ghost" size="sm" className="text-neutral-400 gap-1">
+                View all <ArrowRight className="h-3 w-3" />
+              </Button>
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {newDrops.map((item) => (
+              <NewDropCard key={item.id} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* New Store Drops — items in the active rotation, freshest first.
           Empty section is hidden so an empty post-rotation window doesn't
