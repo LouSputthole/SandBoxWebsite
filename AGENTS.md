@@ -12,6 +12,8 @@ CoinMarketCap-style tracker for S&box Steam cosmetics. Live on Vercel at sboxski
 
 **Data pipeline:** Steam Market APIs (prices, orders, inventory) + sbox.dev API (supply, owners, top holders, store rotation, release dates). All outbound requests to third parties are anonymous — **no custom User-Agent ever** so we blend into generic Vercel traffic and can't be individually banned.
 
+> **sbox.dev enrichment runs in GitHub Actions, NOT the Vercel cron.** api.sbox.dev sits behind Cloudflare, which 403s Vercel's datacenter IPs (confirmed 2026-06-06: 403 from Vercel, 200 from a residential / GitHub-runner IP — it's an IP/ASN block, a browser User-Agent does NOT help). So `syncSboxData` silently enriched nothing from ~2026-05-19. The working path: `.github/workflows/enrich-sbox.yml` (daily) → `scripts/enrich-from-sbox.mjs` fetches sbox.dev from a runner IP Cloudflare allows → POSTs raw per-skin payloads to `POST /api/admin/enrich-items`, which applies the same field-mapping + `computeScarcityScore` and writes the Item rows. Needs repo secret `SBOXSKINS_ADMIN_KEY` = the site's `ANALYTICS_KEY`. The Vercel-side `syncSboxData`/`discoverSboxSkins` fetches remain (harmless, just 403 from Vercel) — don't rely on them; don't "fix" enrichment by moving it back into the Vercel cron.
+
 ## Critical project conventions
 
 1. **Don't identify ourselves in outbound fetches.** No `User-Agent: sboxskins.gg/1.0`. Blend into Vercel traffic — Lou's explicit preference. Targeted ban > blanket ban.
