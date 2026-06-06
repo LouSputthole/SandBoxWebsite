@@ -9,6 +9,7 @@ import {
   searchMarketByQuery,
 } from "@/lib/steam/client";
 import type { SteamSearchResult, SyncResult } from "@/lib/steam/types";
+import { sboxFetch } from "@/lib/sbox/fetch";
 
 /**
  * Items we know exist on the Steam Market but have been missing from
@@ -1030,7 +1031,7 @@ interface SboxSupplyData {
 
 async function fetchSboxSkin(slug: string): Promise<SboxSkinData | null> {
   try {
-    const res = await fetch(`https://api.sbox.dev/v1/skins/${slug}`, {
+    const res = await sboxFetch(`https://api.sbox.dev/v1/skins/${slug}`, {
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return null;
@@ -1064,7 +1065,7 @@ async function fetchSboxSkinImage(slug: string): Promise<string | null> {
   ];
   for (const url of pages) {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      const res = await sboxFetch(url, { signal: AbortSignal.timeout(10000) });
       if (!res.ok) continue;
       const html = await res.text();
       const found = extractImageFromHtml(html);
@@ -1302,7 +1303,7 @@ function findSkinDataInJson(
 
 async function fetchSboxSupply(slug: string): Promise<SboxSupplyData | null> {
   try {
-    const res = await fetch(`https://api.sbox.dev/v1/skins/${slug}/supply-sources`, {
+    const res = await sboxFetch(`https://api.sbox.dev/v1/skins/${slug}/supply-sources`, {
       signal: AbortSignal.timeout(10000),
     });
     if (!res.ok) return null;
@@ -1417,7 +1418,7 @@ export async function fetchSboxSkinsListDetailed(): Promise<ListProbeResult> {
       parsedCount: 0,
     };
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      const res = await sboxFetch(url, { signal: AbortSignal.timeout(15000) });
       a.status = res.status;
       const text = await res.text();
       a.bytes = text.length;
@@ -1455,7 +1456,7 @@ export async function fetchSboxSkinsListDetailed(): Promise<ListProbeResult> {
       parsedCount: 0,
     };
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(15000) });
+      const res = await sboxFetch(url, { signal: AbortSignal.timeout(15000) });
       a.status = res.status;
       const html = await res.text();
       a.bytes = html.length;

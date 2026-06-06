@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
+import { sboxFetch } from "@/lib/sbox/fetch";
 
 /**
  * GET /api/admin/debug-sbox?slug=hard-hat
@@ -30,7 +31,7 @@ export async function GET(request: NextRequest) {
   let raw: unknown;
   let status: number | null = null;
   try {
-    const res = await fetch(`https://api.sbox.dev/v1/skins/${slug}`, {
+    const res = await sboxFetch(`https://api.sbox.dev/v1/skins/${slug}`, {
       signal: AbortSignal.timeout(10000),
     });
     status = res.status;

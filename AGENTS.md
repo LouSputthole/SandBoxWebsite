@@ -10,11 +10,11 @@ CoinMarketCap-style tracker for S&box Steam cosmetics. Live on Vercel at sboxski
 
 **Stack:** Next.js 16 (App Router), Prisma 7 (with `@prisma/adapter-pg`), React 19, Tailwind, Upstash Redis (optional), Neon Postgres, Vercel cron, Steam OAuth, Twitter API v2, Anthropic API (key set, not yet wired).
 
-**Data pipeline:** Steam Market APIs (prices, orders, inventory) + sbox.dev API (supply, owners, top holders, store rotation, release dates). All outbound requests to third parties are anonymous — **no custom User-Agent ever** so we blend into generic Vercel traffic and can't be individually banned.
+**Data pipeline:** Steam Market APIs (prices, orders, inventory) + sbox.dev API (supply, owners, top holders, store rotation, release dates). All outbound requests to third parties are anonymous — **no *self-identifying* User-Agent ever** so we blend in and can't be individually banned. (sbox.dev/sbox.game calls send a *generic browser* UA via `sboxFetch` — see convention #1 — because UA-less datacenter requests get 403'd.)
 
 ## Critical project conventions
 
-1. **Don't identify ourselves in outbound fetches.** No `User-Agent: sboxskins.gg/1.0`. Blend into Vercel traffic — Lou's explicit preference. Targeted ban > blanket ban.
+1. **Don't identify ourselves in outbound fetches.** Never send a self-identifying `User-Agent: sboxskins.gg/1.0`. Blend in — Lou's explicit preference. Targeted ban > blanket ban. **Amended 2026-06-06:** sbox.dev/sbox.game fetches now go through `sboxFetch` (`src/lib/sbox/fetch.ts`), which sends a *generic browser* User-Agent. sbox.dev began 403'ing UA-less datacenter requests ~2026-05-19, silently killing all enrichment from Vercel (every item frozen, new drops never enriched); a common Chrome UA blends in as ordinary browser traffic — the opposite of self-identifying — and restores it. Use `sboxFetch` for any new sbox-host call; do NOT add a bare UA-less `fetch` back. Steam fetches stay UA-less (Steam isn't blocking).
 2. **Cache stale data, never null it.** If sbox.dev times out on an item, keep the existing DB row. Stale > "N/A".
 3. **No JSON endpoints for our derived metrics.** CSV export only. JSON API would let competitors harvest scarcity score trivially.
 4. **Server components can't pass event handlers down.** Interactive widgets (onChange, onClick) need `"use client"` wrappers.

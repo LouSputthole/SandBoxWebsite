@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
+import { sboxFetch } from "@/lib/sbox/fetch";
 
 /**
  * GET /api/admin/debug-fetch?url=https://sbox.dev/store
@@ -56,7 +57,7 @@ export async function GET(request: NextRequest) {
   let status: number | null = null;
   let body = "";
   try {
-    const res = await fetch(parsed.toString(), {
+    const res = await sboxFetch(parsed.toString(), {
       signal: AbortSignal.timeout(15000),
     });
     status = res.status;
