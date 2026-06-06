@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
 import { computeScarcityScore } from "@/lib/services/sync-service";
+import { invalidatePattern } from "@/lib/redis/cache";
 
 /**
  * POST /api/admin/enrich-items
@@ -191,6 +192,14 @@ export async function POST(request: NextRequest) {
     } catch (err) {
       skipped.push(`${slug}: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  // Bust the read caches so the fresh supply/owner/category/scarcity
+  // values actually surface — /api/items, item detail, etc. all read
+  // through Redis (mirrors what /api/sync does after a write).
+  if (updated > 0) {
+    await invalidatePattern("items:*");
+    await invalidatePattern("item:*");
   }
 
   return NextResponse.json({ ok: true, updated, notFound, skipped });
