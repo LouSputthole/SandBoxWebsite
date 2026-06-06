@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         sboxskins nameid harvester
 // @namespace    https://sboxskins.gg
-// @version      1.0.1
-// @description  Grabs S&box item_nameids from Steam Market pages (in your real, logged-in browser — no bot detection) and sends them to sboxskins.gg so buy/sell order books fill in. Passive capture on any item page, plus a "Harvest all missing" command that walks the whole backlog with a persistent progress bar.
+// @version      1.0.2
+// @description  Grabs S&box item_nameids from Steam Market pages (in your real, logged-in browser — no bot detection) and sends them to sboxskins.gg so buy/sell order books fill in. Captures the nameid from Steam's own order-book network call; passive capture on any item page + a "Harvest all missing" command that walks the backlog with a persistent progress bar.
 // @author       sboxskins.gg
 // @match        https://steamcommunity.com/market/*
 // @connect      sboxskins.gg
@@ -10,7 +10,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_registerMenuCommand
-// @run-at       document-idle
+// @grant        unsafeWindow
+// @run-at       document-start
 // @downloadURL  https://sboxskins.gg/sbox-nameid-harvester.user.js
 // @updateURL    https://sboxskins.gg/sbox-nameid-harvester.user.js
 // ==/UserScript==
@@ -21,29 +22,31 @@
   var APP = "590830";
   var API = "https://sboxskins.gg";
   var LISTING_RE = new RegExp("/market/listings/" + APP + "/([^/?#]+)");
-  var DELAY_MS = 3500;        // pause between items (polite to Steam)
-  var READ_TIMEOUT_MS = 10000; // how long to wait for a page's nameid to render
-  var POST_TIMEOUT_MS = 15000; // network timeout so nothing can hang forever
+  var DELAY_MS = 3500;
+  var READ_TIMEOUT_MS = 12000;
+  var POST_TIMEOUT_MS = 15000;
 
-  function log() {
-    try { console.log.apply(console, ["[sbox-harvester]"].concat([].slice.call(arguments))); } catch (e) {}
-  }
+  function log() { try { console.log.apply(console, ["[sbox-harvester]"].concat([].slice.call(arguments))); } catch (e) {} }
 
-  // Belt + suspenders: also capture the nameid from the order-book AJAX call.
+  // --- Capture item_nameid from Steam's own order-book request (the reliable source).
+  // Installed at document-start, on the PAGE's real XHR/fetch via unsafeWindow (no inline
+  // <script> injection, so Steam's CSP can't block it).
   var capturedNameid = null;
-  function hookUrl(u) {
-    try { var m = String(u).match(/itemordershistogram[^"']*item_nameid=(\d+)/); if (m) capturedNameid = m[1]; } catch (e) {}
+  function capFromUrl(u) {
+    try { var s = String(u), x = s.indexOf("item_nameid="); if (x >= 0) { var m = s.substr(x + 12).match(/^[0-9]+/); if (m) capturedNameid = m[0]; } } catch (e) {}
   }
-  try { var _open = XMLHttpRequest.prototype.open; XMLHttpRequest.prototype.open = function (mth, u) { hookUrl(u); return _open.apply(this, arguments); }; } catch (e) {}
-  try { if (window.fetch) { var _f = window.fetch; window.fetch = function (u) { hookUrl(u); return _f.apply(this, arguments); }; } } catch (e) {}
+  try {
+    var W = (typeof unsafeWindow !== "undefined" && unsafeWindow) ? unsafeWindow : window;
+    var _open = W.XMLHttpRequest.prototype.open;
+    W.XMLHttpRequest.prototype.open = function (method, url) { capFromUrl(url); return _open.apply(this, arguments); };
+    if (W.fetch) { var _f = W.fetch; W.fetch = function (u) { capFromUrl(u); return _f.apply(this, arguments); }; }
+    log("network hook installed");
+  } catch (e) { log("network hook failed:", e); }
 
   function getKeyQuiet() { return (GM_getValue("sbox_admin_key", "") || "").trim(); }
   function ensureKey() {
     var k = getKeyQuiet();
-    if (!k) {
-      k = window.prompt("sboxskins admin key (ANALYTICS_KEY).\nStored only in Tampermonkey on this machine; only ever sent to sboxskins.gg.");
-      if (k) { k = k.trim(); GM_setValue("sbox_admin_key", k); }
-    }
+    if (!k) { k = window.prompt("sboxskins admin key (ANALYTICS_KEY).\nStored only in Tampermonkey on this machine; only ever sent to sboxskins.gg."); if (k) { k = k.trim(); GM_setValue("sbox_admin_key", k); } }
     return k || "";
   }
 
@@ -51,7 +54,6 @@
   function setQ(q) { sessionStorage.setItem("sbox_harvest_q", JSON.stringify(q)); }
   function clearQ() { sessionStorage.removeItem("sbox_harvest_q"); }
 
-  // Persistent top bar, rebuilt from the queue on every page so progress is always visible.
   function banner() {
     try {
       var q = getQ();
@@ -81,25 +83,31 @@
 
   function readNameidOnce() {
     if (capturedNameid) return capturedNameid;
-    var s = document.documentElement.innerHTML, k = "Market_LoadOrderSpread(", i = s.indexOf(k);
-    if (i < 0) return null;
-    var j = s.indexOf(")", i); if (j < 0) return null;
-    var id = s.slice(i + k.length, j).trim();
-    return /^[0-9]+$/.test(id) ? id : null;
+    var h = document.documentElement.innerHTML;
+    var m = h.match(/Market_LoadOrderSpread\(\s*(\d+)\s*\)/); if (m) return m[1];
+    var m2 = h.match(/item_nameid["'=:\s]{1,4}(\d{2,})/); if (m2) return m2[1];
+    return null;
   }
   function readNameid(cb) {
-    var start = Date.now();
-    (function poll() {
+    var t = Date.now();
+    (function p() {
       var id = readNameidOnce();
       if (id) { cb(id); return; }
-      if (Date.now() - start > READ_TIMEOUT_MS) { cb(null); return; }
-      setTimeout(poll, 1200);
+      if (Date.now() - t > READ_TIMEOUT_MS) { cb(null); return; }
+      setTimeout(p, 1000);
     })();
+  }
+
+  function diagnose(hash) {
+    try {
+      var h = document.documentElement.innerHTML;
+      log("DIAGNOSTIC", hash, "| loggedIn:", h.indexOf('g_steamID = "') >= 0, "| MarketLoadOrderSpread:", h.indexOf("Market_LoadOrderSpread") >= 0, "| item_nameid_text:", h.indexOf("item_nameid") >= 0, "| capturedFromNetwork:", capturedNameid, "| orderUI:", !!document.querySelector("#market_commodity_buyrequests,#market_buyorder_info,#market_commodity_forsale"), "| htmlLen:", h.length);
+    } catch (e) {}
   }
 
   function sendNameid(hash, nameid, cb) {
     var key = getKeyQuiet();
-    if (!key) { log("no key set; skipping POST for", hash); cb(false); return; }
+    if (!key) { log("no key; skipping POST for", hash); cb(false); return; }
     var done = false;
     function once(ok) { if (done) return; done = true; cb(ok); }
     GM_xmlhttpRequest({
@@ -117,7 +125,7 @@
   function advance(q) {
     banner();
     if (q.list.length) { log("advancing in", DELAY_MS, "ms;", q.list.length, "left"); setTimeout(function () { gotoHash(q.list[0]); }, DELAY_MS); }
-    else { clearQ(); banner(); toast("Harvest complete — " + q.done + " nameids sent. 🎉", "#15803d"); log("complete:", q.done, "sent"); }
+    else { clearQ(); banner(); toast("Harvest complete — " + q.done + " sent. 🎉", "#15803d"); log("complete:", q.done, "sent"); }
   }
 
   function startHarvest() {
@@ -130,7 +138,7 @@
         if (r.status === 401) { GM_setValue("sbox_admin_key", ""); toast("Admin key rejected.", "#b91c1c"); return; }
         var data; try { data = JSON.parse(r.responseText); } catch (e) { toast("Bad response from sboxskins.", "#b91c1c"); return; }
         var list = (data.items || []).map(function (it) { return it.steamMarketId; }).filter(Boolean);
-        if (!list.length) { toast("Nothing to harvest — every item already has a nameid. 🎉", "#15803d"); return; }
+        if (!list.length) { toast("Nothing to harvest — all set. 🎉", "#15803d"); return; }
         setQ({ list: list, total: list.length, done: 0 });
         log("starting harvest of", list.length, "items");
         toast("Harvesting " + list.length + " items — a bar appears up top. Leave this tab open.");
@@ -149,6 +157,7 @@
     log("listing page:", hash, "| harvesting:", harvesting);
     readNameid(function (nameid) {
       try {
+        if (!nameid) diagnose(hash);
         if (harvesting) {
           var fin = function (ok) {
             q.done = (q.done || 0) + 1; q.list.shift(); setQ(q); banner();
@@ -167,9 +176,11 @@
     });
   }
 
+  // Menu commands can register immediately.
   GM_registerMenuCommand("Harvest all missing nameids → sboxskins", startHarvest);
   GM_registerMenuCommand("Reset sboxskins admin key", function () { GM_setValue("sbox_admin_key", ""); toast("Admin key cleared."); });
 
-  banner();
-  if (LISTING_RE.test(location.pathname)) onListingPage();
+  // DOM-dependent work waits until the body exists.
+  function init() { banner(); if (LISTING_RE.test(location.pathname)) onListingPage(); }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init); else init();
 })();
