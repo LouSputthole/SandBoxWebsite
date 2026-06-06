@@ -19,6 +19,7 @@ if (!KEY) {
 // from sbox.dev's. ("Snapback Black" is "black-snapback" on sbox.dev.)
 const SLUG_OVERRIDES = {
   "snapback-black": "black-snapback",
+  "sausage-survivors-2-tshirt": "ss2-tshirt",
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
