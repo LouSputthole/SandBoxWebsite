@@ -108,10 +108,12 @@ export async function GET(request: NextRequest) {
       // Process 40 at a time — the cron runs frequently enough to cycle through all items
       const priceResult = await syncPriceBatch(40);
 
-      // Step 3: Enrich with sbox.dev data (supply, store status, holders, etc.)
-      const sboxResult = await syncSboxData();
+      // sbox.dev enrichment runs in GitHub Actions (enrich-sbox.yml), NOT
+      // here — api.sbox.dev Cloudflare-blocks Vercel's IPs (403), so an
+      // in-cron sync just burns cron time firing ~200 doomed requests.
+      // See AGENTS.md "sbox.dev enrichment runs in GitHub Actions".
 
-      // Step 4: Top up Steam nameids for the newest just-linked items so a
+      // Step 3: Top up Steam nameids for the newest just-linked items so a
       // brand-new drop gets its buy/sell order book within a sync cycle
       // rather than waiting for the 6h nameid cron. Bounded + best-effort —
       // never let it break the core sync.
@@ -127,9 +129,8 @@ export async function GET(request: NextRequest) {
         ...itemResult,
         pricePointsCreated: itemResult.pricePointsCreated + priceResult.pricePointsCreated,
         priceBatchProcessed: priceResult.itemsProcessed,
-        sboxEnriched: sboxResult.updated,
         nameIdsBackfilled,
-        errors: [...itemResult.errors, ...priceResult.errors, ...sboxResult.errors],
+        errors: [...itemResult.errors, ...priceResult.errors],
         duration: itemResult.duration + priceResult.duration,
       };
 
