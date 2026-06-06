@@ -1,0 +1,13 @@
+name: sbox-probe
+on:
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe api.sbox.dev from a GitHub runner
+        run: |
+          echo "RUNNER_IP=$(curl -s --max-time 10 https://api.ipify.org)"
+          echo "DEFAULT_UA=$(curl -s -o /tmp/a.txt -w '%{http_code}' --max-time 25 https://api.sbox.dev/v1/skins/blue-tshirt) bytes=$(wc -c </tmp/a.txt)"
+          echo "BROWSER_UA=$(curl -s -o /tmp/b.txt -w '%{http_code}' --max-time 25 -A 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36' https://api.sbox.dev/v1/skins/blue-tshirt) bytes=$(wc -c </tmp/b.txt)"
+          echo "BODY_HEAD=$(head -c 120 /tmp/b.txt)"
