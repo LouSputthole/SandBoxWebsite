@@ -81,6 +81,23 @@ const KIND_LABELS: Record<string, string> = {
   "weekly-market-change": "Weekly Market Change",
   "market-insight": "Market Insight",
   "game-update": "S&box Game Update",
+  "new-high": "All-Time High",
+  "whale-watch": "Whale Watch",
+  "most-owned": "Most Owned",
+  "tight-float": "Tight Float",
+  "most-traded": "Most Traded (24h)",
+  "intraday-mover": "Intraday Mover (6h)",
+  "new-drop": "New Drop",
+  "movers-roundup": "Movers Roundup",
+  "scarcity-leader": "Scarcity Leader",
+  "most-common": "Most Common",
+  "top-value": "Top Market Cap",
+  "under-a-dollar": "Under $1",
+  "leaving-store": "Leaving Store",
+  "on-this-day": "On This Day",
+  "head-to-head": "Head to Head",
+  "top-five": "Top 5 Priciest",
+  "category-king": "Category King",
 };
 
 function formatTweetTime(iso: string): string {
@@ -661,7 +678,7 @@ export default function TweetAdminPage() {
               className="rounded-md bg-neutral-950/60 border border-neutral-700 px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500"
             >
               <option value="">Any tone</option>
-              <option value="casual">Casual (Wendy's)</option>
+              <option value="casual">Casual (Wendy&apos;s)</option>
               <option value="analytical">Analytical</option>
               <option value="hype">Hype</option>
               <option value="cs-ref">CS comparison</option>
@@ -975,7 +992,8 @@ export default function TweetAdminPage() {
               <MessageCircle className="h-10 w-10 mx-auto mb-3 text-neutral-700" />
               <p className="text-sm">No recent S&box mentions found.</p>
               <p className="text-xs mt-1 text-neutral-600">
-                We search for @SboxSkinsgg, &ldquo;s&amp;box&rdquo;, &ldquo;sbox skins&rdquo;, and related keywords.
+                Tracked accounts (@s8box, @garrynewman, @sboxverse) + keyword
+                mentions of @SboxSkinsgg, &ldquo;s&amp;box&rdquo;, &ldquo;sbox skins&rdquo;, etc.
               </p>
             </div>
           )}

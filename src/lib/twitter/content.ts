@@ -1,6 +1,25 @@
 import { prisma } from "@/lib/db";
 import { formatPrice } from "@/lib/utils";
 import { fetchAllGameNews, filterUnposted } from "@/lib/game-news/sources";
+import {
+  genWhaleWatch,
+  genMostOwned,
+  genTightFloat,
+  genMostTraded,
+  genIntradayMover,
+  genNewDrop,
+  genMoversRoundup,
+  genScarcityLeader,
+  genMostCommon,
+  genTopValue,
+  genUnderADollar,
+  genLeavingStore,
+  genNewHigh,
+  genOnThisDay,
+  genHeadToHead,
+  genTopFive,
+  genCategoryKing,
+} from "./content-extra";
 
 export type TweetKind =
   | "top-gainer"
@@ -15,7 +34,28 @@ export type TweetKind =
   | "weekly-recap"
   | "weekly-market-change"
   | "market-insight"
-  | "game-update";
+  | "game-update"
+  // ---- 2026-06-07: new kinds (generators live in ./content-extra) ----
+  // ownership & whales
+  | "whale-watch"
+  | "most-owned"
+  | "tight-float"
+  // activity & momentum
+  | "most-traded"
+  | "intraday-mover"
+  | "new-drop"
+  | "movers-roundup"
+  // scarcity & value
+  | "scarcity-leader"
+  | "most-common"
+  | "top-value"
+  | "under-a-dollar"
+  // store, milestones & lists ("new-high" above = all-time-high kind)
+  | "leaving-store"
+  | "on-this-day"
+  | "head-to-head"
+  | "top-five"
+  | "category-king";
 
 /**
  * Voice preset for template selection. Each generator's template list is
@@ -50,21 +90,21 @@ export interface GeneratedTweet {
   approxLength: number;
 }
 
-const SITE = "https://sboxskins.gg";
+export const SITE = "https://sboxskins.gg";
 
 /** X counts every URL as 23 characters regardless of actual length. */
-function approximateLength(text: string): number {
+export function approximateLength(text: string): number {
   let result = text;
   result = result.replace(/https?:\/\/\S+/g, "x".repeat(23));
   return result.length;
 }
 
-function itemUrl(slug: string): string {
+export function itemUrl(slug: string): string {
   return `${SITE}/items/${slug}`;
 }
 
 /** Pick from an array using the same seed twice within a minute to avoid dupes on retries */
-function seedPick<T>(arr: T[], seed = Math.floor(Date.now() / 60_000)): T {
+export function seedPick<T>(arr: T[], seed = Math.floor(Date.now() / 60_000)): T {
   return arr[seed % arr.length];
 }
 
@@ -985,7 +1025,24 @@ export async function generateTweet(
     case "weekly-market-change": return genWeeklyMarketChange();
     case "market-insight": return genMarketInsight();
     case "game-update": return genGameUpdate();
-    case "new-high": return null; // reserved
+    case "new-high": return genNewHigh();
+    // ---- 2026-06-07 additions (generators in ./content-extra) ----
+    case "whale-watch": return genWhaleWatch();
+    case "most-owned": return genMostOwned();
+    case "tight-float": return genTightFloat();
+    case "most-traded": return genMostTraded();
+    case "intraday-mover": return genIntradayMover();
+    case "new-drop": return genNewDrop();
+    case "movers-roundup": return genMoversRoundup();
+    case "scarcity-leader": return genScarcityLeader();
+    case "most-common": return genMostCommon();
+    case "top-value": return genTopValue();
+    case "under-a-dollar": return genUnderADollar();
+    case "leaving-store": return genLeavingStore();
+    case "on-this-day": return genOnThisDay();
+    case "head-to-head": return genHeadToHead();
+    case "top-five": return genTopFive();
+    case "category-king": return genCategoryKing();
   }
 }
 
@@ -1004,6 +1061,24 @@ export async function generateDrafts(): Promise<GeneratedTweet[]> {
     "weekly-market-change",
     "market-insight",
     "game-update",
+    // ---- 2026-06-07 additions ----
+    "new-high",
+    "whale-watch",
+    "most-owned",
+    "tight-float",
+    "most-traded",
+    "intraday-mover",
+    "new-drop",
+    "movers-roundup",
+    "scarcity-leader",
+    "most-common",
+    "top-value",
+    "under-a-dollar",
+    "leaving-store",
+    "on-this-day",
+    "head-to-head",
+    "top-five",
+    "category-king",
   ];
   const results = await Promise.all(kinds.map((k) => generateTweet(k)));
   return results.filter((r): r is GeneratedTweet => r !== null);
@@ -1041,12 +1116,22 @@ export async function pickScheduledTweet(): Promise<GeneratedTweet | null> {
   const rotation: TweetKind[] = [
     "top-gainer",
     "item-spotlight",
+    "whale-watch",
     "game-update",
     "rarest",
+    "most-traded",
     "market-cap",
+    "scarcity-leader",
     "top-loser",
+    "new-drop",
     "limited-edition",
+    "most-owned",
+    "intraday-mover",
     "item-spotlight",
+    "top-five",
+    "category-king",
+    "top-value",
+    "tight-float",
   ];
 
   // Try primary, fall through to others if primary has no data

@@ -248,3 +248,79 @@ export async function searchSboxMentions(maxResults = 20): Promise<TweetWithAuth
     return [];
   }
 }
+
+/**
+ * Accounts we actively monitor + draft replies to (beyond keyword mentions).
+ * These are influential S&box voices — replying to their posts with our
+ * live market data rides their reach. Handles WITHOUT the leading @.
+ *   - s8box       : the official S&box account (twitter:site on sbox.game)
+ *   - garrynewman : Garry Newman, Facepunch founder
+ *   - sboxverse   : S&box community / news account
+ * Edit this list to add/remove tracked accounts.
+ */
+export const TRACKED_ACCOUNTS: readonly string[] = [
+  "s8box",
+  "garrynewman",
+  "sboxverse",
+];
+
+/**
+ * Fetch recent ORIGINAL tweets (no retweets/replies) from specific accounts
+ * via the same recent-search endpoint searchSboxMentions uses — `from:`
+ * operators work on the standard search tier, so this needs no extra API
+ * access. Used by the mentions/replies admin flow to surface tracked-account
+ * posts for one-click reply drafting.
+ */
+export async function searchAccountTweets(
+  handles: readonly string[] = TRACKED_ACCOUNTS,
+  maxResults = 15,
+): Promise<TweetWithAuthor[]> {
+  const client = getTwitterClient();
+  if (!client || handles.length === 0) return [];
+
+  // Strip any stray @ and build (from:a OR from:b OR ...).
+  const froms = handles
+    .map((h) => h.replace(/^@/, "").trim())
+    .filter(Boolean)
+    .map((h) => `from:${h}`);
+  if (froms.length === 0) return [];
+  const query = `(${froms.join(" OR ")}) -is:retweet -is:reply`;
+  const fetchCount = Math.min(100, Math.max(10, maxResults * 2));
+
+  try {
+    const res = await client.v2.search(query, {
+      max_results: fetchCount,
+      "tweet.fields": ["created_at", "author_id"],
+      expansions: ["author_id"],
+      "user.fields": ["username", "name"],
+    });
+
+    const users = new Map<string, { username: string; name: string }>();
+    for (const u of res.includes?.users ?? []) {
+      users.set(u.id, { username: u.username, name: u.name });
+    }
+
+    const tweets: TweetWithAuthor[] = [];
+    for (const t of res.data?.data ?? []) {
+      const user = users.get(t.author_id ?? "") ?? {
+        username: "unknown",
+        name: "unknown",
+      };
+      tweets.push({
+        id: t.id,
+        text: t.text,
+        createdAt: t.created_at ?? new Date().toISOString(),
+        authorId: t.author_id ?? "",
+        authorUsername: user.username,
+        authorName: user.name,
+        tweetUrl: `https://x.com/${user.username}/status/${t.id}`,
+      });
+      if (tweets.length >= maxResults) break;
+    }
+    return tweets;
+  } catch (err) {
+    const e = err as { code?: number; data?: { detail?: string } };
+    console.error("[twitter] Account search failed:", e.data?.detail || err);
+    return [];
+  }
+}
