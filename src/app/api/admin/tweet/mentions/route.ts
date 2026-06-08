@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   searchSboxMentions,
   searchAccountTweets,
+  getTwitterClient,
   TRACKED_ACCOUNTS,
 } from "@/lib/twitter/client";
 import { draftReply } from "@/lib/twitter/reply";
@@ -39,10 +40,31 @@ export async function GET(request: NextRequest) {
   });
 
   if (merged.length === 0) {
-    return NextResponse.json({
-      mentions: [],
-      note: "No recent tracked-account or S&box-related tweets found (or Twitter credentials not configured).",
-    });
+    // Surface WHY it's empty — no creds, an API access/permission error, or
+    // genuinely no recent tweets. Reading/searching tweets needs a higher X
+    // API tier than posting, so an empty feed is often an access problem, not
+    // a quiet timeline. A tiny probe makes the real reason visible.
+    let note = "No recent tracked-account or S&box-related tweets in the search window.";
+    const client = getTwitterClient();
+    if (!client) {
+      note =
+        "Twitter credentials not configured (set TWITTER_API_KEY / _API_SECRET / _ACCESS_TOKEN / _ACCESS_TOKEN_SECRET).";
+    } else {
+      try {
+        await client.v2.search("from:garrynewman -is:retweet", {
+          max_results: 10,
+        });
+      } catch (err) {
+        const e = err as {
+          code?: number;
+          data?: { detail?: string; title?: string };
+        };
+        note = `X API search failed (HTTP ${e.code ?? "?"}): ${
+          e.data?.detail || e.data?.title || (err as Error).message
+        }`;
+      }
+    }
+    return NextResponse.json({ mentions: [], note });
   }
 
   const trackedSet = new Set(TRACKED_ACCOUNTS.map((h) => h.toLowerCase()));
