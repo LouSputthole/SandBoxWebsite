@@ -4,6 +4,17 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
+## Codebase knowledge graph (graphify) — CHECK THIS FIRST
+
+This repo ships a prebuilt knowledge graph of itself in `graphify-out/`. **Before grepping/reading broadly to understand how something works, query the graph** — it already maps the call/data relationships across all ~270 source files.
+
+- **Ask a question:** `/graphify query "how does the tweet system wire together"` (answers from `graphify-out/graph.json`, no rebuild).
+- **Trace a path / explain a node:** `/graphify path "generateTweet" "Twitter Posting API"` · `/graphify explain "guardAdminRoute"`.
+- **Read the map:** `graphify-out/GRAPH_REPORT.md` (god nodes, communities, surprising connections). Open `graphify-out/graph.html` in a browser for the interactive view.
+- **After a significant change** (new feature, refactor, files added/moved), refresh it: `/graphify . --update` (incremental — only re-extracts changed files), then commit the updated `graphify-out/`.
+
+God nodes (core abstractions): `guardAdminRoute()`, `formatPrice()`, `Button`, `generateTweet()`, `getCurrentUser()`. Communities of note: Twitter News Sourcing, Twitter Posting API, Tweet Admin Dashboard, Skin Discovery & Sync, Item Enrichment & Scarcity, Anthropic Content Generation.
+
 ## Project summary (sboxskins.gg)
 
 CoinMarketCap-style tracker for S&box Steam cosmetics. Live on Vercel at sboxskins.gg. Top-3 Google ranking. Actively competing against sbox.dev (a third-party tracker whose `.dev` domain makes it look official).
