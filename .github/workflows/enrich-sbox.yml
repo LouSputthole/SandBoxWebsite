@@ -1,29 +1,38 @@
-name: enrich-sbox
+name: discover-enrich-sbox
 
-# Enrich items with sbox.dev data (supply, owners, category, scarcity).
+# Discover new S&box skins + enrich existing ones from sbox.dev.
 #
-# Runs here instead of the Vercel cron because api.sbox.dev is behind
-# Cloudflare, which 403s Vercel's datacenter IPs (but allows GitHub
-# runner IPs). The script fetches sbox.dev and POSTs to the site's
-# /api/admin/enrich-items endpoint. Daily is plenty for supply data.
+# Runs here instead of the Vercel cron because sbox.dev is behind Cloudflare,
+# which 403s Vercel's datacenter IPs (but allows GitHub runner IPs + a browser
+# UA). The script reads sbox.dev/sitemap-skins.xml for the full catalog, fetches
+# each per-skin payload, and POSTs to /api/admin/enrich-items, which UPDATES
+# known items and CREATES ones we don't have yet (new store items + drops).
+# Hourly so new drops land on the site within ~1h.
 #
 # Requires repo secret: SBOXSKINS_ADMIN_KEY = the site's ANALYTICS_KEY.
 
 on:
   schedule:
-    - cron: "0 8 * * *" # daily, 08:00 UTC
+    - cron: "0 * * * *" # hourly
   workflow_dispatch:
+    inputs:
+      announce:
+        description: "Tweet genuinely-new drops (set false for a backfill)"
+        type: boolean
+        default: true
 
 jobs:
-  enrich:
+  discover-enrich:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "24"
-      - name: Enrich items from sbox.dev
+      - name: Discover + enrich from sbox.dev
         env:
           SBOXSKINS_ADMIN_KEY: ${{ secrets.SBOXSKINS_ADMIN_KEY }}
           SITE_URL: https://sboxskins.gg
-        run: node scripts/enrich-from-sbox.mjs
+          # Scheduled runs announce; workflow_dispatch honors the input.
+          SBOX_ANNOUNCE: ${{ github.event.inputs.announce || 'true' }}
+        run: node scripts/discover-from-sbox.mjs
