@@ -587,26 +587,61 @@ export async function seedItemFromSboxDev(
     return { itemId: null, matchedName: null, slug: null };
   }
 
-  // Use sbox.dev's slug verbatim — that way the next sbox.dev sync
-  // round can find this row by slug without ambiguity.
-  const itemType = inferItemType(
-    skin.itemType ?? "",
-    skin.name,
-  );
+  // Image discovery cascade: API response → page-scrape fallback. The
+  // sbox.dev API doesn't reliably expose the icon URL in the per-skin
+  // payload, but their /skins/<slug> page renders it in og:image metadata
+  // pointing at cdn.sbox.game/asset/<hash>.png. Scraping per-item is
+  // cheap (one extra fetch on first seed, never repeated since we store
+  // the resolved URL). NOTE: this page-scrape only works OFF Vercel —
+  // the on-Vercel ingest endpoint passes a pre-resolved image instead.
+  let imageUrl: string | null = pickSboxImage(skin);
+  if (!imageUrl) {
+    imageUrl = await fetchSboxSkinImage(slug);
+  }
+
+  const r = await seedItemFromSboxPayload(slug, skin, result, imageUrl);
+  return { itemId: r.itemId, matchedName: r.matchedName, slug: r.slug };
+}
+
+/**
+ * Create/refresh an Item row from an ALREADY-FETCHED sbox.dev `skin`
+ * payload. Split out of seedItemFromSboxDev so the on-Vercel ingest
+ * endpoint (/api/admin/enrich-items) can create rows from payloads the
+ * GitHub Action fetched — Vercel itself can't fetch sbox.dev (Cloudflare
+ * 403s its datacenter IPs), so the fetch must happen off-Vercel and the
+ * payload is handed here.
+ *
+ * Name-match dedupe: if the slug isn't found but a row with the same
+ * (case-insensitive) name exists, refresh that row instead of creating a
+ * duplicate — this is how sbox.dev's slug (e.g. "black-snapback") reconciles
+ * with our slug ("snapback-black"). On a name match we keep our canonical
+ * slug + name.
+ *
+ * `imageUrl` overrides the payload-derived image when provided (the caller
+ * may have resolved it via an off-Vercel page scrape).
+ */
+export async function seedItemFromSboxPayload(
+  slug: string,
+  skin: SboxSkinData,
+  result: SyncResult,
+  imageUrl?: string | null,
+): Promise<{
+  itemId: string | null;
+  matchedName: string | null;
+  slug: string | null;
+  created: boolean;
+}> {
+  if (!slug || !/^[a-z0-9-]+$/.test(slug) || !skin?.name) {
+    return { itemId: null, matchedName: null, slug: null, created: false };
+  }
+
+  const itemType = inferItemType(skin.itemType ?? "", skin.name);
 
   let existing = await prisma.item.findUnique({
     where: { slug },
     select: { id: true, slug: true, name: true },
   });
 
-  // Name-fallback for slug-rename situations. If sbox-discover sees
-  // a slug that no longer exists in our DB (because an operator
-  // relabeled the row, e.g. toothpick → cat-balaclava), look for a
-  // sibling row matching by exact name. If found, refresh that row's
-  // sbox.dev fields instead of seeding a new orphan with the old
-  // slug — otherwise we'd resurrect the duplicate every cron run.
-  // Mirrors the upsertItem name-fallback added in PR #68 for the
-  // Steam-side equivalent.
   let matchedByName = false;
   if (!existing) {
     existing = await prisma.item.findFirst({
@@ -617,9 +652,7 @@ export async function seedItemFromSboxDev(
   }
 
   // Description style mirrors the auto-generated text the regular Steam
-  // sync emits. Deliberately doesn't reference any third-party tracker
-  // — readers don't need to know our enrichment source, and namedropping
-  // a competitor in our own item descriptions would be silly.
+  // sync emits. Deliberately doesn't reference any third-party tracker.
   const description = `${skin.name} is a${
     /^[aeiou]/i.test(itemType) ? "n" : ""
   } S&box ${itemType}${
@@ -632,32 +665,28 @@ export async function seedItemFromSboxDev(
       : ""
   }Track price history, supply, and ownership over time.`;
 
-  // Image discovery cascade: API response → page-scrape fallback. The
-  // sbox.dev API doesn't reliably expose the icon URL in the per-skin
-  // payload, but their /skins/<slug> page renders it in og:image metadata
-  // pointing at cdn.sbox.game/asset/<hash>.png. Scraping per-item is
-  // cheap (one extra fetch on first seed, never repeated since we store
-  // the resolved URL).
-  let imageUrl: string | null = pickSboxImage(skin);
-  if (!imageUrl) {
-    imageUrl = await fetchSboxSkinImage(slug);
-  }
+  const resolvedImage = imageUrl ?? pickSboxImage(skin);
+  const rarityColor = skin.rarityColor
+    ? normalizeRarityColor(skin.rarityColor)
+    : null;
 
   const data = {
     name: skin.name,
     slug,
     // Leave steamMarketId null — non-marketable items don't have one,
-    // and the reconciliation pass in syncItems() will fill it in if
-    // and when the item gets a Market listing.
+    // and the reconciliation pass in syncItems() fills it in if/when the
+    // item gets a Market listing.
     type: itemType,
     description,
-    imageUrl,
+    imageUrl: resolvedImage,
     currentPrice: skin.price > 0 ? skin.price : null,
     storePrice: skin.releasePrice ?? null,
     releasePrice: skin.releasePrice ?? null,
     releaseDate: skin.release ? new Date(skin.release) : null,
-    isActiveStoreItem: skin.isActiveStoreItem,
-    isPermanentStoreItem: skin.isPermanentStoreItem,
+    // Non-nullable Boolean columns — coerce a missing/null payload value to
+    // false (a null would otherwise fail the Prisma create for new items).
+    isActiveStoreItem: skin.isActiveStoreItem ?? false,
+    isPermanentStoreItem: skin.isPermanentStoreItem ?? false,
     leavingStoreAt: skin.leavingStoreAt ? new Date(skin.leavingStoreAt) : null,
     totalSupply: skin.totalSupply,
     uniqueOwners: skin.uniqueOwners,
@@ -670,14 +699,16 @@ export async function seedItemFromSboxDev(
     workshopId: skin.workshopId,
     iconBackgroundColor: skin.iconBackgroundColor,
     itemDefinitionId: skin.itemDefinitionId ?? null,
+    isDroppableItem: skin.isDroppableItem ?? false,
+    droppedUnits: skin.droppedUnits ?? null,
+    rarity: skin.rarity ?? null,
+    ...(rarityColor ? { rarityColor } : {}),
     sboxSyncedAt: new Date(),
   };
 
   if (existing) {
-    // When matched-by-name (operator deliberately reslugged this
-    // row), don't overwrite slug or name — keep their canonical
-    // identity. All other sbox.dev fields are safe to refresh from
-    // the source, that's the whole point of the cron.
+    // When matched-by-name (slug differs from sbox.dev's), keep our
+    // canonical slug + name; refresh everything else.
     const updateData = matchedByName
       ? (() => {
           const { slug: _slug, name: _name, ...rest } = data;
@@ -686,15 +717,17 @@ export async function seedItemFromSboxDev(
       : data;
     await prisma.item.update({ where: { id: existing.id }, data: updateData });
     result.itemsUpdated++;
-    return { itemId: existing.id, matchedName: skin.name, slug: existing.slug };
+    return {
+      itemId: existing.id,
+      matchedName: skin.name,
+      slug: existing.slug,
+      created: false,
+    };
   }
 
-  const created = await prisma.item.create({
-    data,
-    select: { id: true },
-  });
+  const created = await prisma.item.create({ data, select: { id: true } });
   result.itemsCreated++;
-  return { itemId: created.id, matchedName: skin.name, slug };
+  return { itemId: created.id, matchedName: skin.name, slug, created: true };
 }
 
 /**
@@ -901,7 +934,7 @@ export async function captureMarketSnapshot(): Promise<void> {
 // sbox.dev API enrichment
 // ---------------------------------------------------------------------------
 
-interface SboxSkinData {
+export interface SboxSkinData {
   totalSupply: number;
   priceChange24h: number;
   priceChange24hPercent: number;
@@ -928,6 +961,11 @@ interface SboxSkinData {
   workshopId: string | null;
   iconBackgroundColor: string | null;
   itemDefinitionId: number | null;
+  // Drop-item fields — random in-game drops rather than store buys.
+  isDroppableItem?: boolean | null;
+  droppedUnits?: number | null;
+  rarity?: string | null;
+  rarityColor?: string | null;
   // Image fields — sbox.dev's exact key here has churned over versions
   // and we can't pin it down without poking the live API. Probe all
   // plausible names; pickSboxImage() picks the first non-null.
@@ -1955,6 +1993,12 @@ export async function syncSboxData(
           priceChange6h: skin.priceChange6h,
           priceChange6hPercent: skin.priceChange6hPercent,
           iconBackgroundColor: skin.iconBackgroundColor,
+          isDroppableItem: skin.isDroppableItem ?? false,
+          droppedUnits: skin.droppedUnits ?? null,
+          rarity: skin.rarity ?? null,
+          ...(skin.rarityColor
+            ? { rarityColor: normalizeRarityColor(skin.rarityColor) ?? undefined }
+            : {}),
           // Only include topHolders when supply fetch succeeded (see above).
           ...(topHolders !== undefined
             ? { topHolders: topHolders ?? Prisma.JsonNull }

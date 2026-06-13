@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
-import { computeScarcityScore } from "@/lib/services/sync-service";
+import {
+  computeScarcityScore,
+  normalizeRarityColor,
+  seedItemFromSboxPayload,
+  type SboxSkinData,
+} from "@/lib/services/sync-service";
+import type { SyncResult } from "@/lib/steam/types";
 import { invalidatePattern } from "@/lib/redis/cache";
 
 /**
@@ -27,6 +33,17 @@ import { invalidatePattern } from "@/lib/redis/cache";
  */
 
 interface SboxSkinPayload {
+  // Identity — required to CREATE a row when the slug isn't already in our DB.
+  name?: string | null;
+  slug?: string | null;
+  marketable?: boolean | null;
+  // Drop-item fields.
+  isDroppableItem?: boolean | null;
+  droppedUnits?: number | null;
+  rarity?: string | null;
+  rarityColor?: string | null;
+  // Pre-resolved icon (the GitHub Action resolves it; Vercel can't scrape sbox.dev).
+  iconUrl?: string | null;
   totalSupply?: number | null;
   uniqueOwners?: number | null;
   supplyOnMarket?: number | null;
@@ -100,7 +117,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Tweet new drops by default; the backfill sends { announce: false } so
+  // week-old items we're only-now discovering don't get announced.
+  const announce =
+    (body as { announce?: boolean })?.announce !== false;
+
   let updated = 0;
+  const created: string[] = [];
+  const newlyCreated: { slug: string; skin: SboxSkinPayload }[] = [];
   const notFound: string[] = [];
   const skipped: string[] = [];
 
@@ -183,24 +207,149 @@ export async function POST(request: NextRequest) {
             ? { topHolders: topHolders as Prisma.InputJsonValue }
             : {}),
           ...(storeStatus !== undefined ? { storeStatus } : {}),
+          // Drop-item fields (only-when-present so we never null a known value).
+          ...(typeof skin.isDroppableItem === "boolean"
+            ? { isDroppableItem: skin.isDroppableItem }
+            : {}),
+          ...(skin.droppedUnits != null ? { droppedUnits: skin.droppedUnits } : {}),
+          ...(skin.rarity ? { rarity: skin.rarity } : {}),
+          // Validate hex via normalizeRarityColor (matches the create path +
+          // syncSboxData) so a malformed color can't slip through the update.
+          ...(skin.rarityColor && normalizeRarityColor(skin.rarityColor)
+            ? { rarityColor: normalizeRarityColor(skin.rarityColor)! }
+            : {}),
           sboxSyncedAt: new Date(),
           scarcityScore,
         },
       });
-      if (res.count > 0) updated += res.count;
-      else notFound.push(slug);
+      if (res.count > 0) {
+        updated += res.count;
+      } else if (skin.name) {
+        // No existing row by slug — create it (discovery). seedItemFromSboxPayload
+        // also tries a name match first, so a slug that differs from sbox.dev's
+        // (e.g. our "snapback-black" vs sbox "black-snapback") refreshes the
+        // existing row instead of duplicating.
+        const seedRes: SyncResult = {
+          success: true,
+          itemsProcessed: 0,
+          itemsCreated: 0,
+          itemsUpdated: 0,
+          pricePointsCreated: 0,
+          errors: [],
+          duration: 0,
+        };
+        const seeded = await seedItemFromSboxPayload(
+          slug,
+          skin as unknown as SboxSkinData,
+          seedRes,
+          skin.iconUrl ?? null,
+        );
+        if (seeded.created) {
+          created.push(slug);
+          newlyCreated.push({ slug, skin });
+        } else if (seeded.itemId) {
+          updated++; // matched an existing row by name — refreshed, not new
+        } else {
+          notFound.push(slug);
+        }
+      } else {
+        notFound.push(slug);
+      }
     } catch (err) {
       skipped.push(`${slug}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  // Announce genuinely-new drops via the existing scheduled-tweet pipeline
+  // (the tweet-dispatcher cron posts pending rows every 5 min). Only items
+  // we just CREATED and that sbox.dev released within the last 48h — so a
+  // backlog backfill (announce:false) and stale finds never tweet. Deduped
+  // by an existing new-drop ScheduledTweet for the same slug.
+  const TWEET_WINDOW_MS = 48 * 60 * 60 * 1000;
+  // Burst guard: a single run should never fire more than a handful of tweets
+  // (defense-in-depth vs. a sudden flood of new sitemap entries or a misused
+  // announce flag). Real drops arrive a few at a time.
+  const MAX_NEW_DROP_TWEETS = 5;
+  // sbox.dev fields land in a PUBLIC tweet — sanitize at this trust boundary:
+  // collapse control chars/whitespace, and parse dates/numbers defensively so a
+  // malformed payload can't inject newlines or crash on an invalid date.
+  const cleanText = (s: string) =>
+    s.replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  const isoDay = (raw: string | null | undefined): string | null => {
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  };
+  if (announce && newlyCreated.length > 0) {
+    let enqueued = 0;
+    for (const { slug, skin } of newlyCreated) {
+      if (enqueued >= MAX_NEW_DROP_TWEETS) break;
+      const releasedAt = skin.release ? new Date(skin.release).getTime() : null;
+      if (
+        releasedAt === null ||
+        Number.isNaN(releasedAt) ||
+        Date.now() - releasedAt > TWEET_WINDOW_MS
+      ) {
+        continue;
+      }
+
+      const dup = await prisma.scheduledTweet.findFirst({
+        where: { itemSlug: slug, kind: "new-drop" },
+        select: { id: true },
+      });
+      if (dup) continue;
+
+      const url = `https://sboxskins.gg/items/${slug}`;
+      const name = cleanText(skin.name ?? slug);
+      const rarity = skin.rarity ? cleanText(skin.rarity) : null;
+      const price =
+        typeof skin.releasePrice === "number" &&
+        Number.isFinite(skin.releasePrice) &&
+        skin.releasePrice > 0
+          ? skin.releasePrice
+          : null;
+      const units =
+        typeof skin.droppedUnits === "number" &&
+        Number.isFinite(skin.droppedUnits) &&
+        skin.droppedUnits > 0
+          ? skin.droppedUnits
+          : null;
+      const leaves = isoDay(skin.leavingStoreAt);
+      const text = skin.isDroppableItem
+        ? `New S&box drop: ${name} 🆕 — in-game drop${
+            rarity ? ` (${rarity})` : ""
+          }${units ? `, ${units.toLocaleString()} dropped` : ""}. ${url}`
+        : `New S&box drop: ${name} 🆕${price ? ` — $${price.toFixed(2)}` : ""}${
+            leaves ? `, leaves store ${leaves}` : ""
+          }. ${url}`;
+
+      try {
+        await prisma.scheduledTweet.create({
+          data: {
+            text: text.slice(0, 280),
+            scheduledFor: new Date(),
+            kind: "new-drop",
+            itemSlug: slug,
+          },
+        });
+        enqueued++;
+      } catch (err) {
+        // Non-fatal — the item is already on the site; a failed tweet enqueue
+        // shouldn't fail the ingest.
+        skipped.push(
+          `tweet ${slug}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   }
 
   // Bust the read caches so the fresh supply/owner/category/scarcity
   // values actually surface — /api/items, item detail, etc. all read
   // through Redis (mirrors what /api/sync does after a write).
-  if (updated > 0) {
+  if (created.length > 0 || updated > 0) {
     await invalidatePattern("items:*");
     await invalidatePattern("item:*");
   }
 
-  return NextResponse.json({ ok: true, updated, notFound, skipped });
+  return NextResponse.json({ ok: true, created, updated, notFound, skipped });
 }

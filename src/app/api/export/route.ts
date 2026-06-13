@@ -39,6 +39,9 @@ export async function GET() {
       isActiveStoreItem: true,
       leavingStoreAt: true,
       storeStatus: true,
+      isDroppableItem: true,
+      droppedUnits: true,
+      rarity: true,
       marketUrl: true,
     },
   });
@@ -67,6 +70,9 @@ export async function GET() {
     "isActiveStoreItem",
     "leavingStoreAt",
     "storeStatus",
+    "isDroppableItem",
+    "droppedUnits",
+    "rarity",
     "marketUrl",
   ] as const;
 
