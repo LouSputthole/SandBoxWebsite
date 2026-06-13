@@ -70,6 +70,15 @@ model Item {
   // side from the known palette. Sourced directly from Steam, never sbox.dev.
   rarityColor         String?
 
+  // --- Drop items (sbox.dev) ---
+  // Some skins are random in-game drops rather than store purchases. sbox.dev
+  // flags these as isDroppableItem with a droppedUnits count and a human-readable
+  // rarity tier (common/uncommon/rare/exotic). Drops have no releasePrice — the
+  // UI shows "Item Drop" instead of $0.00 (see src/lib/items/drop-label.ts).
+  isDroppableItem     Boolean    @default(false)
+  droppedUnits        Int?
+  rarity              String?    // sbox.dev rarity tier (common/uncommon/rare/exotic/...)
+
   supplySnapshots SupplySnapshot[]
   tradeListingItems TradeListingItem[]
 
