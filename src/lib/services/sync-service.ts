@@ -932,7 +932,7 @@ export async function captureMarketSnapshot(): Promise<void> {
 // sbox.dev API enrichment
 // ---------------------------------------------------------------------------
 
-interface SboxSkinData {
+export interface SboxSkinData {
   totalSupply: number;
   priceChange24h: number;
   priceChange24hPercent: number;
