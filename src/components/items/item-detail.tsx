@@ -31,6 +31,7 @@ import { WatchlistButton } from "@/components/items/watchlist-button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { formatPriceChange } from "@/lib/utils";
 import { rarityCssColor, rarityLabel } from "@/lib/rarity";
+import { isDrop, ITEM_DROP_LABEL } from "@/lib/items/drop-label";
 import { Price } from "@/components/ui/price";
 
 interface PricePoint {
@@ -87,6 +88,10 @@ export interface ItemDetailData {
   topHolders: TopHolder[] | null;
   // Steam-sourced rarity tint (asset_description.name_color), when present.
   rarityColor: string | null;
+  // Drop items (sbox.dev) — random in-game drops, no store price.
+  isDroppableItem: boolean;
+  droppedUnits: number | null;
+  rarity: string | null;
 }
 
 export function ItemDetail({ item }: { item: ItemDetailData }) {
@@ -212,7 +217,7 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
               )}
             </div>
           </div>
-          {item.releasePrice != null && (
+          {item.releasePrice != null ? (
             // Make the store price prominent when the item is currently
             // in the store and the market price is N/A — the store
             // price is the only real price signal in that case, so it
@@ -240,7 +245,33 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
                 Store price: <Price amount={item.releasePrice} />
               </p>
             )
-          )}
+          ) : isDrop(item) ? (
+            // Drop items were never sold in the store — there's no release
+            // price. Label the slot "Item Drop" (not $0.00) and surface the
+            // rarity tier + dropped count, which is the meaningful signal here.
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] uppercase tracking-wider text-amber-400/80 font-semibold">
+                {ITEM_DROP_LABEL}
+              </span>
+              {item.rarity && (
+                <span
+                  className="text-xs font-semibold capitalize"
+                  style={
+                    rarityCssColor(item.rarityColor)
+                      ? { color: rarityCssColor(item.rarityColor)! }
+                      : undefined
+                  }
+                >
+                  {item.rarity}
+                </span>
+              )}
+              {item.droppedUnits != null && item.droppedUnits > 0 && (
+                <span className="text-[11px] text-neutral-500">
+                  {item.droppedUnits.toLocaleString()} dropped
+                </span>
+              )}
+            </div>
+          ) : null}
 
           {/* Stats */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

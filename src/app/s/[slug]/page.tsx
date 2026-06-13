@@ -122,6 +122,14 @@ export default async function SharePage({ params }: PageProps) {
       label: "Original store",
       value: formatPrice(item.storePrice),
     });
+  } else if (item.isDroppableItem) {
+    // Drops were never sold — show the drop tier instead of an empty/zero price.
+    stats.push({
+      label: "Source",
+      value: item.rarity
+        ? `Item Drop · ${item.rarity.charAt(0).toUpperCase()}${item.rarity.slice(1)}`
+        : "Item Drop",
+    });
   }
   if (change24h) {
     stats.push({
