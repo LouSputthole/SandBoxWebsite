@@ -4,6 +4,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
 import {
   computeScarcityScore,
+  normalizeRarityColor,
   seedItemFromSboxPayload,
   type SboxSkinData,
 } from "@/lib/services/sync-service";
@@ -212,8 +213,10 @@ export async function POST(request: NextRequest) {
             : {}),
           ...(skin.droppedUnits != null ? { droppedUnits: skin.droppedUnits } : {}),
           ...(skin.rarity ? { rarity: skin.rarity } : {}),
-          ...(skin.rarityColor
-            ? { rarityColor: skin.rarityColor.replace(/^#/, "").toLowerCase() }
+          // Validate hex via normalizeRarityColor (matches the create path +
+          // syncSboxData) so a malformed color can't slip through the update.
+          ...(skin.rarityColor && normalizeRarityColor(skin.rarityColor)
+            ? { rarityColor: normalizeRarityColor(skin.rarityColor)! }
             : {}),
           sboxSyncedAt: new Date(),
           scarcityScore,
@@ -263,10 +266,32 @@ export async function POST(request: NextRequest) {
   // backlog backfill (announce:false) and stale finds never tweet. Deduped
   // by an existing new-drop ScheduledTweet for the same slug.
   const TWEET_WINDOW_MS = 48 * 60 * 60 * 1000;
+  // Burst guard: a single run should never fire more than a handful of tweets
+  // (defense-in-depth vs. a sudden flood of new sitemap entries or a misused
+  // announce flag). Real drops arrive a few at a time.
+  const MAX_NEW_DROP_TWEETS = 5;
+  // sbox.dev fields land in a PUBLIC tweet — sanitize at this trust boundary:
+  // collapse control chars/whitespace, and parse dates/numbers defensively so a
+  // malformed payload can't inject newlines or crash on an invalid date.
+  const cleanText = (s: string) =>
+    s.replace(/[\r\n\t]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  const isoDay = (raw: string | null | undefined): string | null => {
+    if (!raw) return null;
+    const d = new Date(raw);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
+  };
   if (announce && newlyCreated.length > 0) {
+    let enqueued = 0;
     for (const { slug, skin } of newlyCreated) {
-      const releasedAt = skin.release ? new Date(skin.release).getTime() : 0;
-      if (!releasedAt || Date.now() - releasedAt > TWEET_WINDOW_MS) continue;
+      if (enqueued >= MAX_NEW_DROP_TWEETS) break;
+      const releasedAt = skin.release ? new Date(skin.release).getTime() : null;
+      if (
+        releasedAt === null ||
+        Number.isNaN(releasedAt) ||
+        Date.now() - releasedAt > TWEET_WINDOW_MS
+      ) {
+        continue;
+      }
 
       const dup = await prisma.scheduledTweet.findFirst({
         where: { itemSlug: slug, kind: "new-drop" },
@@ -275,19 +300,27 @@ export async function POST(request: NextRequest) {
       if (dup) continue;
 
       const url = `https://sboxskins.gg/items/${slug}`;
-      const name = skin.name ?? slug;
+      const name = cleanText(skin.name ?? slug);
+      const rarity = skin.rarity ? cleanText(skin.rarity) : null;
+      const price =
+        typeof skin.releasePrice === "number" &&
+        Number.isFinite(skin.releasePrice) &&
+        skin.releasePrice > 0
+          ? skin.releasePrice
+          : null;
+      const units =
+        typeof skin.droppedUnits === "number" &&
+        Number.isFinite(skin.droppedUnits) &&
+        skin.droppedUnits > 0
+          ? skin.droppedUnits
+          : null;
+      const leaves = isoDay(skin.leavingStoreAt);
       const text = skin.isDroppableItem
         ? `New S&box drop: ${name} 🆕 — in-game drop${
-            skin.rarity ? ` (${skin.rarity})` : ""
-          }${
-            skin.droppedUnits ? `, ${skin.droppedUnits.toLocaleString()} dropped` : ""
-          }. ${url}`
-        : `New S&box drop: ${name} 🆕${
-            skin.releasePrice ? ` — $${skin.releasePrice.toFixed(2)}` : ""
-          }${
-            skin.leavingStoreAt
-              ? `, leaves store ${new Date(skin.leavingStoreAt).toISOString().slice(0, 10)}`
-              : ""
+            rarity ? ` (${rarity})` : ""
+          }${units ? `, ${units.toLocaleString()} dropped` : ""}. ${url}`
+        : `New S&box drop: ${name} 🆕${price ? ` — $${price.toFixed(2)}` : ""}${
+            leaves ? `, leaves store ${leaves}` : ""
           }. ${url}`;
 
       try {
@@ -299,6 +332,7 @@ export async function POST(request: NextRequest) {
             itemSlug: slug,
           },
         });
+        enqueued++;
       } catch (err) {
         // Non-fatal — the item is already on the site; a failed tweet enqueue
         // shouldn't fail the ingest.

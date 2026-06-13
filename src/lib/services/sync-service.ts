@@ -683,8 +683,10 @@ export async function seedItemFromSboxPayload(
     storePrice: skin.releasePrice ?? null,
     releasePrice: skin.releasePrice ?? null,
     releaseDate: skin.release ? new Date(skin.release) : null,
-    isActiveStoreItem: skin.isActiveStoreItem,
-    isPermanentStoreItem: skin.isPermanentStoreItem,
+    // Non-nullable Boolean columns — coerce a missing/null payload value to
+    // false (a null would otherwise fail the Prisma create for new items).
+    isActiveStoreItem: skin.isActiveStoreItem ?? false,
+    isPermanentStoreItem: skin.isPermanentStoreItem ?? false,
     leavingStoreAt: skin.leavingStoreAt ? new Date(skin.leavingStoreAt) : null,
     totalSupply: skin.totalSupply,
     uniqueOwners: skin.uniqueOwners,
