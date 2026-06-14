@@ -1,85 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  searchSboxMentions,
-  searchAccountTweets,
-  getTwitterClient,
-  TRACKED_ACCOUNTS,
-} from "@/lib/twitter/client";
-import { draftReply } from "@/lib/twitter/reply";
 import { guardAdminRoute } from "@/lib/auth/admin-guard";
 
 /**
  * GET /api/admin/tweet/mentions?key=<ANALYTICS_KEY>
  *
- * Returns recent tweets to reply to, each with draft reply variations:
- *   1. Posts from TRACKED_ACCOUNTS (@s8box, @garrynewman, @sboxverse) —
- *      surfaced first, tagged "📌 Tracked", so we can ride their reach.
- *   2. Keyword mentions of S&box / our handle.
- * Deduped by tweet id. Gated by ANALYTICS_KEY with brute-force rate limiting.
+ * DISABLED — tweet reading is turned off to conserve X API credits.
+ *
+ * This used to call X's `tweets/search/recent` endpoint (twice per request,
+ * plus a diagnostic probe) to surface S&box mentions + tracked-account posts
+ * for reply drafting. Searching/reading needs a paid X API tier and wasn't
+ * returning useful results, so every call just burned read quota. We now
+ * short-circuit with ZERO X API calls. Posting/scheduling tweets is unaffected.
+ *
+ * To re-enable: restore the search helpers in src/lib/twitter/client.ts
+ * (`searchSboxMentions` / `searchAccountTweets`) and wire them back here.
  */
 export async function GET(request: NextRequest) {
   const guard = await guardAdminRoute(request, { allowedKeys: ["analytics"] });
   if (!guard.ok) return guard.response;
 
-  const max = parseInt(request.nextUrl.searchParams.get("max") ?? "15", 10);
-  const clamped = Math.min(50, Math.max(5, max));
-
-  // Pull both sources in parallel: posts from the tracked accounts + the
-  // keyword-mention search. Tracked posts come first (priority); dedupe by id
-  // so an account that ALSO matched a keyword isn't listed twice.
-  const [accountTweets, mentionTweets] = await Promise.all([
-    searchAccountTweets(),
-    searchSboxMentions(clamped),
-  ]);
-
-  const seen = new Set<string>();
-  const merged = [...accountTweets, ...mentionTweets].filter((t) => {
-    if (seen.has(t.id)) return false;
-    seen.add(t.id);
-    return true;
+  return NextResponse.json({
+    mentions: [],
+    disabled: true,
+    note: "Tweet reading is disabled to conserve X API credits. Posting and scheduling still work.",
   });
-
-  if (merged.length === 0) {
-    // Surface WHY it's empty — no creds, an API access/permission error, or
-    // genuinely no recent tweets. Reading/searching tweets needs a higher X
-    // API tier than posting, so an empty feed is often an access problem, not
-    // a quiet timeline. A tiny probe makes the real reason visible.
-    let note = "No recent tracked-account or S&box-related tweets in the search window.";
-    const client = getTwitterClient();
-    if (!client) {
-      note =
-        "Twitter credentials not configured (set TWITTER_API_KEY / _API_SECRET / _ACCESS_TOKEN / _ACCESS_TOKEN_SECRET).";
-    } else {
-      try {
-        await client.v2.search("from:garrynewman -is:retweet", {
-          max_results: 10,
-        });
-      } catch (err) {
-        const e = err as {
-          code?: number;
-          data?: { detail?: string; title?: string };
-        };
-        note = `X API search failed (HTTP ${e.code ?? "?"}): ${
-          e.data?.detail || e.data?.title || (err as Error).message
-        }`;
-      }
-    }
-    return NextResponse.json({ mentions: [], note });
-  }
-
-  const trackedSet = new Set(TRACKED_ACCOUNTS.map((h) => h.toLowerCase()));
-  const drafts = await Promise.all(
-    merged.map(async (t) => {
-      const draft = await draftReply(t);
-      // Flag tracked-account posts so the admin UI can tell them apart from
-      // ordinary keyword mentions (the reason pill renders this verbatim).
-      if (trackedSet.has(t.authorUsername.toLowerCase())) {
-        draft.reason = `📌 Tracked @${t.authorUsername}${
-          draft.matchedItemName ? ` — mentions ${draft.matchedItemName}` : ""
-        }`;
-      }
-      return draft;
-    }),
-  );
-  return NextResponse.json({ mentions: drafts });
 }
