@@ -377,6 +377,9 @@ export default function TweetAdminPage() {
       const data = await res.json();
       const list: Mention[] = data.mentions ?? [];
       setMentions(list);
+      // The endpoint is intentionally disabled (no X reads) — surface its note
+      // so the tab explains why it's empty instead of looking broken.
+      if (data.note) setMentionsError(data.note);
       // Pre-fill reply text with first draft
       const prefill: Record<string, string> = {};
       for (const m of list) {
@@ -599,10 +602,7 @@ export default function TweetAdminPage() {
           Drafts
         </button>
         <button
-          onClick={() => {
-            setActiveTab("mentions");
-            if (mentions.length === 0) fetchMentions();
-          }}
+          onClick={() => setActiveTab("mentions")}
           className={`inline-flex items-center gap-2 px-4 py-1.5 rounded-md text-sm font-medium transition ${
             activeTab === "mentions"
               ? "bg-neutral-800 text-white"
@@ -990,10 +990,10 @@ export default function TweetAdminPage() {
           {!mentionsLoading && mentions.length === 0 && !mentionsError && (
             <div className="text-center text-neutral-500 py-16">
               <MessageCircle className="h-10 w-10 mx-auto mb-3 text-neutral-700" />
-              <p className="text-sm">No recent S&box mentions found.</p>
+              <p className="text-sm">Tweet reading is disabled.</p>
               <p className="text-xs mt-1 text-neutral-600">
-                Tracked accounts (@s8box, @garrynewman, @sboxverse) + keyword
-                mentions of @SboxSkinsgg, &ldquo;s&amp;box&rdquo;, &ldquo;sbox skins&rdquo;, etc.
+                Reading S&box mentions via the X search API was turned off to
+                conserve credits. Posting and scheduling still work.
               </p>
             </div>
           )}
