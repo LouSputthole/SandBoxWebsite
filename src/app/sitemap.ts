@@ -117,6 +117,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "monthly",
       priority: 0.5,
     },
+    {
+      url: "https://sboxskins.gg/claude-unity",
+      lastModified: latestUpdate,
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
     ...typePages,
     ...itemPages,
     ...blogPages,
