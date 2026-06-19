@@ -158,6 +158,12 @@ export default function ClaudeUnityPage() {
             </a>
           </div>
         </div>
+        <div className="mt-6 rounded-lg border border-white/10 bg-black/20 p-4">
+          <h3 className="font-semibold text-white">Using Claude Code? Install the plugin</h3>
+          <p className="mt-1.5 text-sm text-neutral-400">One command adds the MCP registration + skill workflows:</p>
+          <pre className="mt-3 overflow-x-auto rounded-lg border border-white/10 bg-black/40 p-3 text-xs text-neutral-300">{`claude plugin marketplace add LouSputthole/claude-bridge-unity-proxy
+claude plugin install claude-bridge-unity@claude-bridge-unity`}</pre>
+        </div>
         <p className="mt-6 text-sm text-neutral-500">
           Requires Unity 2022.3 LTS+ (developed on Unity 6.4). An MCP-capable AI client is sold separately / free — not included.
         </p>
