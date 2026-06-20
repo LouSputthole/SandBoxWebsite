@@ -169,6 +169,18 @@ claude plugin install claude-bridge-unity@claude-bridge-unity`}</pre>
         </p>
       </section>
 
+      {/* See it in action */}
+      <section className="mt-16">
+        <h2 className="text-2xl font-bold sm:text-3xl">See it in action</h2>
+        <p className="mt-2 max-w-3xl text-neutral-400">
+          A full game running in the Unity Editor — built and driven through the bridge.
+        </p>
+        <div className="mt-7 grid gap-4 sm:grid-cols-2">
+          <Image src="/claude-unity/screenshots/01-overview.png" alt="A game running in the Unity Editor with full HUD, driven by the bridge" width={2918} height={1418} className="h-auto w-full rounded-xl border border-white/10" />
+          <Image src="/claude-unity/screenshots/02-event.png" alt="Live gameplay captured from the Unity Editor via the bridge" width={2918} height={1418} className="h-auto w-full rounded-xl border border-white/10" />
+        </div>
+      </section>
+
       <footer className="mt-14 border-t border-white/10 pt-7 text-sm text-neutral-500">
         Not affiliated with Unity Technologies, Anthropic, or OpenAI. &ldquo;Claude&rdquo;, &ldquo;ChatGPT&rdquo;, and other
         names are trademarks of their respective owners; the bridge is compatible with any MCP client.
