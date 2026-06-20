@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Changelog",
   description:
-    "Every release of the Claude Bridge for s&box, newest first — from the v1.4 scene-authoring update through the v1.9 cookbook brain to v1.15 debug visualization.",
+    "Every release of the Claude Bridge for s&box, newest first — from the v1.4 scene-authoring update through the v1.9 cookbook brain and v1.15 debug visualization to the v1.16 polish release.",
   alternates: { canonical: "/claudebridge/changelog" },
 };
 
@@ -16,9 +16,17 @@ type Release = {
 
 const RELEASES: Release[] = [
   {
+    version: "v1.16",
+    tag: "bug-fix & polish",
+    current: true,
+    points: [
+      "Vector params now accept the \"x,y,z\" string form everywhere — raycast / physics_overlap / screenshot_from / capture_view (and every vector-param tool) previously rejected the comma-string form their schemas advertise. Fixed centrally, verified live.",
+      "Docs corrected (the bridge frame loop is static — the dock doesn't need to be open; create_material resolved); run_tests dropped as infeasible. No new tools (still 199 / 190).",
+    ],
+  },
+  {
     version: "v1.15",
     tag: "debug visualization",
-    current: true,
     points: [
       "debug_draw_line / ray / box / sphere draw world-space debug shapes (color + thickness); debug_clear wipes them.",
       "They render in the editor viewport AND in play mode (capturable via capture_view) — visualize a raycast hit, an overlap volume, a trigger's bounds, an NPC sight cone, or a patrol path.",
