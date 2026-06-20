@@ -178,6 +178,7 @@ claude plugin install claude-bridge-unity@claude-bridge-unity`}</pre>
         <div className="mt-7 grid gap-4 sm:grid-cols-2">
           <Image src="/claude-unity/screenshots/01-overview.png" alt="A game running in the Unity Editor with full HUD, driven by the bridge" width={2918} height={1418} className="h-auto w-full rounded-xl border border-white/10" />
           <Image src="/claude-unity/screenshots/02-event.png" alt="Live gameplay captured from the Unity Editor via the bridge" width={2918} height={1418} className="h-auto w-full rounded-xl border border-white/10" />
+          <Image src="/claude-unity/screenshots/03-gameplay.png" alt="Daytime view of a full game running in the Unity Editor via the bridge" width={2918} height={1418} className="h-auto w-full rounded-xl border border-white/10 sm:col-span-2" />
         </div>
       </section>
 
