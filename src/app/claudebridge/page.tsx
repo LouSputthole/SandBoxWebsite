@@ -43,7 +43,7 @@ export default function ClaudeBridgeOverview() {
       <div className="mb-12">
         <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-xs font-medium text-purple-300">
           <Gamepad2 className="h-3.5 w-3.5" />
-          v1.16.0 · 200+ tools · 190 handlers · AGPL-3.0
+          v1.17.1 · 200+ tools · 192 handlers · AGPL-3.0
         </div>
         <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl">
           Claude Bridge for s&amp;box

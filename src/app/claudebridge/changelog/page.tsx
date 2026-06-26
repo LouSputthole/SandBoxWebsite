@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "Changelog",
   description:
-    "Every release of the Claude Bridge for s&box, newest first — from the v1.4 scene-authoring update through the v1.9 cookbook brain and v1.15 debug visualization to the v1.16 polish release.",
+    "Every release of the Claude Bridge for s&box, newest first — from the v1.4 scene-authoring update through the v1.9 cookbook brain and v1.15 debug visualization to the v1.17 gameplay-verification harness.",
   alternates: { canonical: "/claudebridge/changelog" },
 };
 
@@ -16,9 +16,18 @@ type Release = {
 
 const RELEASES: Release[] = [
   {
+    version: "v1.17",
+    tag: "gameplay verification",
+    current: true,
+    points: [
+      "playtest / playtest_status — run a scripted gameplay loop in play mode (move / look / action / jump / set / wait / capture / assert) and get a pass/fail transcript. Assertions evaluate IN-FRAME, so transient state like a jump's airborne frame is catchable — impossible via separate tool calls. The first tool that verifies a playable loop, not just a static scene.",
+      "Dogfooded live on a real game: walk → assert moved → jump → assert airborne the next frame → land → assert grounded, verdict PASS.",
+      "v1.17.1 polish: a Displacement assert read (scalar distance moved from the loop's start — a clean, facing-independent movement proof) and a capture step that screenshots the live player POV mid-loop. 201 tools / 192 handlers.",
+    ],
+  },
+  {
     version: "v1.16",
     tag: "bug-fix & polish",
-    current: true,
     points: [
       "Vector params now accept the \"x,y,z\" string form everywhere — raycast / physics_overlap / screenshot_from / capture_view (and every vector-param tool) previously rejected the comma-string form their schemas advertise. Fixed centrally, verified live.",
       "Docs corrected (the bridge frame loop is static — the dock doesn't need to be open; create_material resolved); run_tests dropped as infeasible. No new tools (still 199 / 190).",
