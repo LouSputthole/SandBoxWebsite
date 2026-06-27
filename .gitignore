@@ -45,3 +45,5 @@ next-env.d.ts
 /src/generated/prisma
 dump.rdb
 scripts/discover-local.log
+tools/**/bin/
+tools/**/obj/
