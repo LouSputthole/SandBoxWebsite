@@ -2,17 +2,37 @@ import { Trophy } from "lucide-react";
 import { prisma } from "@/lib/db";
 import {
   LeaderboardTable,
+  type LeaderboardData,
   type LeaderboardRow,
 } from "./_components/leaderboard-table";
+import { DEFAULT_TAB, isValidTab } from "./_components/tabs";
 
 // ISR — leaderboard data changes every sync (15-30 min). Caching the rendered
 // HTML for 5 min keeps Googlebot fed without slamming the DB.
 export const revalidate = 300;
 
-// One value-sorted pool feeds every tab; the client re-sorts it per tab.
-const POOL_SIZE = 50;
+const DISPLAY_LIMIT = 25;
 const SPARK_DAYS = 7;
 const SPARK_MAX_POINTS = 24;
+
+interface PageProps {
+  searchParams: Promise<{ tab?: string }>;
+}
+
+// Every tab selects the same columns so they share one row mapper.
+const ITEM_SELECT = {
+  id: true,
+  name: true,
+  slug: true,
+  type: true,
+  imageUrl: true,
+  rarityColor: true,
+  currentPrice: true,
+  priceChange24h: true,
+  totalSupply: true,
+  supplyOnMarket: true,
+  volume: true,
+} as const;
 
 /** Evenly thin a series so the sparkline payload stays small per row. */
 function downsample(values: number[], max = SPARK_MAX_POINTS): number[] {
@@ -23,32 +43,62 @@ function downsample(values: number[], max = SPARK_MAX_POINTS): number[] {
   return out;
 }
 
-async function getLeaderboard(): Promise<LeaderboardRow[]> {
-  // Top ~50 by value — the full "Most valuable" tab and the re-sort pool for
-  // the other tabs (gainers / listed / rarest re-rank within this set).
-  const items = await prisma.item.findMany({
-    where: { currentPrice: { not: null, gt: 0 } },
-    orderBy: { currentPrice: "desc" },
-    take: POOL_SIZE,
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      type: true,
-      imageUrl: true,
-      rarityColor: true,
-      currentPrice: true,
-      priceChange24h: true,
-      totalSupply: true,
-      supplyOnMarket: true,
-      volume: true,
-    },
-  });
+async function getLeaderboard(): Promise<LeaderboardData> {
+  // One catalog-wide query per tab — each tab ranks the *whole* catalog by its
+  // own metric (not a re-sort of a shared top-50 pool), so gainers/losers/
+  // listed/rarest are accurate, not just the priciest items re-ordered.
+  const [valuable, gainers, losers, listed, rarest] = await Promise.all([
+    // Most valuable — highest current price.
+    prisma.item.findMany({
+      where: { currentPrice: { not: null, gt: 0 } },
+      orderBy: { currentPrice: "desc" },
+      take: DISPLAY_LIMIT,
+      select: ITEM_SELECT,
+    }),
+    // Top gainers — biggest positive 24h move.
+    prisma.item.findMany({
+      where: { priceChange24h: { gt: 0 } },
+      orderBy: { priceChange24h: "desc" },
+      take: DISPLAY_LIMIT,
+      select: ITEM_SELECT,
+    }),
+    // Top losers — biggest negative 24h move.
+    prisma.item.findMany({
+      where: { priceChange24h: { lt: 0 } },
+      orderBy: { priceChange24h: "asc" },
+      take: DISPLAY_LIMIT,
+      select: ITEM_SELECT,
+    }),
+    // Most listed — most active market listings (supplyOnMarket, falling back
+    // to volume for rows Steam hasn't given a live listing count).
+    prisma.item.findMany({
+      where: { OR: [{ supplyOnMarket: { gt: 0 } }, { volume: { gt: 0 } }] },
+      orderBy: [
+        { supplyOnMarket: { sort: "desc", nulls: "last" } },
+        { volume: "desc" },
+      ],
+      take: DISPLAY_LIMIT,
+      select: ITEM_SELECT,
+    }),
+    // Rarest — lowest known total supply (must have a real supply figure).
+    prisma.item.findMany({
+      where: { totalSupply: { not: null, gt: 0 } },
+      orderBy: { totalSupply: "asc" },
+      take: DISPLAY_LIMIT,
+      select: ITEM_SELECT,
+    }),
+  ]);
 
-  // Pull the last 7d of price points for these items in one query and group
-  // them into a per-item series for the inline 7d sparkline. Items without
-  // enough history get an empty series (Sparkline reserves the slot).
-  const ids = items.map((i) => i.id);
+  // Pull the last 7d of price points for every displayed item (union across
+  // all tabs) in one query, grouped into a per-item series for the inline 7d
+  // sparkline. Items without enough history get an empty series.
+  const ids = Array.from(
+    new Set(
+      [valuable, gainers, losers, listed, rarest]
+        .flat()
+        .map((i) => i.id)
+    )
+  );
   const since = new Date(Date.now() - SPARK_DAYS * 24 * 60 * 60 * 1000);
   const points = ids.length
     ? await prisma.pricePoint.findMany({
@@ -65,7 +115,7 @@ async function getLeaderboard(): Promise<LeaderboardRow[]> {
     seriesByItem.set(p.itemId, arr);
   }
 
-  return items.map((it) => {
+  const toRow = (it: (typeof valuable)[number]): LeaderboardRow => {
     const price = it.currentPrice;
     const supply = it.totalSupply;
     return {
@@ -82,11 +132,21 @@ async function getLeaderboard(): Promise<LeaderboardRow[]> {
       marketCap: price != null && supply != null ? price * supply : null,
       spark: downsample(seriesByItem.get(it.id) ?? []),
     };
-  });
+  };
+
+  return {
+    valuable: valuable.map(toRow),
+    gainers: gainers.map(toRow),
+    losers: losers.map(toRow),
+    listed: listed.map(toRow),
+    rarest: rarest.map(toRow),
+  };
 }
 
-export default async function LeaderboardPage() {
-  const rows = await getLeaderboard();
+export default async function LeaderboardPage({ searchParams }: PageProps) {
+  const { tab: rawTab } = await searchParams;
+  const initialTab = isValidTab(rawTab) ? rawTab : DEFAULT_TAB;
+  const lists = await getLeaderboard();
 
   return (
     <div className="mx-auto max-w-[1240px] px-6 pb-8 pt-9">
@@ -102,7 +162,7 @@ export default async function LeaderboardPage() {
         </p>
       </div>
 
-      <LeaderboardTable rows={rows} />
+      <LeaderboardTable lists={lists} initialTab={initialTab} />
     </div>
   );
 }

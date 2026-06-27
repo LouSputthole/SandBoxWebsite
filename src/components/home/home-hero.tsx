@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Flame } from "lucide-react";
+import { ArrowRight, Flame, LineChart, Search } from "lucide-react";
 import { SkinTile } from "@/components/items/skin-tile";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
@@ -98,6 +98,18 @@ export function HomeHero({ featured, trackedCount }: HomeHeroProps) {
             <Link href="#hot">
               <Button variant="secondary" size="lg">
                 See what&apos;s hot
+              </Button>
+            </Link>
+            <Link href="/trends">
+              <Button variant="secondary" size="lg" className="gap-2">
+                <LineChart className="h-4 w-4" />
+                Market Trends
+              </Button>
+            </Link>
+            <Link href="/inventory">
+              <Button variant="secondary" size="lg" className="gap-2">
+                <Search className="h-4 w-4" />
+                Check Inventory
               </Button>
             </Link>
           </div>

@@ -4,10 +4,14 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { ItemGrid } from "@/components/items/item-grid";
 import { FilterChips } from "./_components/filter-chips";
 import { SortChips } from "./_components/sort-chips";
+import { SortMenu } from "./_components/sort-menu";
+import { ViewToggle, type ItemsView } from "./_components/view-toggle";
+import { PriceRangeFilter } from "./_components/price-range-filter";
+import { Pagination } from "./_components/pagination";
+import { ItemTable } from "./_components/item-table";
 
 interface Item {
   id: string;
@@ -20,14 +24,13 @@ interface Item {
   medianPrice: number | null;
   priceChange24h: number | null;
   volume: number | null;
+  totalSupply: number | null;
   isLimited: boolean;
   rarityColor?: string | null;
 }
 
 interface FilterState {
   type: string;
-  // minPrice/maxPrice have no Arcade UI control, but flow through from URL
-  // params so deep links (?minPrice=…) still filter the initial render.
   minPrice: string;
   maxPrice: string;
   sort: string;
@@ -39,6 +42,8 @@ interface InitialState {
   totalPages: number;
   page: number;
   search: string;
+  /** "grid" (Arcade card grid) or "table" (dense sortable rows). */
+  view: ItemsView;
   filters: FilterState;
   /** Catalog-wide count per singular Item.type. */
   typeCounts: Record<string, number>;
@@ -46,16 +51,21 @@ interface InitialState {
   catalogTotal: number;
 }
 
-// Grid page size — fills the ~5-column Arcade grid (4 rows). Must match the
-// `limit` the Server Component uses for the first paint so totalPages agrees.
-const PAGE_SIZE = 20;
+// Per-view page sizes. Must match the limits the Server Component uses for the
+// first paint (page.tsx) so totalPages agrees. Grid fills the ~5-col Arcade
+// grid (4 rows); the dense table shows more rows per page.
+const GRID_PAGE_SIZE = 20;
+const TABLE_PAGE_SIZE = 50;
+
+const DEFAULT_SORT = "name-asc";
 
 /**
  * Interactive Arcade items browser. The Server Component parent fetches the
  * FIRST render's data + the catalog-wide type counts and passes them in via
  * initialState, so search engines + the first paint always have real items.
- * Subsequent filter/sort/search/load-more changes fetch from /api/items
- * client-side to avoid full-page navigations.
+ * Subsequent search/filter/sort/view/page changes fetch from /api/items
+ * client-side to avoid full-page navigations. View + page are persisted in the
+ * URL (?view=, ?page=) so any paged/table view is shareable + deep-linkable.
  */
 export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
   const router = useRouter();
@@ -64,20 +74,18 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
   const [total, setTotal] = useState(initialState.total);
   const [totalPages, setTotalPages] = useState(initialState.totalPages);
   const [loading, setLoading] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState(initialState.search);
   const [page, setPage] = useState(initialState.page);
+  const [view, setView] = useState<ItemsView>(initialState.view);
   const [filters, setFilters] = useState<FilterState>(initialState.filters);
 
   // Skip the very first fetch (we already have initialState.items from SSR).
   const firstRenderRef = useRef(true);
-  // When true, the next fetch APPENDS (Load more) instead of replacing.
-  const appendRef = useRef(false);
+
+  const pageSize = view === "table" ? TABLE_PAGE_SIZE : GRID_PAGE_SIZE;
 
   const fetchItems = useCallback(async () => {
-    const append = appendRef.current;
-    if (append) setLoadingMore(true);
-    else setLoading(true);
+    setLoading(true);
 
     const params = new URLSearchParams();
     if (search) params.set("q", search);
@@ -86,22 +94,20 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
     if (filters.maxPrice) params.set("maxPrice", filters.maxPrice);
     params.set("sort", filters.sort);
     params.set("page", page.toString());
-    params.set("limit", PAGE_SIZE.toString());
+    params.set("limit", pageSize.toString());
 
     try {
       const res = await fetch(`/api/items?${params.toString()}`);
       const data = await res.json();
-      setItems((prev) => (append ? [...prev, ...data.items] : data.items));
+      setItems(data.items);
       setTotal(data.total);
       setTotalPages(data.totalPages);
     } catch (e) {
       console.error("Failed to fetch items:", e);
     } finally {
-      appendRef.current = false;
       setLoading(false);
-      setLoadingMore(false);
     }
-  }, [search, filters, page]);
+  }, [search, filters, page, pageSize]);
 
   // Re-fetch when state changes — but skip the very first render.
   useEffect(() => {
@@ -112,20 +118,21 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
     fetchItems();
   }, [fetchItems]);
 
-  // Sync URL with state so reloads/back/share preserve filters. `page` is left
-  // out on purpose: "Load more" accumulates pages client-side, so a `?page=N`
-  // on reload (which would fetch only page N) would be misleading.
+  // Sync URL with state so reloads/back/share preserve everything, including
+  // numbered ?page= and ?view= (default view = grid, default sort omitted).
   useEffect(() => {
     const params = new URLSearchParams();
     if (search) params.set("q", search);
     if (filters.type) params.set("type", filters.type);
     if (filters.minPrice) params.set("minPrice", filters.minPrice);
     if (filters.maxPrice) params.set("maxPrice", filters.maxPrice);
-    if (filters.sort !== "name-asc") params.set("sort", filters.sort);
+    if (filters.sort !== DEFAULT_SORT) params.set("sort", filters.sort);
+    if (page > 1) params.set("page", page.toString());
+    if (view !== "grid") params.set("view", view);
 
     const qs = params.toString();
     router.replace(`/items${qs ? `?${qs}` : ""}`, { scroll: false });
-  }, [search, filters, router]);
+  }, [search, filters, page, view, router]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -142,10 +149,30 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
     setPage(1);
   };
 
-  const handleLoadMore = () => {
-    appendRef.current = true;
-    setPage((p) => p + 1);
+  const handlePriceApply = (minPrice: string, maxPrice: string) => {
+    setFilters((f) => ({ ...f, minPrice, maxPrice }));
+    setPage(1);
   };
+
+  const handleViewChange = (next: ItemsView) => {
+    if (next === view) return;
+    setView(next);
+    // Page sizes differ per view, so restart paging on a view switch.
+    setPage(1);
+  };
+
+  const handleClearFilters = () => {
+    setSearch("");
+    setFilters({ type: "", minPrice: "", maxPrice: "", sort: DEFAULT_SORT });
+    setPage(1);
+  };
+
+  const hasActiveFilters =
+    !!search ||
+    !!filters.type ||
+    !!filters.minPrice ||
+    !!filters.maxPrice ||
+    filters.sort !== DEFAULT_SORT;
 
   return (
     <div className="mx-auto max-w-[1240px] px-6 py-8">
@@ -182,32 +209,53 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
         </form>
       </div>
 
-      {/* Toolbar: type filters (left) · sort (right) */}
-      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      {/* Toolbar row 1: type filters (left) · view toggle (right) */}
+      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <FilterChips
           value={filters.type}
           counts={initialState.typeCounts}
           total={initialState.catalogTotal}
           onChange={handleTypeChange}
         />
-        <SortChips value={filters.sort} onChange={handleSortChange} />
+        <ViewToggle value={view} onChange={handleViewChange} />
       </div>
 
-      {/* Grid */}
-      {loading ? <SkeletonGrid /> : <ItemGrid items={items} />}
-
-      {/* Load more */}
-      {!loading && page < totalPages && (
-        <div className="flex justify-center pt-9 pb-2">
-          <Button
-            variant="secondary"
-            size="lg"
-            onClick={handleLoadMore}
-            disabled={loadingMore}
-          >
-            {loadingMore ? "Loading…" : "Load more skins"}
-          </Button>
+      {/* Toolbar row 2: price range (left) · sort chips + full dropdown (right) */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <PriceRangeFilter
+          minPrice={filters.minPrice}
+          maxPrice={filters.maxPrice}
+          onApply={handlePriceApply}
+          onClear={handleClearFilters}
+          showClear={hasActiveFilters}
+        />
+        <div className="flex flex-wrap items-center gap-2">
+          <SortChips value={filters.sort} onChange={handleSortChange} />
+          <SortMenu value={filters.sort} onChange={handleSortChange} />
         </div>
+      </div>
+
+      {/* Content */}
+      {loading ? (
+        view === "table" ? (
+          <SkeletonTable />
+        ) : (
+          <SkeletonGrid />
+        )
+      ) : view === "table" ? (
+        <ItemTable
+          items={items}
+          rankOffset={(page - 1) * pageSize}
+          sort={filters.sort}
+          onSortChange={handleSortChange}
+        />
+      ) : (
+        <ItemGrid items={items} />
+      )}
+
+      {/* Numbered pagination (shared by both views) */}
+      {!loading && (
+        <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
       )}
     </div>
   );
@@ -225,6 +273,31 @@ function SkeletonGrid() {
           <div className="mb-2 h-4 w-3/4 animate-pulse rounded bg-[var(--bg2)]" />
           <div className="mb-3 h-3 w-1/2 animate-pulse rounded bg-[var(--bg2)]" />
           <div className="h-5 w-1/3 animate-pulse rounded bg-[var(--bg2)]" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SkeletonTable() {
+  return (
+    <div className="overflow-hidden rounded-[14px] border border-[var(--line)] bg-[var(--panel)]">
+      <div className="border-b border-[var(--line)] px-3 py-3">
+        <div className="h-3 w-40 animate-pulse rounded bg-[var(--bg2)]" />
+      </div>
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-3 border-b border-[var(--line2)] px-3 py-2.5 last:border-0"
+        >
+          <div className="h-3 w-5 animate-pulse rounded bg-[var(--bg2)]" />
+          <div className="h-9 w-9 animate-pulse rounded-[10px] bg-[var(--bg2)]" />
+          <div className="h-4 w-40 animate-pulse rounded bg-[var(--bg2)]" />
+          <div className="ml-auto flex gap-6">
+            <div className="h-4 w-14 animate-pulse rounded bg-[var(--bg2)]" />
+            <div className="h-4 w-14 animate-pulse rounded bg-[var(--bg2)]" />
+            <div className="h-4 w-14 animate-pulse rounded bg-[var(--bg2)]" />
+          </div>
         </div>
       ))}
     </div>

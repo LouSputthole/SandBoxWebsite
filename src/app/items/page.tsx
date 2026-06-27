@@ -7,9 +7,11 @@ import { prisma } from "@/lib/db";
 // fully interactive client-side after hydration.
 export const revalidate = 300;
 
-// Grid page size — keep in sync with PAGE_SIZE in items-browser.tsx so the
-// first server paint and the client fetches agree on totalPages.
-const PAGE_SIZE = 20;
+// Per-view page sizes — keep in sync with GRID_PAGE_SIZE / TABLE_PAGE_SIZE in
+// items-browser.tsx so the first server paint and the client fetches agree on
+// totalPages. Grid fills the ~5-col Arcade grid; the dense table shows more.
+const GRID_PAGE_SIZE = 20;
+const TABLE_PAGE_SIZE = 50;
 
 interface PageProps {
   searchParams: Promise<{
@@ -19,6 +21,7 @@ interface PageProps {
     maxPrice?: string;
     sort?: string;
     page?: string;
+    view?: string;
     hasSupply?: string;
     isLimited?: string;
   }>;
@@ -26,6 +29,11 @@ interface PageProps {
 
 export default async function BrowsePage({ searchParams }: PageProps) {
   const sp = await searchParams;
+
+  // Default view = grid (the Arcade card grid). ?view=table opts into the
+  // dense sortable table, which pages at a larger size.
+  const view: "grid" | "table" = sp.view === "table" ? "table" : "grid";
+  const limit = view === "table" ? TABLE_PAGE_SIZE : GRID_PAGE_SIZE;
 
   // Fetch the first paint server-side. Client components ship with real
   // initial data so Googlebot (and the user's first frame) sees real items
@@ -40,7 +48,7 @@ export default async function BrowsePage({ searchParams }: PageProps) {
       maxPrice: sp.maxPrice,
       sort: sp.sort ?? "name-asc",
       page: sp.page ?? "1",
-      limit: String(PAGE_SIZE),
+      limit: String(limit),
       hasSupply: sp.hasSupply,
       isLimited: sp.isLimited,
     }),
@@ -65,6 +73,7 @@ export default async function BrowsePage({ searchParams }: PageProps) {
         totalPages: result.totalPages,
         page: result.page,
         search: sp.q ?? "",
+        view,
         typeCounts,
         catalogTotal,
         filters: {

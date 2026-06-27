@@ -11,6 +11,7 @@ import { CategoryGrid } from "@/components/home/category-grid";
 import { FlexesGrid } from "@/components/home/flexes-grid";
 import { RarestGrid } from "@/components/home/rarest-grid";
 import { FreshDropsGrid } from "@/components/home/fresh-drops-grid";
+import { FeaturesGrid } from "@/components/home/features-grid";
 import { NewsletterOptin } from "@/components/home/newsletter-optin";
 import { AboutSection } from "@/components/home/about-section";
 import type { HomeItem } from "@/components/home/types";
@@ -155,8 +156,18 @@ async function getHomepageData() {
 }
 
 export default async function HomePage() {
-  const { trending, losers, expensive, rarest, newDrops, categoryCounts, stats } =
-    await getHomepageData();
+  const {
+    trending,
+    losers,
+    expensive,
+    rarest,
+    limited,
+    storeDrops,
+    mostTraded,
+    newDrops,
+    categoryCounts,
+    stats,
+  } = await getHomepageData();
 
   return (
     <div>
@@ -183,8 +194,8 @@ export default async function HomePage() {
           subtitle="The skins everyone's buying today."
           link={{ href: "/items?sort=change-desc", label: "View all" }}
         />
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          {trending.slice(0, 5).map((item) => (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          {trending.slice(0, 6).map((item) => (
             <ItemCard key={item.id} item={item} />
           ))}
         </div>
@@ -218,6 +229,22 @@ export default async function HomePage() {
         <FlexesGrid items={expensive} />
       </section>
 
+      {/* Most traded — highest lifetime Steam-tracked sales */}
+      {mostTraded.length > 0 && (
+        <section className="mx-auto max-w-[1240px] px-6 pb-2 pt-11">
+          <SectionHeader
+            title="Most traded"
+            subtitle="Highest lifetime sales across the catalog."
+            link={{ href: "/items?sort=volume-desc", label: "View all" }}
+          />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            {mostTraded.map((item) => (
+              <ItemCard key={item.id} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Rarest of the rare */}
       <section className="mx-auto max-w-[1240px] px-6 pb-2 pt-11">
         <SectionHeader
@@ -225,8 +252,24 @@ export default async function HomePage() {
           subtitle="Lowest supply in the game — blink and they're gone."
           link={{ href: "/items?sort=supply-asc&hasSupply=true", label: "View all" }}
         />
-        <RarestGrid items={rarest.slice(0, 3)} />
+        <RarestGrid items={rarest.slice(0, 6)} />
       </section>
+
+      {/* Limited editions — capped-supply skins, paired with Rarest by theme */}
+      {limited.length > 0 && (
+        <section className="mx-auto max-w-[1240px] px-6 pb-2 pt-11">
+          <SectionHeader
+            title="Limited editions"
+            subtitle="Capped-supply S&box skins — no more can ever be minted."
+            link={{ href: "/items?isLimited=true", label: "View all" }}
+          />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            {limited.map((item) => (
+              <ItemCard key={item.id} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Fresh drops — hidden when the 30-day window is empty */}
       {newDrops.length > 0 && (
@@ -239,6 +282,31 @@ export default async function HomePage() {
           <FreshDropsGrid items={newDrops} />
         </section>
       )}
+
+      {/* New store drops — the live in-game store rotation, freshest first */}
+      {storeDrops.length > 0 && (
+        <section className="mx-auto max-w-[1240px] px-6 pb-2 pt-11">
+          <SectionHeader
+            title="New store drops"
+            subtitle="The latest skins live in the in-game store."
+            link={{ href: "/store", label: "View store" }}
+          />
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+            {storeDrops.map((item) => (
+              <ItemCard key={item.id} item={item} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Features — cross-links to the site's main tools */}
+      <section className="mx-auto max-w-[1240px] px-6 pb-2 pt-11">
+        <SectionHeader
+          title="Everything you need to trade smarter"
+          subtitle="Charts, leaderboards, inventory valuation, and your personal watchlist."
+        />
+        <FeaturesGrid />
+      </section>
 
       {/* Newsletter opt-in */}
       <section className="mx-auto max-w-[1240px] px-6 py-12">

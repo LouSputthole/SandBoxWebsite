@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   Crown,
   TrendingUp,
+  TrendingDown,
   ListOrdered,
   Sparkles,
   type LucideIcon,
@@ -15,13 +16,17 @@ import { SkinTile } from "@/components/items/skin-tile";
 import { Price } from "@/components/ui/price";
 import { rarityCssColor } from "@/lib/rarity";
 import { formatPriceChange } from "@/lib/utils";
+import { type TabKey, TAB_KEYS, DEFAULT_TAB } from "./tabs";
 
 /**
- * Client-side leaderboard. The page server-fetches one pool of items (top ~50
- * by value) with everything each tab needs; this component holds the active
- * tab in local state and re-sorts + re-ranks that same dataset per tab. The
- * table is built here (not in the server page) because RankedTable's `cell`
- * and `rowHref` are functions, which can't cross the client boundary.
+ * Client leaderboard. The server page runs a distinct catalog-wide query per
+ * tab (each already ranked + capped) and hands every ranked list down at once,
+ * so switching tabs is instant *and* accurate — no client re-sorting of a
+ * single pool. The active tab is seeded from `?tab=` (SSR) and mirrored back
+ * into the URL on switch via the History API (shareable deep-link, no reload).
+ *
+ * The table is built here (not on the server) because RankedTable's `cell` and
+ * `rowHref` are functions, which can't cross the client boundary.
  */
 
 export interface LeaderboardRow {
@@ -42,16 +47,16 @@ export interface LeaderboardRow {
   spark: number[];
 }
 
-type TabKey = "valuable" | "gainers" | "listed" | "rarest";
+/** One pre-ranked list per tab, fetched server-side. */
+export type LeaderboardData = Record<TabKey, LeaderboardRow[]>;
 
 const TAB_DEFS: { key: TabKey; label: string; icon: LucideIcon }[] = [
   { key: "valuable", label: "Most valuable", icon: Crown },
   { key: "gainers", label: "Top gainers", icon: TrendingUp },
+  { key: "losers", label: "Top losers", icon: TrendingDown },
   { key: "listed", label: "Most listed", icon: ListOrdered },
   { key: "rarest", label: "Rarest", icon: Sparkles },
 ];
-
-const DISPLAY_LIMIT = 25;
 
 /** Up/down/neutral color used for both the 24h delta text and its sparkline. */
 function deltaColor(change: number | null): string {
@@ -67,33 +72,27 @@ function formatCompactUsd(n: number | null): string {
   return "$" + n.toFixed(0);
 }
 
-function sortRows(rows: LeaderboardRow[], tab: TabKey): LeaderboardRow[] {
-  const copy = [...rows];
-  switch (tab) {
-    case "valuable":
-      copy.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
-      break;
-    case "gainers":
-      copy.sort((a, b) => (b.change24h ?? 0) - (a.change24h ?? 0));
-      break;
-    case "listed":
-      copy.sort((a, b) => b.listings - a.listings);
-      break;
-    case "rarest":
-      // Lowest known supply first; unknown supply sinks to the bottom.
-      copy.sort(
-        (a, b) =>
-          (a.supply ?? Number.POSITIVE_INFINITY) -
-          (b.supply ?? Number.POSITIVE_INFINITY)
-      );
-      break;
-  }
-  return copy.slice(0, DISPLAY_LIMIT);
-}
+export function LeaderboardTable({
+  lists,
+  initialTab,
+}: {
+  lists: LeaderboardData;
+  initialTab: TabKey;
+}) {
+  const [tab, setTab] = React.useState<TabKey>(initialTab);
 
-export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
-  const [tab, setTab] = React.useState<TabKey>("valuable");
-  const sorted = React.useMemo(() => sortRows(rows, tab), [rows, tab]);
+  // Switch instantly from preloaded data, and mirror the choice into the URL
+  // (History API only — no navigation/refetch) so the view is shareable.
+  const selectTab = React.useCallback((next: string) => {
+    const key = (TAB_KEYS as string[]).includes(next)
+      ? (next as TabKey)
+      : DEFAULT_TAB;
+    setTab(key);
+    const search = key === DEFAULT_TAB ? "" : `?tab=${key}`;
+    window.history.replaceState(null, "", `${window.location.pathname}${search}`);
+  }, []);
+
+  const rows = lists[tab] ?? [];
 
   const columns: RankedColumn<LeaderboardRow>[] = [
     {
@@ -188,11 +187,7 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
 
   return (
     <div>
-      <Tabs
-        value={tab}
-        onValueChange={(v) => setTab(v as TabKey)}
-        className="mb-[18px]"
-      >
+      <Tabs value={tab} onValueChange={selectTab} className="mb-[18px]">
         <TabsList>
           {TAB_DEFS.map((t) => {
             const Icon = t.icon;
@@ -208,7 +203,7 @@ export function LeaderboardTable({ rows }: { rows: LeaderboardRow[] }) {
 
       <RankedTable
         columns={columns}
-        rows={sorted}
+        rows={rows}
         rowKey={(row) => row.id}
         rowHref={(row) => `/items/${row.slug}`}
         emptyMessage="No items to rank yet."

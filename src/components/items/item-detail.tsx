@@ -1,28 +1,21 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import {
-  ExternalLink,
-  GitCompare,
-  Heart,
-  Loader2,
-  Users,
-} from "lucide-react";
+import { ExternalLink, GitCompare, Heart, User, Users } from "lucide-react";
 import { SkinTile } from "@/components/items/skin-tile";
 import { Price } from "@/components/ui/price";
 import { PriceAlertForm } from "@/components/alerts/price-alert-form";
-import {
-  AreaChartCard,
-  type AreaPoint,
-  type Timeframe,
-} from "@/components/charts";
-import { OrderBook, type OrderLevel } from "@/components/data";
 import { useWatchlist } from "@/lib/watchlist/context";
-import { formatPrice, formatPriceChange } from "@/lib/utils";
+import { formatPriceChange } from "@/lib/utils";
 import { rarityCssColor, rarityLabel } from "@/lib/rarity";
 import { isDrop, ITEM_DROP_LABEL } from "@/lib/items/drop-label";
+import { useOrders } from "@/app/items/[slug]/_components/use-orders";
+import { OrderBookSection } from "@/app/items/[slug]/_components/order-book-section";
+import { SpreadAnalysis } from "@/app/items/[slug]/_components/spread-analysis";
+import { PriceSignals } from "@/app/items/[slug]/_components/price-signals";
+import { PriceHistoryCard } from "@/app/items/[slug]/_components/price-history-card";
 
 interface PricePoint {
   id: string;
@@ -91,6 +84,9 @@ export interface ItemDetailData {
 
 export function ItemDetail({ item }: { item: ItemDetailData }) {
   const change = item.priceChange24h ?? 0;
+  // Fetch the Steam order histogram once and share it across the order-book
+  // summary/ladder and the spread-analysis panel (both read the same payload).
+  const orders = useOrders(item.slug);
   // Pure helpers (no Date/random) — safe in the render body. Both return null
   // when there's no valid rarity color, gating the rarity glow / badges.
   const rarityColor = rarityCssColor(item.rarityColor);
@@ -133,8 +129,17 @@ export function ItemDetail({ item }: { item: ItemDetailData }) {
 
       {/* Chart + Order book */}
       <div className="mt-[30px] grid grid-cols-1 gap-[18px] lg:grid-cols-[1.6fr_1fr]">
-        <PriceHistoryCard priceHistory={item.priceHistory} />
-        <OrderBookPanel slug={item.slug} />
+        <PriceHistoryCard
+          priceHistory={item.priceHistory}
+          priceChange24h={item.priceChange24h}
+        />
+        <OrderBookSection orders={orders} />
+      </div>
+
+      {/* Price signals + Spread analysis (derived market read) */}
+      <div className="mt-[18px] grid grid-cols-1 gap-[18px] lg:grid-cols-[1.6fr_1fr]">
+        <PriceSignals item={item} />
+        <SpreadAnalysis orders={orders} />
       </div>
 
       {/* Recent prices + Supply / scarcity */}
@@ -276,6 +281,16 @@ function InfoColumn({
   const deltaColor = positive ? "var(--up)" : negative ? "var(--down)" : "var(--mut)";
   const arrow = positive ? "▲" : negative ? "▼" : "";
 
+  // Header "Spread" tile: current price over the lowest ask, with % vs lowest.
+  const spreadAbs =
+    item.currentPrice != null && item.lowestPrice != null
+      ? item.currentPrice - item.lowestPrice
+      : null;
+  const spreadPctVsLow =
+    spreadAbs != null && item.lowestPrice
+      ? (spreadAbs / item.lowestPrice) * 100
+      : null;
+
   return (
     <div>
       {/* type badge + meta */}
@@ -407,8 +422,8 @@ function InfoColumn({
         </a>
       </div>
 
-      {/* 4 stat tiles */}
-      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+      {/* stat tiles */}
+      <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-5">
         <StatTile
           label="Lowest ask"
           value={item.lowestPrice != null ? <Price amount={item.lowestPrice} /> : "N/A"}
@@ -416,6 +431,24 @@ function InfoColumn({
         <StatTile
           label="Median"
           value={item.medianPrice != null ? <Price amount={item.medianPrice} /> : "N/A"}
+        />
+        <StatTile
+          label="Spread"
+          value={
+            spreadAbs != null ? (
+              <>
+                <Price amount={spreadAbs} />
+                {spreadPctVsLow != null && (
+                  <span className="ml-1 text-[11px] font-medium text-faint">
+                    {spreadPctVsLow >= 0 ? "+" : ""}
+                    {spreadPctVsLow.toFixed(1)}%
+                  </span>
+                )}
+              </>
+            ) : (
+              "N/A"
+            )
+          }
         />
         <StatTile
           label="Volume"
@@ -519,208 +552,6 @@ function WatchlistCta({ slug }: { slug: string }) {
       {active ? "Watching" : "Watchlist"}
     </button>
   );
-}
-
-// =============================================================================
-//  Price history chart (timeframe toggle = the one new piece of local state)
-// =============================================================================
-
-const TF_DAYS: Record<Exclude<Timeframe, "ALL">, number> = {
-  "24H": 1,
-  "7D": 7,
-  "30D": 30,
-  "90D": 90,
-};
-
-function PriceHistoryCard({ priceHistory }: { priceHistory: PricePoint[] }) {
-  // The page already loads the full price history; the toggle just narrows the
-  // window client-side — no refetch.
-  const [tf, setTf] = useState<Timeframe>("ALL");
-
-  const { series, low, avg, high } = useMemo(() => {
-    const sorted = [...priceHistory].sort(
-      (a, b) =>
-        new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
-    );
-
-    let visible = sorted;
-    if (tf !== "ALL") {
-      const cutoff = Date.now() - TF_DAYS[tf] * 24 * 60 * 60 * 1000;
-      const windowed = sorted.filter(
-        (p) => new Date(p.timestamp).getTime() >= cutoff,
-      );
-      // Sparse tracking window → fall back to the full series so the chart
-      // never renders empty just because we started tracking recently.
-      visible = windowed.length >= 2 ? windowed : sorted;
-    }
-
-    const points: AreaPoint[] = visible.map((p) => ({
-      t: p.timestamp,
-      v: p.price,
-    }));
-    const prices = visible.map((p) => p.price);
-    return {
-      series: points,
-      low: prices.length ? Math.min(...prices) : null,
-      high: prices.length ? Math.max(...prices) : null,
-      avg: prices.length
-        ? prices.reduce((s, p) => s + p, 0) / prices.length
-        : null,
-    };
-  }, [priceHistory, tf]);
-
-  if (priceHistory.length === 0) {
-    return (
-      <div className="rounded-[18px] border border-line bg-panel p-5">
-        <div className="mb-3">
-          <h2 className="m-0 font-display text-[18px] font-bold text-tx">
-            Price history
-          </h2>
-          <div className="mt-0.5 text-[12.5px] text-faint">
-            Steam Community Market · USD
-          </div>
-        </div>
-        <div className="flex h-[220px] items-center justify-center text-sm text-faint">
-          No price history tracked yet.
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <AreaChartCard
-      title="Price history"
-      subtitle="Steam Community Market · USD"
-      series={series}
-      timeframe={tf}
-      onTimeframe={setTf}
-      valueFormatter={(v) => formatPrice(v)}
-      labelFormatter={(t) =>
-        new Date(t).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        })
-      }
-      footer={
-        <div className="flex justify-between">
-          <div>
-            <div className="text-[11px] text-faint">Period low</div>
-            <div className="font-mono text-[14px] font-bold text-tx">
-              {low != null ? formatPrice(low) : "—"}
-            </div>
-          </div>
-          <div className="text-center">
-            <div className="text-[11px] text-faint">Avg</div>
-            <div className="font-mono text-[14px] font-bold text-tx">
-              {avg != null ? formatPrice(avg) : "—"}
-            </div>
-          </div>
-          <div className="text-right">
-            <div className="text-[11px] text-faint">Period high</div>
-            <div className="font-mono text-[14px] font-bold text-tx">
-              {high != null ? formatPrice(high) : "—"}
-            </div>
-          </div>
-        </div>
-      }
-    />
-  );
-}
-
-// =============================================================================
-//  Order book — fetches live Steam orders, renders the shared <OrderBook>
-// =============================================================================
-
-interface ApiOrder {
-  price: number;
-  quantity: number;
-}
-
-function OrderBookShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="rounded-[18px] border border-line bg-panel p-5">
-      <div className="mb-3.5 flex items-center justify-between">
-        <h2 className="font-display text-[18px] font-bold text-tx">Order book</h2>
-        <span className="font-mono text-[11px] text-faint">PRICE · QTY</span>
-      </div>
-      {children}
-    </div>
-  );
-}
-
-function OrderBookPanel({ slug }: { slug: string }) {
-  const [data, setData] = useState<{
-    buyOrders: ApiOrder[];
-    sellOrders: ApiOrder[];
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchOrders = () => {
-    setLoading(true);
-    setError(null);
-    fetch(`/api/orders?slug=${encodeURIComponent(slug)}`)
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({}));
-          throw new Error(body.error || "Failed to fetch orders");
-        }
-        return res.json();
-      })
-      .then((json) => setData(json))
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    fetchOrders();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug]);
-
-  if (loading) {
-    return (
-      <OrderBookShell>
-        <div className="flex items-center justify-center gap-2 py-10 text-sm text-faint">
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Loading order book…
-        </div>
-      </OrderBookShell>
-    );
-  }
-
-  const bids: OrderLevel[] = (data?.buyOrders ?? []).map((o) => ({
-    price: o.price,
-    qty: o.quantity,
-  }));
-  const asks: OrderLevel[] = (data?.sellOrders ?? []).map((o) => ({
-    price: o.price,
-    qty: o.quantity,
-  }));
-
-  if (error || (bids.length === 0 && asks.length === 0)) {
-    const isPending = error?.includes("pending") || error?.includes("not yet");
-    return (
-      <OrderBookShell>
-        <div className="space-y-2 py-8 text-center">
-          <p className="text-sm text-faint">
-            {isPending
-              ? "Order data is being set up — check back soon."
-              : error || "No live order data for this item yet."}
-          </p>
-          {!isPending && (
-            <button
-              onClick={fetchOrders}
-              className="text-xs font-medium text-accent transition hover:brightness-110"
-            >
-              Try again
-            </button>
-          )}
-        </div>
-      </OrderBookShell>
-    );
-  }
-
-  return <OrderBook bids={bids} asks={asks} maxRows={6} />;
 }
 
 // =============================================================================
@@ -927,12 +758,22 @@ function TopHolders({
             <span className="w-5 text-right font-mono text-xs text-faint">
               {i + 1}
             </span>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={h.avatarUrl}
-              alt=""
-              className="h-8 w-8 rounded-full border border-line"
-            />
+            {h.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={h.avatarUrl}
+                alt=""
+                className="h-8 w-8 rounded-full border border-line"
+              />
+            ) : (
+              // No avatar URL → never pass "" to <img src> (Next warns). Render
+              // an initials/User fallback in the same h-8 w-8 rounded frame.
+              <span className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-gradient-to-br from-accent/30 to-accent2/20 text-[11px] font-bold text-tx">
+                {h.name.trim()[0]?.toUpperCase() ?? (
+                  <User className="h-4 w-4 text-mut" />
+                )}
+              </span>
+            )}
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm text-tx">{h.name}</p>
             </div>
