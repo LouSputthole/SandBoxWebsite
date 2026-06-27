@@ -28,6 +28,8 @@ export interface ComparedItem {
   change30d: number | null;
   totalSupply: number | null;
   uniqueOwners: number | null;
+  /** Units bought/sold in the last 24h (from sbox.dev). */
+  soldPast24h: number | null;
   supplyOnMarket: number | null;
   scarcityScore: number | null;
   category: string | null;
@@ -35,6 +37,10 @@ export interface ComparedItem {
   rarityName: string | null;
   /** Resolved #rrggbb rarity tint or null. */
   rarityTint: string | null;
+  /** First release date or null when unknown. */
+  releaseDate: Date | null;
+  /** Whether the skin is currently purchasable in the S&box store. */
+  isActiveStoreItem: boolean;
   /** Price series (price > 0, time order, down-sampled) for the sparkline. */
   spark: number[];
 }
@@ -50,11 +56,14 @@ export interface RawCompareItem {
   priceChange24h: number | null;
   totalSupply: number | null;
   uniqueOwners: number | null;
+  soldPast24h: number | null;
   supplyOnMarket: number | null;
   scarcityScore: number | null;
   category: string | null;
   rarity: string | null;
   rarityColor: string | null;
+  releaseDate: Date | null;
+  isActiveStoreItem: boolean;
   priceHistory: HistoryPoint[];
 }
 
@@ -122,11 +131,14 @@ export function toComparedItem(item: RawCompareItem): ComparedItem {
     change30d: periodChangePct(real, item.currentPrice, 30),
     totalSupply: item.totalSupply,
     uniqueOwners: item.uniqueOwners,
+    soldPast24h: item.soldPast24h,
     supplyOnMarket: item.supplyOnMarket,
     scarcityScore: item.scarcityScore,
     category: item.category ?? capitalize(item.type),
     rarityName: rarityLabel(item.rarityColor) ?? capitalize(item.rarity),
     rarityTint: rarityCssColor(item.rarityColor),
+    releaseDate: item.releaseDate,
+    isActiveStoreItem: item.isActiveStoreItem,
     spark: downsample(
       real.map((p) => p.price),
       40,

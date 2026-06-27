@@ -92,8 +92,8 @@ function Row({
 /**
  * The Compare comparison table. Sticky first column of metric labels, then a
  * column per skin (tile + name + rarity badge + sparkline header). The best
- * value in price / supply / scarcity rows is tinted purple; change rows are
- * coloured by direction. Built as a CSS grid inside a horizontal-scroll frame
+ * value in price / supply / sold / scarcity rows is tinted purple; change rows
+ * are coloured by direction. Built as a CSS grid inside a horizontal-scroll frame
  * so 3–4 columns stay readable on narrow screens.
  */
 export function ComparisonPanel({ columns }: { columns: ComparisonColumn[] }) {
@@ -103,9 +103,11 @@ export function ComparisonPanel({ columns }: { columns: ComparisonColumn[] }) {
 
   const priceMax = nums(items.map((i) => i.currentPrice));
   const supplyMin = nums(items.map((i) => i.totalSupply));
+  const soldMax = nums(items.map((i) => i.soldPast24h));
   const scarcMax = nums(items.map((i) => i.scarcityScore));
   const bestPrice = priceMax.length ? Math.max(...priceMax) : null;
   const bestSupply = supplyMin.length ? Math.min(...supplyMin) : null; // rarer = better
+  const bestSold = soldMax.length ? Math.max(...soldMax) : null; // more sales = better
   const bestScarc = scarcMax.length ? Math.max(...scarcMax) : null;
 
   const is = (v: number | null, best: number | null) =>
@@ -227,6 +229,13 @@ export function ComparisonPanel({ columns }: { columns: ComparisonColumn[] }) {
               </ValueCell>
             ))}
           </Row>
+          <Row label="Sold (24h)" cols={n}>
+            {items.map((i) => (
+              <ValueCell key={i.id} accent={is(i.soldPast24h, bestSold)}>
+                {i.soldPast24h != null ? i.soldPast24h.toLocaleString() : "—"}
+              </ValueCell>
+            ))}
+          </Row>
           <Row label="On market" cols={n}>
             {items.map((i) => (
               <ValueCell key={i.id}>
@@ -271,6 +280,28 @@ export function ComparisonPanel({ columns }: { columns: ComparisonColumn[] }) {
                 </ValueCell>
               ),
             )}
+          </Row>
+          <Row label="Release" cols={n}>
+            {items.map((i) => (
+              <ValueCell key={i.id}>
+                {i.releaseDate ? i.releaseDate.toLocaleDateString() : "—"}
+              </ValueCell>
+            ))}
+          </Row>
+          <Row label="Store status" cols={n}>
+            {items.map((i) => (
+              <span
+                key={i.id}
+                className={cn(
+                  "font-sans text-sm font-medium",
+                  i.isActiveStoreItem
+                    ? "text-[var(--tx)]"
+                    : "text-[var(--faint)]",
+                )}
+              >
+                {i.isActiveStoreItem ? "In store" : "Not in store"}
+              </span>
+            ))}
           </Row>
 
           {/* Actions */}

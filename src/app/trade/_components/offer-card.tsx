@@ -117,6 +117,12 @@ function SideContent({
   }
   const visible = items.slice(0, MAX_ROWS);
   const more = items.length - visible.length;
+  // Σ(unit price × qty) for this side — listing-time price if captured, else the
+  // item's current price. Skipped when nothing on the side carries a price.
+  const estValue = items.reduce((sum, li) => {
+    const unit = li.unitPriceAtListing ?? li.item?.currentPrice ?? 0;
+    return sum + unit * li.quantity;
+  }, 0);
   return (
     <div className="flex flex-col gap-1.5">
       {visible.map((li) => (
@@ -124,6 +130,14 @@ function SideContent({
       ))}
       {more > 0 && (
         <span className="text-[11px] text-faint">+{more} more</span>
+      )}
+      {estValue > 0 && (
+        <span className="mt-0.5 font-mono text-[12px] font-semibold text-tx">
+          {formatPrice(estValue)}
+          <span className="ml-1 font-sans text-[10px] font-normal text-faint">
+            est.
+          </span>
+        </span>
       )}
     </div>
   );

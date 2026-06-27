@@ -1,17 +1,15 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRightLeft, Plus } from "lucide-react";
+import { ArrowRightLeft, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  TradeBoard,
-  type TradeBoardListing,
-} from "./_components/trade-board";
+import { OfferCard, type OfferListing } from "./_components/offer-card";
+import { TradeControls, type SideCounts } from "./_components/trade-controls";
 
-// The board loads in one shot and the client filter chips slice it without a
-// round-trip (Arcade mockup has no search box or pagination), so render fresh
-// per request rather than ISR.
+// Listings are queried per ?q / ?side / ?page combination, so render fresh per
+// request rather than ISR (filtered queries vary too much to cache usefully).
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
@@ -26,35 +24,92 @@ export const metadata: Metadata = {
   },
 };
 
-// Bound the loaded board so the payload stays small even as listings grow; the
-// client chips filter within this set.
-const BOARD_LIMIT = 60;
+// One server page of listings. Pagination makes every listing reachable instead
+// of capping the board at a single newest slice.
+const PAGE_SIZE = 24;
 
-export default async function TradePage() {
-  const listings = await prisma.tradeListing.findMany({
-    where: { status: "active" },
-    orderBy: { createdAt: "desc" },
-    take: BOARD_LIMIT,
-    include: {
-      user: { select: { steamId: true, username: true, avatarUrl: true } },
-      _count: { select: { comments: true } },
-      items: {
-        include: {
-          item: {
-            select: {
-              name: true,
-              imageUrl: true,
-              type: true,
-              currentPrice: true,
-              rarityColor: true,
+interface PageProps {
+  searchParams: Promise<{ q?: string; side?: string; page?: string }>;
+}
+
+export default async function TradePage({ searchParams }: PageProps) {
+  const sp = await searchParams;
+  const q = sp.q?.trim() ?? "";
+  const side =
+    sp.side === "selling" || sp.side === "buying" || sp.side === "both"
+      ? sp.side
+      : "";
+  const page = Math.max(1, Number(sp.page ?? "1") || 1);
+
+  // The search filter (status + ?q) is shared by the list, its count, and the
+  // per-side chip counts. The side filter is layered on top only for the list.
+  const baseWhere: Prisma.TradeListingWhereInput = { status: "active" };
+  if (q.length > 0) {
+    baseWhere.OR = [
+      { description: { contains: q, mode: "insensitive" } },
+      {
+        items: {
+          some: {
+            OR: [
+              { customName: { contains: q, mode: "insensitive" } },
+              { item: { name: { contains: q, mode: "insensitive" } } },
+            ],
+          },
+        },
+      },
+    ];
+  }
+
+  const where: Prisma.TradeListingWhereInput = side
+    ? { ...baseWhere, side }
+    : baseWhere;
+
+  const [listings, total, sideGroups] = await Promise.all([
+    prisma.tradeListing.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      take: PAGE_SIZE,
+      skip: (page - 1) * PAGE_SIZE,
+      include: {
+        user: { select: { steamId: true, username: true, avatarUrl: true } },
+        _count: { select: { comments: true } },
+        items: {
+          include: {
+            item: {
+              select: {
+                name: true,
+                imageUrl: true,
+                type: true,
+                currentPrice: true,
+                rarityColor: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    }),
+    prisma.tradeListing.count({ where }),
+    // Chip counts honor ?q but not ?side, so each chip shows its own total
+    // across the whole (search-filtered) board — not just the current page.
+    prisma.tradeListing.groupBy({
+      by: ["side"],
+      where: baseWhere,
+      _count: { _all: true },
+    }),
+  ]);
 
-  const board: TradeBoardListing[] = listings.map((l) => ({
+  const counts: SideCounts = { all: 0, selling: 0, buying: 0, both: 0 };
+  for (const g of sideGroups) {
+    const key = g.side;
+    if (key === "selling" || key === "buying" || key === "both") {
+      counts[key] = g._count._all;
+      counts.all += g._count._all;
+    }
+  }
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const board: OfferListing[] = listings.map((l) => ({
     id: l.id,
     side: l.side,
     description: l.description,
@@ -83,6 +138,8 @@ export default async function TradePage() {
     })),
   }));
 
+  const filtered = q.length > 0 || side !== "";
+
   return (
     <div className="mx-auto max-w-[1240px] px-6 py-8">
       {/* header */}
@@ -106,8 +163,84 @@ export default async function TradePage() {
         </Link>
       </div>
 
-      {/* filter chips + offer grid (client) */}
-      <TradeBoard listings={board} />
+      {/* search + side chips (client → URL searchParams) */}
+      <TradeControls q={q} side={side} counts={counts} />
+
+      {/* offer grid */}
+      {board.length === 0 ? (
+        <div className="rounded-[18px] border border-line bg-panel p-12 text-center">
+          <ArrowRightLeft className="mx-auto mb-3 h-9 w-9 text-faint/60" />
+          <p className="text-sm text-mut">
+            {filtered
+              ? "No trades match your search."
+              : "No active trades yet — be the first to post one!"}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {board.map((l) => (
+            <OfferCard key={l.id} listing={l} />
+          ))}
+        </div>
+      )}
+
+      {/* pagination */}
+      {totalPages > 1 && (
+        <div className="mt-8 flex items-center justify-center gap-3">
+          <PageLink page={page - 1} disabled={page <= 1} q={q} side={side}>
+            <ChevronLeft className="h-4 w-4" />
+            Prev
+          </PageLink>
+          <span className="font-mono text-[13px] text-mut">
+            Page {page} of {totalPages}
+          </span>
+          <PageLink
+            page={page + 1}
+            disabled={page >= totalPages}
+            q={q}
+            side={side}
+          >
+            Next
+            <ChevronRight className="h-4 w-4" />
+          </PageLink>
+        </div>
+      )}
     </div>
+  );
+}
+
+/** Prev/Next pagination link that preserves the active ?q and ?side filters. */
+function PageLink({
+  page,
+  disabled,
+  q,
+  side,
+  children,
+}: {
+  page: number;
+  disabled: boolean;
+  q: string;
+  side: string;
+  children: React.ReactNode;
+}) {
+  if (disabled) {
+    return (
+      <span className="inline-flex h-9 cursor-not-allowed items-center gap-1.5 rounded-[11px] border border-line2 px-4 text-[13px] font-semibold text-faint opacity-50">
+        {children}
+      </span>
+    );
+  }
+  const params = new URLSearchParams();
+  if (q) params.set("q", q);
+  if (side) params.set("side", side);
+  if (page > 1) params.set("page", String(page));
+  const qs = params.toString();
+  return (
+    <Link
+      href={`/trade${qs ? `?${qs}` : ""}`}
+      className="inline-flex h-9 items-center gap-1.5 rounded-[11px] border border-line bg-panel px-4 text-[13px] font-semibold text-tx transition-colors hover:bg-bg2 hover:[border-color:#3a3547]"
+    >
+      {children}
+    </Link>
   );
 }

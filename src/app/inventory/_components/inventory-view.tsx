@@ -8,6 +8,13 @@ import {
   AlertCircle,
   ArrowUpRight,
   Boxes,
+  Zap,
+  Search,
+  Lock,
+  ExternalLink,
+  HelpCircle,
+  Shield,
+  type LucideIcon,
 } from "lucide-react";
 import { StatCard } from "@/components/data";
 import { SkinTile } from "@/components/items/skin-tile";
@@ -357,6 +364,41 @@ export function InventoryView() {
         </p>
       </div>
 
+      {/* Signed-in shortcut — for a logged-in user, a one-click lookup of
+          their own inventory is the primary action; the URL box below is for
+          scouting someone else's. (Restored from the pre-redesign widget.) */}
+      {user && (
+        <>
+          <div className="mb-[14px] flex justify-center">
+            <Button
+              type="button"
+              onClick={checkMine}
+              disabled={loading}
+              className="h-[54px] gap-2 rounded-[14px] px-6 text-[15px]"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <User className="h-4 w-4" />
+              )}
+              Check my inventory
+              {user.username && (
+                <span className="font-normal text-white/75">
+                  ({user.username})
+                </span>
+              )}
+            </Button>
+          </div>
+          <div className="mx-auto mb-[14px] flex max-w-[640px] items-center gap-3">
+            <span className="h-px flex-1 bg-line" />
+            <span className="font-mono text-[10px] uppercase tracking-[1px] text-faint">
+              or look up another inventory
+            </span>
+            <span className="h-px flex-1 bg-line" />
+          </div>
+        </>
+      )}
+
       {/* Steam-URL input + Check button */}
       <form
         onSubmit={handleSubmit}
@@ -394,31 +436,100 @@ export function InventoryView() {
         be public
       </p>
 
-      {/* Signed-in shortcut — one-click lookup of the user's own inventory. */}
-      {user && (
-        <div className="mb-7 flex justify-center">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={checkMine}
-            disabled={loading}
-            className="gap-2"
-          >
-            {loading ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <User className="h-3.5 w-3.5" />
-            )}
-            Check my inventory
-            {user.username && (
-              <span className="text-faint">({user.username})</span>
-            )}
-          </Button>
+      {/* No-login reassurance for signed-out visitors — lookups need no
+          account; we only read public inventory data. (Restored.) */}
+      {!user && (
+        <p className="text-center text-[12.5px] text-faint">
+          No login required — we only read public inventory data.
+        </p>
+      )}
+
+      {/* Pre-lookup explainer — three feature cards + an in-widget FAQ, shown
+          only before a lookup runs (no loading / error / result). Once results
+          or an error appear these become noise, so we hide them. Restored from
+          the pre-redesign widget and Arcade-styled; kept distinct from the
+          server-rendered SEO FAQ section below the widget. */}
+      {!loading && !error && !result && (
+        <div className="mx-auto mt-7 max-w-[920px]">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <FeatureCard
+              icon={Zap}
+              color="var(--up)"
+              title="Real-time valuation"
+              body="Every item priced against live Steam Community Market data, re-synced throughout the day."
+            />
+            <FeatureCard
+              icon={Search}
+              color="var(--accent)"
+              title="Per-item deep dive"
+              body="Open any item for its full price chart, order book, supply, and scarcity score."
+            />
+            <FeatureCard
+              icon={Lock}
+              color="var(--rarity-rare)"
+              title="Public, no login"
+              body="We only read public inventory data — no Steam password, no OAuth, nothing stored."
+            />
+          </div>
+
+          <div className="mt-4 rounded-[18px] border border-line bg-panel p-6">
+            <div className="mb-3 flex items-center gap-2">
+              <HelpCircle
+                className="h-[18px] w-[18px] text-accent"
+                strokeWidth={2}
+              />
+              <h2 className="m-0 font-display text-[16px] font-bold text-tx">
+                Frequently asked
+              </h2>
+            </div>
+            <div className="divide-y divide-line2">
+              <FaqItem
+                icon={HelpCircle}
+                question="How does it work?"
+                answer="Paste a Steam profile URL or 17-digit SteamID. We fetch that account's public inventory from Steam, match every S&box item against our live price database, and total it up. Nothing about your visit is stored."
+              />
+              <FaqItem
+                icon={Shield}
+                question="Is my data safe?"
+                answer="We only read publicly-visible inventory data. We can't see your password, can't trade, and can't modify anything. If your profile is Friends-Only or Private, Steam won't return the inventory — we never see it either."
+              />
+              <FaqItem
+                icon={HelpCircle}
+                question="Why doesn't my item show a price?"
+                answer={
+                  <>
+                    Either it&apos;s a brand-new item we haven&apos;t picked up
+                    on the next sync yet, or it isn&apos;t marketable on the
+                    Steam Community Market. Drop us a note on the{" "}
+                    <Link
+                      href="/contact"
+                      className="font-semibold text-accent hover:underline"
+                    >
+                      contact page
+                    </Link>{" "}
+                    if something looks off.
+                  </>
+                }
+              />
+              <FaqItem
+                icon={HelpCircle}
+                question="How do I make my inventory public?"
+                answer={
+                  <>
+                    On Steam: click your name → Edit Profile → Privacy Settings.
+                    Set <strong className="text-tx">My Profile</strong>,{" "}
+                    <strong className="text-tx">Game Details</strong>, and{" "}
+                    <strong className="text-tx">Inventory</strong> all to Public,
+                    then Save. Steam&apos;s cache can take a minute to catch up.
+                  </>
+                }
+              />
+            </div>
+          </div>
         </div>
       )}
 
-      {!user && <div className="mb-7" />}
+      <div className="mb-7" />
 
       {/* Error */}
       {error && (
@@ -587,8 +698,15 @@ function ItemTile({ item }: { item: InventoryItem }) {
   const card: ReactNode = (
     <div
       style={{ "--rc": tint ?? "var(--accent)" } as CSSProperties}
-      className="group block rounded-[18px] border border-line bg-panel p-[13px] transition-[transform,border-color] duration-150 hover:-translate-y-1 hover:[border-color:color-mix(in_srgb,var(--rc)_50%,var(--line))]"
+      className="group relative block rounded-[18px] border border-line bg-panel p-[13px] transition-[transform,border-color] duration-150 hover:-translate-y-1 hover:[border-color:color-mix(in_srgb,var(--rc)_50%,var(--line))]"
     >
+      {/* Open-item-page affordance — the whole tile is already a Link when the
+          item has a catalog page; this hover chip signals that explicitly. */}
+      {item.slug && (
+        <span className="pointer-events-none absolute left-[21px] top-[21px] z-10 flex h-6 w-6 items-center justify-center rounded-[8px] bg-[rgba(14,13,19,.72)] text-mut opacity-0 backdrop-blur-[6px] transition-opacity duration-150 group-hover:text-accent group-hover:opacity-100">
+          <ExternalLink className="h-3.5 w-3.5" strokeWidth={2.2} />
+        </span>
+      )}
       <SkinTile
         imageUrl={item.imageUrl}
         name={item.name}
@@ -621,4 +739,63 @@ function ItemTile({ item }: { item: InventoryItem }) {
   );
 
   return item.slug ? <Link href={`/items/${item.slug}`}>{card}</Link> : card;
+}
+
+/**
+ * Pre-lookup feature card — an Arcade panel with an accent-tinted icon chip,
+ * a title, and a one-line body. `color` is any CSS color (palette token) used
+ * for both the icon stroke and a soft tinted chip background.
+ */
+function FeatureCard({
+  icon: Icon,
+  color,
+  title,
+  body,
+}: {
+  icon: LucideIcon;
+  color: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="rounded-[18px] border border-line bg-panel p-5 text-center">
+      <span
+        className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-[13px]"
+        style={{
+          background: `color-mix(in srgb, ${color} 14%, transparent)`,
+          color,
+        }}
+      >
+        <Icon className="h-[22px] w-[22px]" strokeWidth={2} />
+      </span>
+      <h3 className="mb-1 text-[14px] font-bold text-tx">{title}</h3>
+      <p className="text-[12.5px] leading-relaxed text-mut">{body}</p>
+    </div>
+  );
+}
+
+/** Pre-lookup FAQ row — leading line-icon, question, then answer (string or
+ *  rich node, e.g. with the /contact link). Stacked in a hairline-divided
+ *  list inside the Arcade FAQ panel. */
+function FaqItem({
+  icon: Icon,
+  question,
+  answer,
+}: {
+  icon: LucideIcon;
+  question: string;
+  answer: ReactNode;
+}) {
+  return (
+    <div className="flex gap-3 py-3.5 first:pt-0 last:pb-0">
+      <Icon
+        className="mt-0.5 h-[17px] w-[17px] shrink-0 text-faint"
+        strokeWidth={2}
+      />
+      <div>
+        <h3 className="mb-1 text-[13.5px] font-semibold text-tx">{question}</h3>
+        <p className="text-[13px] leading-relaxed text-mut">{answer}</p>
+      </div>
+    </div>
+  );
 }

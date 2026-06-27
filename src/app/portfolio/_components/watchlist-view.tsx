@@ -2,7 +2,18 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Heart, Plus, Bell, X } from "lucide-react";
+import {
+  Heart,
+  Plus,
+  Bell,
+  X,
+  Trash2,
+  TrendingUp,
+  TrendingDown,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
+} from "lucide-react";
 import { useWatchlist } from "@/lib/watchlist/context";
 import { useAuth } from "@/lib/auth/context";
 import { StatCard, RankedTable, type RankedColumn } from "@/components/data";
@@ -10,20 +21,22 @@ import { Sparkline } from "@/components/charts";
 import { SkinTile } from "@/components/items/skin-tile";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
-import { formatPriceChange } from "@/lib/utils";
+import { cn, formatPriceChange } from "@/lib/utils";
 import { rarityCssColor } from "@/lib/rarity";
 
 /**
  * Arcade-redesign watchlist ("/portfolio"). Restyle of the prior PortfolioView:
  * same real data + behavior (slug-keyed watchlist from WatchlistProvider, POST
- * /api/portfolio for prices, per-row remove via `toggle`), rebuilt to the
- * design mockup — header + "Add skins" CTA, four StatCard summaries, and a
- * RankedTable of tracked skins with SkinTile, mono numerics, a 7d sparkline,
- * a price-alert affordance, and an × remove button.
+ * /api/portfolio for prices, per-row remove via `toggle`, bulk wipe via
+ * `clear`), rebuilt to the design mockup — header + "Clear all" / "Add skins"
+ * CTAs, six StatCard summaries (tracked value, 24h, avg price, gainers, losers,
+ * count), and a RankedTable of tracked skins with SkinTile, click-to-sort column
+ * headers, a Listings/volume column, mono numerics, a 7d sparkline, a price-alert
+ * affordance, and an × remove button.
  *
  * The table lives in this client subtree because RankedTable's `cell` props
  * are functions (can't cross the server boundary) and the rows carry click
- * handlers.
+ * handlers + sort state.
  */
 
 interface PortfolioItem {
@@ -50,6 +63,9 @@ interface PortfolioData {
   gainers: number;
   losers: number;
 }
+
+/** Which column the table is sorted by. */
+type SortKey = "name" | "price" | "change" | "volume";
 
 /** Up/down/neutral color used for delta text and the inline sparkline. */
 function deltaColor(change: number | null | undefined): string {
@@ -84,10 +100,12 @@ function blendedChange(items: PortfolioItem[]): number {
 }
 
 export function WatchlistView() {
-  const { watchlist, toggle } = useWatchlist();
+  const { watchlist, toggle, clear } = useWatchlist();
   const { user, login } = useAuth();
   const [data, setData] = React.useState<PortfolioData | null>(null);
   const [loading, setLoading] = React.useState(false);
+  const [sortKey, setSortKey] = React.useState<SortKey>("price");
+  const [sortAsc, setSortAsc] = React.useState(false);
 
   React.useEffect(() => {
     if (watchlist.length === 0) {
@@ -106,22 +124,52 @@ export function WatchlistView() {
       .finally(() => setLoading(false));
   }, [watchlist]);
 
-  const items = React.useMemo(
-    () =>
-      data
-        ? [...data.items].sort(
-            (a, b) => (b.currentPrice ?? 0) - (a.currentPrice ?? 0)
-          )
-        : [],
-    [data]
-  );
+  /** Toggle direction when re-clicking the active column, else switch to it (desc-first). */
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortAsc((a) => !a);
+    } else {
+      setSortKey(key);
+      setSortAsc(false);
+    }
+  };
+
+  const items = React.useMemo(() => {
+    if (!data) return [];
+    return [...data.items].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "name":
+          cmp = a.name.localeCompare(b.name);
+          break;
+        case "price":
+          cmp = (a.currentPrice ?? 0) - (b.currentPrice ?? 0);
+          break;
+        case "change":
+          cmp = (a.priceChange24h ?? 0) - (b.priceChange24h ?? 0);
+          break;
+        case "volume":
+          cmp = (a.volume ?? 0) - (b.volume ?? 0);
+          break;
+      }
+      return sortAsc ? cmp : -cmp;
+    });
+  }, [data, sortKey, sortAsc]);
 
   const blended = React.useMemo(() => blendedChange(items), [items]);
 
   const columns: RankedColumn<PortfolioItem>[] = [
     {
       key: "skin",
-      header: "Skin",
+      header: (
+        <SortButton
+          label="Skin"
+          columnKey="name"
+          active={sortKey === "name"}
+          asc={sortAsc}
+          onSort={handleSort}
+        />
+      ),
       width: "minmax(0,1fr)",
       align: "left",
       cell: (it) => (
@@ -155,7 +203,15 @@ export function WatchlistView() {
     },
     {
       key: "price",
-      header: "Price",
+      header: (
+        <SortButton
+          label="Price"
+          columnKey="price"
+          active={sortKey === "price"}
+          asc={sortAsc}
+          onSort={handleSort}
+        />
+      ),
       width: "120px",
       align: "right",
       mono: true,
@@ -167,7 +223,15 @@ export function WatchlistView() {
     },
     {
       key: "d24",
-      header: "24h",
+      header: (
+        <SortButton
+          label="24h"
+          columnKey="change"
+          active={sortKey === "change"}
+          asc={sortAsc}
+          onSort={handleSort}
+        />
+      ),
       width: "100px",
       align: "right",
       mono: true,
@@ -179,6 +243,26 @@ export function WatchlistView() {
           {it.priceChange24h != null
             ? formatPriceChange(it.priceChange24h)
             : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "volume",
+      header: (
+        <SortButton
+          label="Listings"
+          columnKey="volume"
+          active={sortKey === "volume"}
+          asc={sortAsc}
+          onSort={handleSort}
+        />
+      ),
+      width: "100px",
+      align: "right",
+      mono: true,
+      cell: (it) => (
+        <span className="text-[13px] text-mut">
+          {it.volume != null ? it.volume.toLocaleString() : "—"}
         </span>
       ),
     },
@@ -199,7 +283,7 @@ export function WatchlistView() {
     {
       key: "alert",
       header: "Price alert",
-      width: "200px",
+      width: "180px",
       align: "left",
       cell: (it) => (
         <Link
@@ -247,12 +331,24 @@ export function WatchlistView() {
             price.
           </p>
         </div>
-        <Link href="/items">
-          <Button className="h-11 gap-2 px-5">
-            <Plus className="h-4 w-4" strokeWidth={2.4} />
-            Add skins
-          </Button>
-        </Link>
+        <div className="flex items-center gap-3">
+          {watchlist.length > 0 && (
+            <Button
+              variant="secondary"
+              className="h-11 gap-2 px-5"
+              onClick={clear}
+            >
+              <Trash2 className="h-4 w-4" strokeWidth={2.2} />
+              Clear all
+            </Button>
+          )}
+          <Link href="/items">
+            <Button className="h-11 gap-2 px-5">
+              <Plus className="h-4 w-4" strokeWidth={2.4} />
+              Add skins
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {watchlist.length === 0 ? (
@@ -265,7 +361,7 @@ export function WatchlistView() {
       ) : (
         <>
           {/* Summary cards */}
-          <div className="mb-[22px] grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div className="mb-[22px] grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             <StatCard
               label="Tracked value"
               value={<Price amount={data?.totalValue ?? 0} />}
@@ -280,12 +376,45 @@ export function WatchlistView() {
               }
             />
             <StatCard
-              label="Skins tracked"
-              value={data?.itemCount ?? watchlist.length}
+              label="Avg price"
+              value={
+                data && data.itemCount > 0 ? (
+                  <Price amount={data.totalValue / data.itemCount} />
+                ) : (
+                  "—"
+                )
+              }
             />
             <StatCard
-              label="Alerts near"
-              value={<span style={{ color: "var(--accent)" }}>0</span>}
+              label="Gainers"
+              value={
+                <span
+                  className="inline-flex items-center gap-1.5"
+                  style={{ color: "var(--up)" }}
+                >
+                  <TrendingUp className="h-[18px] w-[18px]" strokeWidth={2.4} />
+                  {data?.gainers ?? 0}
+                </span>
+              }
+            />
+            <StatCard
+              label="Losers"
+              value={
+                <span
+                  className="inline-flex items-center gap-1.5"
+                  style={{ color: "var(--down)" }}
+                >
+                  <TrendingDown
+                    className="h-[18px] w-[18px]"
+                    strokeWidth={2.4}
+                  />
+                  {data?.losers ?? 0}
+                </span>
+              }
+            />
+            <StatCard
+              label="Skins tracked"
+              value={data?.itemCount ?? watchlist.length}
             />
           </div>
 
@@ -304,6 +433,47 @@ export function WatchlistView() {
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * Click-to-sort table header. Faint mono uppercase to match RankedTable's
+ * header row; turns accent with a directional caret when it's the active sort.
+ */
+function SortButton({
+  label,
+  columnKey,
+  active,
+  asc,
+  onSort,
+}: {
+  label: string;
+  columnKey: SortKey;
+  active: boolean;
+  asc: boolean;
+  onSort: (key: SortKey) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(columnKey)}
+      aria-label={`Sort by ${label}`}
+      className={cn(
+        "inline-flex select-none items-center gap-1 font-mono text-[11px] uppercase tracking-[.4px] transition-colors",
+        active ? "text-accent" : "text-faint hover:text-mut"
+      )}
+    >
+      {label}
+      {active ? (
+        asc ? (
+          <ChevronUp className="h-3 w-3 text-accent" strokeWidth={2.6} />
+        ) : (
+          <ChevronDown className="h-3 w-3 text-accent" strokeWidth={2.6} />
+        )
+      ) : (
+        <ChevronsUpDown className="h-3 w-3 opacity-50" strokeWidth={2.2} />
+      )}
+    </button>
   );
 }
 
