@@ -82,7 +82,7 @@ async function getRelatedItems(item: { id: string; type: string }) {
       id: { not: item.id },
       type: item.type,
     },
-    take: 6,
+    take: 4,
     orderBy: { volume: "desc" },
   });
 }
@@ -213,28 +213,30 @@ export default async function ItemDetailPage({ params }: PageProps) {
           our funnel. The /s/<slug> page is a minimal poster view with our
           brand embedded, so a screenshot of it still reads as "from
           sboxskins.gg" on a feed. */}
-      <section className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+      <section className="mx-auto max-w-[1240px] px-6 pt-6 pb-2">
         <Link
           href={`/s/${item.slug}`}
-          className="group flex items-center justify-between gap-4 rounded-xl border border-purple-500/25 bg-gradient-to-br from-purple-500/5 to-transparent hover:border-purple-500/50 hover:from-purple-500/10 transition-colors px-5 py-4"
+          className="group flex items-center justify-between gap-4 rounded-[18px] border border-line bg-panel px-5 py-4 transition-colors hover:[border-color:color-mix(in_srgb,var(--accent)_45%,var(--line))]"
         >
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-white mb-0.5">
+            <p className="mb-0.5 text-sm font-bold text-tx">
               Shareable snapshot
             </p>
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-faint">
               Clean, screenshot-ready card with {item.name}'s price, supply,
               and momentum — great for posting on Discord, Twitter, or Reddit.
             </p>
           </div>
-          <Share2 className="h-5 w-5 text-purple-300 group-hover:text-purple-200 shrink-0" />
+          <Share2 className="h-5 w-5 shrink-0 text-accent" />
         </Link>
       </section>
 
       {relatedItems.length > 0 && (
-        <section className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-12">
-          <h2 className="text-xl font-bold text-white mb-6">Similar Items</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+        <section className="mx-auto max-w-[1240px] px-6 py-10">
+          <h2 className="mb-4 font-display text-[24px] font-extrabold tracking-[-0.5px] text-tx">
+            Similar skins
+          </h2>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
             {relatedItems.map((ri) => (
               <ItemCard key={ri.id} item={ri} />
             ))}

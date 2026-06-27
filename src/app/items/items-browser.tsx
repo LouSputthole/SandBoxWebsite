@@ -2,13 +2,12 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Search, LayoutGrid, List } from "lucide-react";
+import { Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ItemGrid } from "@/components/items/item-grid";
-import { ItemTable } from "@/components/items/item-table";
-import { ItemFilters } from "@/components/items/item-filters";
-import { Skeleton } from "@/components/ui/skeleton";
+import { FilterChips } from "./_components/filter-chips";
+import { SortChips } from "./_components/sort-chips";
 
 interface Item {
   id: string;
@@ -27,6 +26,8 @@ interface Item {
 
 interface FilterState {
   type: string;
+  // minPrice/maxPrice have no Arcade UI control, but flow through from URL
+  // params so deep links (?minPrice=…) still filter the initial render.
   minPrice: string;
   maxPrice: string;
   sort: string;
@@ -38,22 +39,23 @@ interface InitialState {
   totalPages: number;
   page: number;
   search: string;
-  view: "grid" | "table";
   filters: FilterState;
+  /** Catalog-wide count per singular Item.type. */
+  typeCounts: Record<string, number>;
+  /** Catalog-wide total item count (the "of N" in the header). */
+  catalogTotal: number;
 }
 
-const defaultFilters: FilterState = {
-  type: "",
-  minPrice: "",
-  maxPrice: "",
-  sort: "name-asc",
-};
+// Grid page size — fills the ~5-column Arcade grid (4 rows). Must match the
+// `limit` the Server Component uses for the first paint so totalPages agrees.
+const PAGE_SIZE = 20;
 
 /**
- * Interactive items browser. The Server Component parent fetches the FIRST
- * render's data and passes it in via initialState, so search engines + the
- * first paint always have real items. Subsequent filter/page/sort changes
- * fetch from /api/items client-side to avoid full-page navigations.
+ * Interactive Arcade items browser. The Server Component parent fetches the
+ * FIRST render's data + the catalog-wide type counts and passes them in via
+ * initialState, so search engines + the first paint always have real items.
+ * Subsequent filter/sort/search/load-more changes fetch from /api/items
+ * client-side to avoid full-page navigations.
  */
 export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
   const router = useRouter();
@@ -62,28 +64,21 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
   const [total, setTotal] = useState(initialState.total);
   const [totalPages, setTotalPages] = useState(initialState.totalPages);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [search, setSearch] = useState(initialState.search);
   const [page, setPage] = useState(initialState.page);
-  const [view, setView] = useState<"grid" | "table">(initialState.view);
-  const [isMobile, setIsMobile] = useState(false);
   const [filters, setFilters] = useState<FilterState>(initialState.filters);
 
-  // Track the very first render so we don't re-fetch identical initial data
+  // Skip the very first fetch (we already have initialState.items from SSR).
   const firstRenderRef = useRef(true);
-
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 768px)");
-    setIsMobile(mq.matches);
-    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
-    mq.addEventListener("change", handler);
-    return () => mq.removeEventListener("change", handler);
-  }, []);
-
-  const effectiveView = isMobile ? "grid" : view;
-  const limit = effectiveView === "table" ? 25 : 12;
+  // When true, the next fetch APPENDS (Load more) instead of replacing.
+  const appendRef = useRef(false);
 
   const fetchItems = useCallback(async () => {
-    setLoading(true);
+    const append = appendRef.current;
+    if (append) setLoadingMore(true);
+    else setLoading(true);
+
     const params = new URLSearchParams();
     if (search) params.set("q", search);
     if (filters.type) params.set("type", filters.type);
@@ -91,23 +86,24 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
     if (filters.maxPrice) params.set("maxPrice", filters.maxPrice);
     params.set("sort", filters.sort);
     params.set("page", page.toString());
-    params.set("limit", limit.toString());
+    params.set("limit", PAGE_SIZE.toString());
 
     try {
       const res = await fetch(`/api/items?${params.toString()}`);
       const data = await res.json();
-      setItems(data.items);
+      setItems((prev) => (append ? [...prev, ...data.items] : data.items));
       setTotal(data.total);
       setTotalPages(data.totalPages);
     } catch (e) {
       console.error("Failed to fetch items:", e);
     } finally {
+      appendRef.current = false;
       setLoading(false);
+      setLoadingMore(false);
     }
-  }, [search, filters, page, limit]);
+  }, [search, filters, page]);
 
-  // Re-fetch when state changes — but skip the very first render (we already
-  // have initialState.items from the server)
+  // Re-fetch when state changes — but skip the very first render.
   useEffect(() => {
     if (firstRenderRef.current) {
       firstRenderRef.current = false;
@@ -116,7 +112,9 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
     fetchItems();
   }, [fetchItems]);
 
-  // Sync URL with state so reloads/back/share preserve everything
+  // Sync URL with state so reloads/back/share preserve filters. `page` is left
+  // out on purpose: "Load more" accumulates pages client-side, so a `?page=N`
+  // on reload (which would fetch only page N) would be misleading.
   useEffect(() => {
     const params = new URLSearchParams();
     if (search) params.set("q", search);
@@ -124,145 +122,111 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
     if (filters.minPrice) params.set("minPrice", filters.minPrice);
     if (filters.maxPrice) params.set("maxPrice", filters.maxPrice);
     if (filters.sort !== "name-asc") params.set("sort", filters.sort);
-    if (page > 1) params.set("page", page.toString());
-    if (view !== "table") params.set("view", effectiveView);
 
     const qs = params.toString();
     router.replace(`/items${qs ? `?${qs}` : ""}`, { scroll: false });
-  }, [search, filters, page, view, effectiveView, router]);
+  }, [search, filters, router]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
   };
 
-  const handleSortChange = (newSort: string) => {
-    setFilters((f) => ({ ...f, sort: newSort }));
+  const handleTypeChange = (type: string) => {
+    setFilters((f) => ({ ...f, type }));
     setPage(1);
   };
 
+  const handleSortChange = (sort: string) => {
+    setFilters((f) => ({ ...f, sort }));
+    setPage(1);
+  };
+
+  const handleLoadMore = () => {
+    appendRef.current = true;
+    setPage((p) => p + 1);
+  };
+
   return (
-    <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="mx-auto max-w-[1240px] px-6 py-8">
+      {/* Header */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Browse Skins</h1>
-          <p className="text-sm text-neutral-500 mt-1">
-            Explore all S&box skins available on the Steam Community Market
+          <h1 className="font-display text-3xl font-extrabold tracking-tight text-[var(--tx)] sm:text-[38px]">
+            All S&box skins
+          </h1>
+          <p className="mt-2 text-sm text-[var(--mut)]">
+            Every tracked cosmetic on the Steam Community Market. Showing{" "}
+            <span className="font-mono font-semibold text-[var(--tx)]">
+              {total.toLocaleString()}
+            </span>{" "}
+            of{" "}
+            <span className="font-mono font-semibold text-[var(--tx)]">
+              {initialState.catalogTotal.toLocaleString()}
+            </span>
+            .
           </p>
         </div>
-        <div className="hidden md:flex items-center gap-1 bg-neutral-900 rounded-lg border border-neutral-800 p-1">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => { setView("table"); setPage(1); }}
-            className={`px-2 ${effectiveView === "table" ? "bg-neutral-800 text-white" : "text-neutral-500"}`}
-          >
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => { setView("grid"); setPage(1); }}
-            className={`px-2 ${effectiveView === "grid" ? "bg-neutral-800 text-white" : "text-neutral-500"}`}
-          >
-            <LayoutGrid className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
 
-      <div className="flex flex-col lg:flex-row gap-8">
-        <aside className="w-full lg:w-56 shrink-0">
-          <form onSubmit={handleSearch} className="mb-6">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
-              <Input
-                placeholder="Search skins..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setPage(1);
-                }}
-                className="pl-9"
-              />
-            </div>
-          </form>
-
-          <ItemFilters
-            filters={filters}
-            onFilterChange={(f) => {
-              setFilters(f);
+        <form onSubmit={handleSearch} className="relative w-full sm:w-[280px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--faint)]" />
+          <Input
+            placeholder="Search skins…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
               setPage(1);
             }}
-            onReset={() => {
-              setFilters(defaultFilters);
-              setPage(1);
-            }}
+            className="h-10 rounded-xl border-[var(--line)] bg-[var(--panel)] pl-9 text-[var(--tx)] placeholder:text-[var(--faint)] focus-visible:border-[var(--accent)] focus-visible:ring-0"
           />
-        </aside>
-
-        <div className="flex-1 min-w-0">
-          {loading ? (
-            <SkeletonView view={effectiveView} />
-          ) : effectiveView === "table" ? (
-            <ItemTable
-              items={items}
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              sort={filters.sort}
-              onPageChange={setPage}
-              onSortChange={handleSortChange}
-            />
-          ) : (
-            <ItemGrid
-              items={items}
-              page={page}
-              totalPages={totalPages}
-              total={total}
-              onPageChange={setPage}
-            />
-          )}
-        </div>
+        </form>
       </div>
+
+      {/* Toolbar: type filters (left) · sort (right) */}
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <FilterChips
+          value={filters.type}
+          counts={initialState.typeCounts}
+          total={initialState.catalogTotal}
+          onChange={handleTypeChange}
+        />
+        <SortChips value={filters.sort} onChange={handleSortChange} />
+      </div>
+
+      {/* Grid */}
+      {loading ? <SkeletonGrid /> : <ItemGrid items={items} />}
+
+      {/* Load more */}
+      {!loading && page < totalPages && (
+        <div className="flex justify-center pt-9 pb-2">
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+          >
+            {loadingMore ? "Loading…" : "Load more skins"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
 
-function SkeletonView({ view }: { view: "grid" | "table" }) {
-  if (view === "table") {
-    return (
-      <div>
-        <Skeleton className="h-5 w-32 mb-4" />
-        <div className="rounded-xl border border-neutral-800 overflow-hidden">
-          {Array.from({ length: 10 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-4 px-4 py-3 border-b border-neutral-800/50">
-              <Skeleton className="h-4 w-6" />
-              <Skeleton className="h-10 w-10 rounded-lg" />
-              <Skeleton className="h-4 w-40" />
-              <div className="ml-auto flex gap-8">
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-4 w-16" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  }
+function SkeletonGrid() {
   return (
-    <div>
-      <Skeleton className="h-5 w-32 mb-4" />
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-        {Array.from({ length: 12 }).map((_, i) => (
-          <div key={i} className="rounded-xl border border-neutral-800 p-4">
-            <Skeleton className="h-32 w-full mb-4 rounded-lg" />
-            <Skeleton className="h-4 w-3/4 mb-2" />
-            <Skeleton className="h-3 w-1/2 mb-3" />
-            <Skeleton className="h-6 w-1/3" />
-          </div>
-        ))}
-      </div>
+    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div
+          key={i}
+          className="rounded-[18px] border border-[var(--line)] bg-[var(--panel)] p-3"
+        >
+          <div className="mb-3 aspect-square w-full animate-pulse rounded-[14px] bg-[var(--bg2)]" />
+          <div className="mb-2 h-4 w-3/4 animate-pulse rounded bg-[var(--bg2)]" />
+          <div className="mb-3 h-3 w-1/2 animate-pulse rounded bg-[var(--bg2)]" />
+          <div className="h-5 w-1/3 animate-pulse rounded bg-[var(--bg2)]" />
+        </div>
+      ))}
     </div>
   );
 }
