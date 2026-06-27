@@ -5,9 +5,9 @@
  * `asset_description.name_color` — a hex tint stored verbatim (no leading
  * '#') in `Item.rarityColor` by the sync. Steam ships NO human-readable
  * rarity name for these items (`market_bucket_group_name` just echoes the
- * item's own name and there are no rarity `tags`). We therefore render the
- * faithful colored dot and omit tier *labels* until S&box's official rarity
- * names are confirmed.
+ * item's own name and there are no rarity `tags`). The tier NAMES were since
+ * recovered from the Steam item definitions (see RARITY_NAMES below), so we now
+ * render both the colored dot and the tier label for graded items.
  *
  * "Rarity exists" for an item ≡ `rarityColor` is a non-empty string. These
  * helpers are intentionally pure (no Date/Math.random) so they're safe to
@@ -15,13 +15,23 @@
  */
 
 /**
- * Hex `name_color` → tier name, used by rarityLabel(). Intentionally EMPTY
- * for now: Steam ships only a rarity COLOR for S&box items (observed tints:
- * d32ce6, 4b69ff, 5e98d9, b0c3d9), never a tier name, so any label here would
- * be invented. Populate with the real names once S&box's taxonomy is known,
- * e.g. `{ "d32ce6": "<official name>" }`. Lower-case, no '#', matching storage.
+ * Hex `name_color` → tier name, used by rarityLabel(). Lower-case, no '#',
+ * matching storage. Decoded 2026-06-26 from the s&box Steam item definitions
+ * (`ISteamInventory`, appid 590830): the itemdef's `name_color` and `rarity`
+ * properties are a clean 1:1 across all graded items, and the colors are the
+ * classic Valve grade palette. Only the ~35 graded items carry a color/tier;
+ * ungraded items have no `name_color`, so rarityLabel() returns null for them
+ * and the UI shows no label (the colored dot only renders when a color exists).
  */
-const RARITY_NAMES: Record<string, string> = {};
+const RARITY_NAMES: Record<string, string> = {
+  b0c3d9: "Common",
+  "5e98d9": "Uncommon",
+  "4b69ff": "Rare",
+  "8847ff": "Epic",
+  d32ce6: "Legendary",
+  eb4b4b: "Mythic",
+  e4ae39: "Exotic",
+};
 
 /** Normalize a stored rarity color to a CSS-usable `#rrggbb` string, or null. */
 export function rarityCssColor(rarityColor: string | null | undefined): string | null {
