@@ -146,8 +146,6 @@ foreach (var el in defs)
             itemDefinitionId = IntId(el, "itemdefid"),
             release = ParseDate(Str(el, "date_created")),
             iconUrl = NullIfEmpty(Str(el, "icon_url")),
-            marketable = Bool(el, "marketable"),
-            tradable = Bool(el, "tradable"),
         },
     });
 }
@@ -197,9 +195,6 @@ static string? Str(JsonElement el, string k) =>
 
 static long? IntId(JsonElement el, string k) =>
     long.TryParse(Str(el, k), out var n) ? n : null;
-
-static bool? Bool(JsonElement el, string k) =>
-    Str(el, k) switch { "1" => true, "0" => false, _ => (bool?)null };
 
 static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 

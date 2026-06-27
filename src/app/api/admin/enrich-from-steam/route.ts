@@ -44,10 +44,6 @@ interface SteamDef {
   isDroppableItem?: boolean | null;
   release?: string | null;
   iconUrl?: string | null;
-  // Used only to scope-filter CREATES (an internal item like "QA Team T-Shirt"
-  // is neither marketable nor tradable). Existing rows always update regardless.
-  marketable?: boolean | null;
-  tradable?: boolean | null;
 }
 interface Entry {
   slug?: string;
@@ -106,7 +102,6 @@ export async function POST(request: NextRequest) {
 
   let updated = 0;
   const created: string[] = [];
-  const filtered: string[] = [];
   const notFound: string[] = [];
   const skipped: string[] = [];
 
@@ -154,14 +149,6 @@ export async function POST(request: NextRequest) {
         notFound.push(slug);
         continue;
       }
-      // Scope filter (CREATE only): skip clearly-internal items that are neither
-      // marketable nor tradable (e.g. "QA Team T-Shirt"), mirroring the sbox.dev
-      // discovery filter. Existing rows already updated above, so this only gates
-      // brand-new creations.
-      if (def.marketable === false && def.tradable === false) {
-        filtered.push(slug);
-        continue;
-      }
       const seedRes: SyncResult = {
         success: true,
         itemsProcessed: 0,
@@ -206,7 +193,6 @@ export async function POST(request: NextRequest) {
     source: "steam-itemdef",
     created,
     updated,
-    filtered,
     notFound,
     skipped,
   });
