@@ -1,4 +1,4 @@
-import { InventoryChecker } from "./inventory-checker";
+import { InventoryView } from "./_components/inventory-view";
 
 /**
  * Inventory page is a server-component shell that mounts the existing
@@ -64,17 +64,17 @@ export default function InventoryPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }}
       />
 
-      <InventoryChecker />
+      <InventoryView />
 
       {/* SEO content. Server-rendered so Googlebot sees real text on the
           first paint, addressing the "Crawled - currently not indexed"
           status from Search Console. Below the interactive widget so
           regular users hit the lookup form first. */}
-      <section className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 pb-16 pt-4 prose prose-invert prose-sm max-w-none">
-        <h2 className="text-xl font-bold text-white mb-3">
+      <section className="mx-auto max-w-3xl px-4 pb-16 pt-4 sm:px-6 lg:px-8">
+        <h2 className="mb-3 font-display text-xl font-bold text-tx">
           About the S&amp;box inventory checker
         </h2>
-        <p className="text-sm text-neutral-400 leading-relaxed">
+        <p className="text-sm leading-relaxed text-mut">
           This tool calculates the total Steam Community Market value of any
           public S&amp;box inventory. Paste a Steam profile URL or a 17-digit
           SteamID64 and we&apos;ll pull the inventory, match each item against
@@ -84,10 +84,10 @@ export default function InventoryPage() {
           one click.
         </p>
 
-        <h3 className="text-base font-semibold text-white mt-6 mb-2">
+        <h3 className="mb-2 mt-6 font-display text-base font-semibold text-tx">
           What we show per item
         </h3>
-        <ul className="text-sm text-neutral-400 leading-relaxed list-disc pl-5 space-y-1">
+        <ul className="list-disc space-y-1 pl-5 text-sm leading-relaxed text-mut">
           <li>
             Quantity owned in the inventory (Steam aggregates duplicates)
           </li>
@@ -101,10 +101,10 @@ export default function InventoryPage() {
           </li>
         </ul>
 
-        <h3 className="text-base font-semibold text-white mt-6 mb-2">
+        <h3 className="mb-2 mt-6 font-display text-base font-semibold text-tx">
           Privacy and limitations
         </h3>
-        <p className="text-sm text-neutral-400 leading-relaxed">
+        <p className="text-sm leading-relaxed text-mut">
           The lookup proxies Steam&apos;s public inventory endpoint. Your
           Steam ID is sent to Steam (because that&apos;s how the request
           works), but nothing about the inventory is written to our database
@@ -112,32 +112,32 @@ export default function InventoryPage() {
           rate-limit lookups per IP so the tool stays available during
           traffic spikes.
         </p>
-        <p className="text-sm text-neutral-400 leading-relaxed mt-3">
+        <p className="mt-3 text-sm leading-relaxed text-mut">
           Items released too recently to be in our catalog show as untracked
           and don&apos;t contribute to the total. The catalog refreshes
           daily, so brand-new drops typically appear within 24 hours of
           release.
         </p>
 
-        <h3 className="text-base font-semibold text-white mt-6 mb-2">
+        <h3 className="mb-2 mt-6 font-display text-base font-semibold text-tx">
           Frequently asked
         </h3>
-        <dl className="text-sm leading-relaxed space-y-3">
+        <dl className="space-y-3 text-sm leading-relaxed">
           <div>
-            <dt className="text-white font-semibold">
+            <dt className="font-semibold text-tx">
               Why does the lookup say my inventory is empty?
             </dt>
-            <dd className="text-neutral-400 mt-1">
+            <dd className="mt-1 text-mut">
               Steam returns an empty response when an inventory is set to
               private. Open Steam → your profile → Edit Profile → Privacy
               Settings → set Inventory to Public, then retry.
             </dd>
           </div>
           <div>
-            <dt className="text-white font-semibold">
+            <dt className="font-semibold text-tx">
               How does this differ from Steam&apos;s built-in inventory page?
             </dt>
-            <dd className="text-neutral-400 mt-1">
+            <dd className="mt-1 text-mut">
               Steam shows you items but no totals or market context. We add
               the per-item current price, a running total, and links into
               each item&apos;s price history page so you can see whether
@@ -145,11 +145,14 @@ export default function InventoryPage() {
             </dd>
           </div>
           <div>
-            <dt className="text-white font-semibold">
+            <dt className="font-semibold text-tx">
               Can I export my inventory valuation?
             </dt>
-            <dd className="text-neutral-400 mt-1">
-              Not yet from this page. The CSV export at <code>/api/export</code>
+            <dd className="mt-1 text-mut">
+              Not yet from this page. The CSV export at{" "}
+              <code className="rounded bg-bg2 px-1 py-0.5 font-mono text-[12px] text-tx">
+                /api/export
+              </code>
               {" "}
               covers the full catalog with prices and supply, which lets you
               build your own per-item value sheet in a spreadsheet.

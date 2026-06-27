@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { PortfolioView } from "@/components/portfolio/portfolio-view";
+import { WatchlistView } from "./_components/watchlist-view";
 
 export const metadata: Metadata = {
   title: "Watchlist - S&box Skins",
@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function PortfolioPage() {
-  return <PortfolioView />;
+  return <WatchlistView />;
 }
