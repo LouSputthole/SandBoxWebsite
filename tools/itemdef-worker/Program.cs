@@ -98,17 +98,27 @@ if (digest == "") return Fatal("no digest returned by GetItemDefMeta.");
 using var http = new HttpClient();
 var archiveUrl =
     $"https://api.steampowered.com/IGameInventory/GetItemDefArchive/v1/?appid={APPID}&digest={digest}";
-var archiveJson = await http.GetStringAsync(archiveUrl);
-List<Dictionary<string, JsonElement>> defs;
+// The archive arrives null-terminated (a trailing 0x00 byte) — trim it, then
+// parse with JsonDocument (tolerant of the duplicate property keys some itemdef
+// objects carry, unlike Deserialize<Dictionary>).
+var archiveJson = (await http.GetStringAsync(archiveUrl))
+    .Trim('\0', ' ', '\t', '\r', '\n');
+JsonDocument doc;
 try
 {
-    defs = JsonSerializer.Deserialize<List<Dictionary<string, JsonElement>>>(archiveJson) ?? new();
+    doc = JsonDocument.Parse(archiveJson);
 }
-catch
+catch (Exception ex)
+{
+    Console.WriteLine($"[FATAL] archive parse failed ({ex.Message}). First 200 chars:\n{archiveJson[..Math.Min(200, archiveJson.Length)]}");
+    return 1;
+}
+if (doc.RootElement.ValueKind != JsonValueKind.Array)
 {
     Console.WriteLine($"[FATAL] archive not a JSON array. First 200 chars:\n{archiveJson[..Math.Min(200, archiveJson.Length)]}");
     return 1;
 }
+var defs = doc.RootElement.EnumerateArray().ToList();
 Console.WriteLine($"itemdefs in archive: {defs.Count}");
 
 if (digestOnly)
@@ -121,9 +131,9 @@ if (digestOnly)
 }
 
 var entries = new List<object>();
-foreach (var d in defs)
+foreach (var el in defs)
 {
-    var name = Str(d, "name");
+    var name = Str(el, "name");
     if (string.IsNullOrWhiteSpace(name)) continue;
     entries.Add(new
     {
@@ -131,11 +141,11 @@ foreach (var d in defs)
         def = new
         {
             name,
-            rarity = NullIfEmpty(Str(d, "rarity")),
-            rarityColor = NullIfEmpty(Str(d, "name_color")),
-            itemDefinitionId = IntId(d, "itemdefid"),
-            release = ParseDate(Str(d, "date_created")),
-            iconUrl = NullIfEmpty(Str(d, "icon_url")),
+            rarity = NullIfEmpty(Str(el, "rarity")),
+            rarityColor = NullIfEmpty(Str(el, "name_color")),
+            itemDefinitionId = IntId(el, "itemdefid"),
+            release = ParseDate(Str(el, "date_created")),
+            iconUrl = NullIfEmpty(Str(el, "icon_url")),
         },
     });
 }
@@ -173,8 +183,8 @@ static string ReadPassword()
     return sb.ToString();
 }
 
-static string? Str(Dictionary<string, JsonElement> d, string k) =>
-    d.TryGetValue(k, out var v)
+static string? Str(JsonElement el, string k) =>
+    el.TryGetProperty(k, out var v)
         ? v.ValueKind switch
         {
             JsonValueKind.String => v.GetString(),
@@ -183,8 +193,8 @@ static string? Str(Dictionary<string, JsonElement> d, string k) =>
         }
         : null;
 
-static long? IntId(Dictionary<string, JsonElement> d, string k) =>
-    long.TryParse(Str(d, k), out var n) ? n : null;
+static long? IntId(JsonElement el, string k) =>
+    long.TryParse(Str(el, k), out var n) ? n : null;
 
 static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
