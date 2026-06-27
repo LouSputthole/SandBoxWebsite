@@ -14,6 +14,7 @@ import { SkinTile } from "@/components/items/skin-tile";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
 import { useAuth } from "@/lib/auth/context";
+import { rarityCssColor, rarityLabel } from "@/lib/rarity";
 
 /**
  * Arcade "Inventory checker" — Steam-URL lookup → profile + estimated value
@@ -22,11 +23,11 @@ import { useAuth } from "@/lib/auth/context";
  * fetch + match pipeline (runLookup / handleSubmit) is byte-for-byte the same
  * client behavior; only the markup/styling changed to match the Arcade mockup.
  *
- * Data note: the /api/inventory/match payload does NOT carry a per-item Steam
- * rarity color, so the "Value by rarity" bar (and each tile's tint) is derived
- * client-side from a price-tier proxy (PRICE_TIERS below). Wiring true rarity
- * would mean returning `Item.rarityColor` from the match route — out of scope
- * for this restyle. See VALUE_TIERS.
+ * Data note: the /api/inventory/match payload now returns each matched item's
+ * Steam `rarityColor`, so the "Value by rarity" bar (and each tile's tint) uses
+ * the REAL grade color + tier name when present. Items with no graded rarity
+ * fall back to a price-tier proxy (VALUE_TIERS below) so the bar stays
+ * populated either way. See segmentForItem / VALUE_TIERS.
  */
 
 interface InventoryItem {
@@ -34,6 +35,7 @@ interface InventoryItem {
   slug: string | null;
   type: string;
   imageUrl: string | null;
+  rarityColor: string | null;
   quantity: number;
   unitPrice: number | null;
   totalPrice: number | null;
@@ -65,6 +67,26 @@ const VALUE_TIERS = [
 function tierForPrice(unitPrice: number | null) {
   if (unitPrice == null) return null;
   return VALUE_TIERS.find((t) => unitPrice >= t.min) ?? null;
+}
+
+/**
+ * Resolve an item's value-bar segment (and tile tint source). Prefers the REAL
+ * Steam grade — `rarityColor` → CSS color + `rarityLabel` tier name — and only
+ * falls back to the price-tier proxy (VALUE_TIERS) when the item carries no
+ * graded rarity. Returns null for unpriced items (they don't count toward the
+ * value bar). The `key` namespaces real vs proxy so the two never collide.
+ */
+function segmentForItem(
+  item: InventoryItem,
+): { key: string; label: string; color: string } | null {
+  if (item.totalPrice == null) return null;
+  const real = rarityCssColor(item.rarityColor);
+  if (real) {
+    return { key: `r:${real}`, label: rarityLabel(item.rarityColor) ?? "Graded", color: real };
+  }
+  const tier = tierForPrice(item.unitPrice);
+  if (!tier) return null;
+  return { key: `p:${tier.key}`, label: tier.label, color: tier.color };
 }
 
 /** Group a 17-digit SteamID64 into 4-char blocks for legibility. */
@@ -299,18 +321,27 @@ export function InventoryView() {
   const isSelf = !!(result && user && user.steamId === result.steamid64);
   const displayName = isSelf ? user?.username ?? null : null;
 
-  // Value-by-rarity (price-tier proxy) segments, computed from the items.
+  // Value-by-rarity segments — grouped by REAL Steam grade where available,
+  // price-tier proxy otherwise (see segmentForItem). Sorted by value desc so
+  // the heaviest grades lead the bar + legend.
   const raritySegments =
     result && result.totalValue > 0
-      ? VALUE_TIERS.map((tier) => {
-          const value = result.items.reduce((sum, it) => {
-            if (it.totalPrice == null) return sum;
-            return tierForPrice(it.unitPrice)?.key === tier.key
-              ? sum + it.totalPrice
-              : sum;
-          }, 0);
-          return { ...tier, value };
-        }).filter((s) => s.value > 0)
+      ? (() => {
+          const byKey = new Map<
+            string,
+            { key: string; label: string; color: string; value: number }
+          >();
+          for (const it of result.items) {
+            const seg = segmentForItem(it);
+            if (!seg || it.totalPrice == null) continue;
+            const existing = byKey.get(seg.key);
+            if (existing) existing.value += it.totalPrice;
+            else byKey.set(seg.key, { ...seg, value: it.totalPrice });
+          }
+          return [...byKey.values()]
+            .filter((s) => s.value > 0)
+            .sort((a, b) => b.value - a.value);
+        })()
       : [];
 
   return (
@@ -444,7 +475,7 @@ export function InventoryView() {
                   Value by rarity
                 </span>
                 <span className="text-[12px] text-faint">
-                  estimated by item price tier
+                  by Steam rarity, price-tier fallback
                 </span>
               </div>
               <div className="flex h-3 gap-[2px] overflow-hidden rounded-[6px]">
@@ -550,8 +581,8 @@ function ProfileCard({
 }
 
 function ItemTile({ item }: { item: InventoryItem }) {
-  const tier = tierForPrice(item.unitPrice);
-  const tint = tier?.color ?? null;
+  // Real Steam grade tint first; price-tier proxy only when ungraded.
+  const tint = rarityCssColor(item.rarityColor) ?? tierForPrice(item.unitPrice)?.color ?? null;
 
   const card: ReactNode = (
     <div

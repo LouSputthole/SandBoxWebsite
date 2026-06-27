@@ -45,6 +45,7 @@ export default async function NewDropsPage() {
       isLimited: true,
       createdAt: true,
       steamItemNameId: true,
+      rarityColor: true,
     },
   })) as NewDropItem[];
 

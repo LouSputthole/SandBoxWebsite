@@ -11,6 +11,7 @@ import { SkinTile } from "@/components/items/skin-tile";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/ui/price";
 import { formatPriceChange } from "@/lib/utils";
+import { rarityCssColor } from "@/lib/rarity";
 
 /**
  * Arcade-redesign watchlist ("/portfolio"). Restyle of the prior PortfolioView:
@@ -38,6 +39,7 @@ interface PortfolioItem {
   volume: number | null;
   isLimited: boolean;
   storeStatus: string;
+  rarityColor: string | null;
 }
 
 interface PortfolioData {
@@ -131,6 +133,7 @@ export function WatchlistView() {
             imageUrl={it.imageUrl}
             name={it.name}
             type={it.type}
+            rarityColor={rarityCssColor(it.rarityColor)}
             className="h-[42px] w-[42px] shrink-0"
           />
           <div className="min-w-0">

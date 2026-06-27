@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
       currentPrice: true,
       imageUrl: true,
       type: true,
+      rarityColor: true,
     },
   });
 
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest) {
       slug: dbItem?.slug ?? null,
       type: dbItem?.type ?? item.type ?? "unknown",
       imageUrl: dbItem?.imageUrl ?? (item.iconUrl ? getSteamImageUrl(item.iconUrl) : null),
+      rarityColor: dbItem?.rarityColor ?? null,
       quantity: item.quantity,
       unitPrice,
       totalPrice,

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { SkinTile } from "@/components/items/skin-tile";
 import type { NewDropItem } from "@/components/items/new-drop-card";
+import { rarityCssColor } from "@/lib/rarity";
 
 function addedLabel(createdAt: Date): string {
   const ms = Date.now() - createdAt.getTime();
@@ -48,6 +49,7 @@ export function FreshDropsGrid({ items }: { items: NewDropItem[] }) {
               imageUrl={item.imageUrl}
               name={item.name}
               type={item.type}
+              rarityColor={rarityCssColor(item.rarityColor)}
               className="h-[50px] w-[50px] shrink-0 !rounded-[13px]"
             />
             <span className="min-w-0 flex-1">

@@ -13,6 +13,9 @@ export interface NewDropItem {
   isLimited: boolean;
   createdAt: Date;
   steamItemNameId: string | null;
+  // Steam-sourced rarity tint (hex, no leading #), when graded. Flows into
+  // <ItemCard> (/new) and <SkinTile> (homepage fresh drops) for the frame tint.
+  rarityColor?: string | null;
 }
 
 function daysSince(createdAt: Date): number {

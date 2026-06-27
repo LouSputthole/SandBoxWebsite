@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
         volume: true,
         isLimited: true,
         storeStatus: true,
+        rarityColor: true,
       },
     });
 

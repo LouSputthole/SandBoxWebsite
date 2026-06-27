@@ -12,6 +12,7 @@ import { StatCard } from "@/components/data";
 import { SkinTile } from "@/components/items/skin-tile";
 import { Price } from "@/components/ui/price";
 import { formatPrice, formatPriceChange } from "@/lib/utils";
+import { rarityCssColor } from "@/lib/rarity";
 
 /**
  * Arcade "Market trends" board. Everything below the nav lives in one client
@@ -57,6 +58,8 @@ export interface MoverVM {
   price: number | null;
   /** 24h price change, percent. */
   change: number;
+  /** Steam-sourced rarity tint (hex, no leading #), when graded. */
+  rarityColor?: string | null;
 }
 
 export interface MarketCapPoint {
@@ -301,6 +304,7 @@ function MoverRow({ item, color }: { item: MoverVM; color: string }) {
         imageUrl={item.imageUrl}
         name={item.name}
         type={item.type}
+        rarityColor={rarityCssColor(item.rarityColor)}
         className="h-[38px] w-[38px] shrink-0 !rounded-[10px]"
       />
       <span className="min-w-0 flex-1">

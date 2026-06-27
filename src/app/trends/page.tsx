@@ -60,6 +60,7 @@ interface RawMover {
   type: string;
   currentPrice: number | null;
   priceChange24h: number | null;
+  rarityColor: string | null;
 }
 
 function toMover(m: RawMover): MoverVM {
@@ -70,6 +71,7 @@ function toMover(m: RawMover): MoverVM {
     type: m.type,
     price: m.currentPrice,
     change: m.priceChange24h ?? 0,
+    rarityColor: m.rarityColor,
   };
 }
 

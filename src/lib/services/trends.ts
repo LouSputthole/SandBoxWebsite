@@ -46,6 +46,7 @@ export interface TrendsData {
     currentPrice: number | null;
     priceChange24h: number | null;
     volume: number | null;
+    rarityColor: string | null;
   }[];
   topLosers: {
     name: string;
@@ -55,6 +56,7 @@ export interface TrendsData {
     currentPrice: number | null;
     priceChange24h: number | null;
     volume: number | null;
+    rarityColor: string | null;
   }[];
   topGainers7d: WeeklyMover[];
   topLosers7d: WeeklyMover[];
@@ -130,6 +132,7 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
         currentPrice: true,
         priceChange24h: true,
         volume: true,
+        rarityColor: true,
       },
     }),
     prisma.item.findMany({
@@ -144,6 +147,7 @@ export async function getTrendsData(period: TrendsPeriod): Promise<TrendsData> {
         currentPrice: true,
         priceChange24h: true,
         volume: true,
+        rarityColor: true,
       },
     }),
   ]);

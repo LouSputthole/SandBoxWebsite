@@ -98,6 +98,7 @@ async function getHomepageData() {
           isLimited: true,
           createdAt: true,
           steamItemNameId: true,
+          rarityColor: true,
         },
       }),
     ]);
