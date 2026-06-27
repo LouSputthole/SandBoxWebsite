@@ -66,8 +66,12 @@ string account = Env("STEAM_ACCOUNT");
 string refreshToken = Env("STEAM_REFRESH_TOKEN");
 string adminKey = Env("SBOXSKINS_ADMIN_KEY");
 string site = Environment.GetEnvironmentVariable("SITE_URL") ?? "https://sboxskins.gg";
+// `dotnet run -- digest` = log in, print the digest + archive count, no POST.
+// Use it to check whether a (free, non-owning) account can read itemdefs at all
+// before deciding whether the dedicated account needs to own s&box.
+bool digestOnly = args.Contains("digest");
 if (account == "" || refreshToken == "") return Fatal("STEAM_ACCOUNT + STEAM_REFRESH_TOKEN required.");
-if (adminKey == "") return Fatal("SBOXSKINS_ADMIN_KEY required.");
+if (adminKey == "" && !digestOnly) return Fatal("SBOXSKINS_ADMIN_KEY required.");
 
 var loggedOn = new TaskCompletionSource<EResult>();
 manager.Subscribe<SteamClient.ConnectedCallback>(_ =>
@@ -106,6 +110,15 @@ catch
     return 1;
 }
 Console.WriteLine($"itemdefs in archive: {defs.Count}");
+
+if (digestOnly)
+{
+    Console.WriteLine(
+        defs.Count > 0
+            ? "\n✅ digest-only: a digest + non-empty archive came back. This account can read itemdefs — no game purchase needed."
+            : "\n⚠️ digest-only: archive was empty. May need an account that owns s&box.");
+    return 0;
+}
 
 var entries = new List<object>();
 foreach (var d in defs)

@@ -10,12 +10,29 @@ It does **not** touch supply / owners / live price — those stay owned by the
 Steam Market sync. Headline win: the 7-tier rarity (`common`…`mythic`) that the
 Market never exposes.
 
+## First: does the account need to OWN s&box? (it's a paid game — test before buying)
+
+Only the **digest** call (`Inventory.GetItemDefMeta`) needs a logged-in account;
+the archive download is anonymous. Whether that account must *own* s&box is
+untested. Check it with a **free throwaway account** (owns nothing) before
+spending anything — from this folder:
+
+```
+dotnet run -- login          # free account, complete Steam Guard, copy the token
+STEAM_ACCOUNT=... STEAM_REFRESH_TOKEN=... dotnet run -- digest
+```
+
+- ✅ prints a digest + non-empty archive count → **no purchase needed**; use this
+  free account for the secrets below.
+- ⚠️ empty archive / no digest → ownership is required. Then either use your **main**
+  account's refresh token (revocable anytime via Steam → Manage Steam Guard →
+  Deauthorize; the only downside is a long-lived account token in repo secrets) or
+  buy a second copy for a dedicated account.
+
 ## One-time setup (run the login step from any PC, once)
 
-1. **Make a dedicated Steam account** (don't reuse your main — its refresh token
-   will live in GitHub secrets). Add **s&box** to its library (it's free):
-   https://store.steampowered.com/app/590830 → Play Game (installs nothing needed,
-   just owning it in the library is enough).
+1. **Pick the account** from the test above (a free one if the digest test passed,
+   otherwise your main account). Its refresh token will live in GitHub secrets.
 
 2. **Mint a refresh token** — from this folder:
    ```
