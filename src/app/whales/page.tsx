@@ -1,9 +1,10 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
 import { Prisma } from "@/generated/prisma/client";
 import { Price } from "@/components/ui/price";
-import { ExternalLink } from "lucide-react";
+import { RankedTable, RankBadge, type RankedColumn } from "@/components/data";
+import { GradientAvatar } from "./_components/gradient-avatar";
+import { WhaleStat } from "./_components/whale-stat";
 
 export const revalidate = 1800; // 30 minutes
 
@@ -17,10 +18,25 @@ export const metadata: Metadata = {
 interface Whale {
   steamId: string;
   name: string;
-  avatarUrl: string;
-  items: { name: string; slug: string; quantity: number; price: number; value: number }[];
   totalValue: number;
   totalQuantity: number;
+  uniqueItems: number;
+  /** Value-weighted 24h price change across the wallet's holdings (%). */
+  change24h: number;
+  /** Name of the wallet's single most valuable holding. */
+  topHolding: string;
+}
+
+interface WhaleAccumulator {
+  steamId: string;
+  name: string;
+  totalValue: number;
+  totalQuantity: number;
+  /** Σ(itemValue × item 24h %), divided by totalValue to weight the change. */
+  weightedChangeNum: number;
+  /** Tracks the single most valuable holding seen so far. */
+  topHolding: string;
+  topHoldingValue: number;
   uniqueItems: number;
 }
 
@@ -34,153 +50,182 @@ async function getWhales(): Promise<Whale[]> {
       name: true,
       slug: true,
       currentPrice: true,
+      priceChange24h: true,
       topHolders: true,
     },
   });
 
-  const byWhale = new Map<string, Whale>();
+  const byWhale = new Map<string, WhaleAccumulator>();
 
   for (const item of items) {
     if (!item.topHolders || !Array.isArray(item.topHolders)) continue;
     const price = item.currentPrice ?? 0;
     if (price <= 0) continue;
+    const change = item.priceChange24h ?? 0;
 
     for (const h of item.topHolders as unknown as Array<{
       steamId: string;
       name: string;
-      avatarUrl: string;
       quantity: number;
     }>) {
       if (!h.steamId) continue;
       const existing = byWhale.get(h.steamId) ?? {
         steamId: h.steamId,
         name: h.name,
-        avatarUrl: h.avatarUrl,
-        items: [],
         totalValue: 0,
         totalQuantity: 0,
+        weightedChangeNum: 0,
+        topHolding: "",
+        topHoldingValue: 0,
         uniqueItems: 0,
       };
       const value = price * h.quantity;
-      existing.items.push({
-        name: item.name,
-        slug: item.slug,
-        quantity: h.quantity,
-        price,
-        value,
-      });
       existing.totalValue += value;
       existing.totalQuantity += h.quantity;
-      existing.uniqueItems = existing.items.length;
+      existing.weightedChangeNum += value * change;
+      existing.uniqueItems += 1;
+      if (value > existing.topHoldingValue) {
+        existing.topHoldingValue = value;
+        existing.topHolding = item.name;
+      }
       byWhale.set(h.steamId, existing);
     }
   }
 
   return Array.from(byWhale.values())
-    .map((w) => ({ ...w, items: w.items.sort((a, b) => b.value - a.value) }))
+    .map((w) => ({
+      steamId: w.steamId,
+      name: w.name,
+      totalValue: w.totalValue,
+      totalQuantity: w.totalQuantity,
+      uniqueItems: w.uniqueItems,
+      change24h: w.totalValue > 0 ? w.weightedChangeNum / w.totalValue : 0,
+      topHolding: w.topHolding,
+    }))
     .sort((a, b) => b.totalValue - a.totalValue)
     .slice(0, 50);
 }
+
+const columns: RankedColumn<Whale>[] = [
+  {
+    key: "rank",
+    header: "Rank",
+    width: "56px",
+    align: "left",
+    cell: (_w, i) => <RankBadge rank={i + 1} />,
+  },
+  {
+    key: "wallet",
+    header: "Wallet",
+    width: "1fr",
+    align: "left",
+    cell: (w) => (
+      <div className="flex min-w-0 items-center gap-[13px]">
+        <GradientAvatar seed={w.steamId} name={w.name} />
+        <div className="min-w-0">
+          <span className="block truncate text-[14.5px] font-bold text-tx">
+            {w.name}
+          </span>
+          {w.topHolding && (
+            <span className="text-[11.5px] text-faint">top: {w.topHolding}</span>
+          )}
+        </div>
+      </div>
+    ),
+  },
+  {
+    key: "holdings",
+    header: "Holdings",
+    width: "150px",
+    align: "right",
+    mono: true,
+    cellClassName: "text-[15px] font-bold text-tx",
+    cell: (w) => <Price amount={w.totalValue} />,
+  },
+  {
+    key: "items",
+    header: "Items",
+    width: "90px",
+    align: "right",
+    mono: true,
+    cellClassName: "text-[13px] text-mut",
+    cell: (w) => w.totalQuantity.toLocaleString(),
+  },
+  {
+    key: "change",
+    header: "24h",
+    width: "120px",
+    align: "right",
+    mono: true,
+    cellClassName: "text-[13px]",
+    cell: (w) => (
+      <span
+        style={{
+          color:
+            w.change24h > 0
+              ? "var(--up)"
+              : w.change24h < 0
+                ? "var(--down)"
+                : "var(--mut)",
+        }}
+      >
+        {(w.change24h > 0 ? "+" : "") + w.change24h.toFixed(1) + "%"}
+      </span>
+    ),
+  },
+];
 
 export default async function WhalesPage() {
   const whales = await getWhales();
 
   const grandTotal = whales.reduce((sum, w) => sum + w.totalValue, 0);
+  const topShare = grandTotal > 0 ? (whales[0].totalValue / grandTotal) * 100 : 0;
 
   return (
-    <div className="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 rounded-lg bg-sky-500/10 text-2xl leading-none">🐋</div>
-          <h1 className="text-2xl font-bold text-white">Whales</h1>
-        </div>
-        <p className="text-sm text-neutral-400">
-          Biggest known S&box skin collectors ranked by portfolio value. Only shows accounts that appear
-          in the top 10 for at least one tracked item.
-        </p>
-        {whales.length > 0 && (
-          <p className="text-xs text-neutral-600 mt-2">
-            Tracking {whales.length} whales · combined portfolio value{" "}
-            <span className="text-white font-medium"><Price amount={grandTotal} /></span>
-          </p>
-        )}
-      </div>
-
-      {whales.length === 0 ? (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-12 text-center">
-          <p className="text-sm text-neutral-500">No whale data yet. Check back after the next sync.</p>
-        </div>
-      ) : (
-        <div className="space-y-1">
-          {whales.map((w, i) => (
-            <WhaleRow key={w.steamId} whale={w} rank={i + 1} />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function WhaleRow({ whale, rank }: { whale: Whale; rank: number }) {
-  const rankColor =
-    rank === 1
-      ? "bg-amber-500/20 text-amber-400"
-      : rank === 2
-        ? "bg-neutral-400/20 text-neutral-300"
-        : rank === 3
-          ? "bg-orange-500/20 text-orange-400"
-          : "bg-neutral-800/50 text-neutral-500";
-
-  return (
-    <details className="rounded-lg border border-neutral-800 bg-neutral-900/30 overflow-hidden">
-      <summary className="flex items-center gap-4 px-4 py-3 cursor-pointer hover:bg-neutral-800/30 list-none">
-        <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-xs font-bold ${rankColor}`}>
-          {rank}
-        </span>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={whale.avatarUrl}
-          alt=""
-          className="h-10 w-10 rounded-full border border-neutral-700/50"
-        />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-white truncate">{whale.name}</p>
-          <p className="text-[11px] text-neutral-500">
-            {whale.uniqueItems} unique · {whale.totalQuantity} total items
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-base font-semibold text-white"><Price amount={whale.totalValue} /></p>
-        </div>
-      </summary>
-      <div className="px-4 py-3 border-t border-neutral-800 bg-neutral-950/30">
-        <div className="flex items-center justify-between mb-2">
-          <p className="text-[11px] uppercase tracking-wider text-neutral-600">Top items</p>
-          <a
-            href={`https://steamcommunity.com/profiles/${whale.steamId}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+    <div className="mx-auto max-w-[1240px] px-6 py-9">
+      {/* Header */}
+      <div className="mb-[22px]">
+        <h1 className="flex items-center gap-3 font-display text-[38px] font-extrabold tracking-[-.02em] text-tx">
+          <svg
+            width="34"
+            height="34"
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className="text-accent"
+            aria-hidden
           >
-            Steam profile
-            <ExternalLink className="h-3 w-3" />
-          </a>
-        </div>
-        <div className="space-y-1">
-          {whale.items.slice(0, 8).map((it) => (
-            <Link
-              key={it.slug}
-              href={`/items/${it.slug}`}
-              className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-neutral-800/50 transition-colors"
-            >
-              <span className="text-xs text-neutral-300 truncate flex-1">{it.name}</span>
-              <span className="text-xs text-neutral-500 ml-2">
-                {it.quantity}× · <Price amount={it.value} />
-              </span>
-            </Link>
-          ))}
-        </div>
+            <path d="M3 13c2-1 4-1 6 0s4 1 6 0 4-1 6 0v3c-2 1-4 1-6 0s-4-1-6 0-4 1-6 0zM16 8a3 3 0 11-6 0 3 3 0 016 0zM20 9c1 0 2 1 2 2" />
+          </svg>
+          Whales
+        </h1>
+        <p className="mt-2 text-[14.5px] text-mut">
+          The biggest S&amp;box inventories on the market, ranked by estimated value.
+        </p>
       </div>
-    </details>
+
+      {/* Stat chips */}
+      <div className="mb-[22px] grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <WhaleStat label="Whales tracked" value={whales.length.toLocaleString()} />
+        <WhaleStat label="Combined holdings" value={<Price amount={grandTotal} />} />
+        <WhaleStat
+          label="Top wallet share"
+          value={`${topShare.toFixed(1)}%`}
+          accent
+        />
+      </div>
+
+      {/* Ranked table */}
+      <RankedTable
+        columns={columns}
+        rows={whales}
+        rowKey={(w) => w.steamId}
+        rowHref={(w) => `/u/${w.steamId}`}
+        emptyMessage="No whale data yet. Check back after the next sync."
+      />
+
+      <p className="mt-[18px] text-center text-[12.5px] text-faint">
+        Estimated from public Steam inventories. Private inventories are not tracked.
+      </p>
+    </div>
   );
 }

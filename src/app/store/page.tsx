@@ -1,87 +1,101 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import {
-  Store,
-  Clock,
-  Infinity as InfinityIcon,
-  TrendingUp,
-  TrendingDown,
-} from "lucide-react";
 import { prisma } from "@/lib/db";
-import { ItemImage } from "@/components/items/item-image";
-import { formatPrice } from "@/lib/utils";
+import { SectionHeader } from "@/components/home/section-header";
+import { FreshDropsGrid } from "@/components/home/fresh-drops-grid";
+import type { NewDropItem } from "@/components/items/new-drop-card";
+import { StoreRotationBanner } from "./_components/store-rotation-banner";
+import { StoreItemTile, type StoreTileItem } from "./_components/store-item-tile";
 
 export const metadata: Metadata = {
   title: "S&box Store — what's in rotation right now",
   description:
-    "Live view of the S&box in-game store. Rotating items with countdown to delisting, plus the permanent catalog. Includes current Steam Market price next to the original store price so you can see where each item trades.",
+    "Live view of the S&box in-game store. Rotating items with countdown to delisting, plus the freshest skins just added to the tracker. Includes the original store price set by Facepunch.",
   alternates: { canonical: "/store" },
   openGraph: {
-    title: "S&box Store — current rotation + permanent items",
+    title: "S&box Store — current rotation + new drops",
     description:
-      "Rotating store items with delisting countdown plus the permanent S&box catalog.",
+      "Rotating store items with a delisting countdown plus the newest S&box skins added to the tracker.",
   },
 };
 
-// Refresh on each request — `leavingStoreAt` countdowns and active-item
-// flags can change as the store rotates. Cheap query (~80 rows), so
-// we don't bother caching.
+// Refresh on each request — `leavingStoreAt` countdowns and active-item flags
+// change as the store rotates, and the "just added" badges should reflect the
+// live backfill state. Cheap queries (~80 rows), so we don't cache.
 export const dynamic = "force-dynamic";
 
-interface StoreItem {
-  id: string;
-  name: string;
-  slug: string;
-  type: string;
-  imageUrl: string | null;
-  storePrice: number | null;
-  releasePrice: number | null;
-  currentPrice: number | null;
-  leavingStoreAt: Date | null;
+// "Just added" mirrors the /new feed: newest items added in the last 30 days.
+const JUST_ADDED_WINDOW_DAYS = 30;
+const JUST_ADDED_LIMIT = 8;
+
+// Store row = the tile fields + the flags we sort/derive the rotation end from.
+type StoreItem = StoreTileItem & {
   isPermanentStoreItem: boolean;
-  category: string | null;
-  itemDisplayName: string | null;
+  leavingStoreAt: Date | null;
+};
+
+// Helper keeps Date.now() out of the data-flow body below.
+function windowStart(days: number): Date {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
-// Two columns hold the same concept ("original store price"): storePrice
-// came from the legacy sbox.game scraper, releasePrice from sbox.dev's
-// API (more reliable). Sync mirrors releasePrice → storePrice on each
-// refresh, but we coalesce here too so any stale row still renders.
-function effectiveStorePrice(item: StoreItem): number | null {
-  return item.storePrice ?? item.releasePrice ?? null;
+// The current rotation ends when the soonest rotating (non-permanent, dated)
+// item leaves. Returns an ISO string for the client countdown, or null when no
+// rotating item carries a leaving date (sbox.dev sometimes omits it).
+function rotationEndIso(items: StoreItem[]): string | null {
+  const times = items
+    .filter((i) => !i.isPermanentStoreItem && i.leavingStoreAt)
+    .map((i) => i.leavingStoreAt!.getTime());
+  if (times.length === 0) return null;
+  return new Date(Math.min(...times)).toISOString();
 }
 
-function daysUntil(d: Date | null): number | null {
-  if (!d) return null;
-  const ms = d.getTime() - Date.now();
-  if (ms <= 0) return 0;
-  return Math.ceil(ms / (24 * 60 * 60 * 1000));
+function effectiveStorePrice(item: StoreItem): number {
+  return item.storePrice ?? item.releasePrice ?? 0;
 }
 
 export default async function StorePage() {
-  const items = (await prisma.item.findMany({
-    where: { isActiveStoreItem: true },
-    select: {
-      id: true,
-      name: true,
-      slug: true,
-      type: true,
-      imageUrl: true,
-      storePrice: true,
-      releasePrice: true,
-      currentPrice: true,
-      leavingStoreAt: true,
-      isPermanentStoreItem: true,
-      category: true,
-      itemDisplayName: true,
-    },
-  })) as StoreItem[];
+  const [storeRows, justAddedRows] = await Promise.all([
+    prisma.item.findMany({
+      where: { isActiveStoreItem: true },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        type: true,
+        imageUrl: true,
+        storePrice: true,
+        releasePrice: true,
+        rarityColor: true,
+        isPermanentStoreItem: true,
+        leavingStoreAt: true,
+      },
+    }),
+    prisma.item.findMany({
+      where: { createdAt: { gte: windowStart(JUST_ADDED_WINDOW_DAYS) } },
+      orderBy: { createdAt: "desc" },
+      take: JUST_ADDED_LIMIT,
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        type: true,
+        imageUrl: true,
+        currentPrice: true,
+        priceChange24h: true,
+        volume: true,
+        isLimited: true,
+        createdAt: true,
+        steamItemNameId: true,
+      },
+    }),
+  ]);
 
-  // Rotating: not permanent (whether or not we have a leavingStoreAt —
-  // sbox.dev sometimes lacks the date but still flags isPermanent=false).
-  // Sort: items with a known leaving date come first (closest first),
-  // then items with unknown dates by name.
-  const rotating = items
+  const storeItemsRaw = storeRows as StoreItem[];
+  const justAdded = justAddedRows as NewDropItem[];
+
+  // One "In the store now" grid: rotating items first (soonest to leave, then
+  // undated by name), then permanent items (priciest first, then by name).
+  const rotating = storeItemsRaw
     .filter((i) => !i.isPermanentStoreItem)
     .sort((a, b) => {
       const ad = a.leavingStoreAt?.getTime();
@@ -91,227 +105,60 @@ export default async function StorePage() {
       if (bd != null) return 1;
       return a.name.localeCompare(b.name);
     });
-
-  const permanent = items
+  const permanent = storeItemsRaw
     .filter((i) => i.isPermanentStoreItem)
     .sort((a, b) => {
-      const ap = effectiveStorePrice(a) ?? 0;
-      const bp = effectiveStorePrice(b) ?? 0;
+      const ap = effectiveStorePrice(a);
+      const bp = effectiveStorePrice(b);
       if (ap !== bp) return bp - ap;
       return a.name.localeCompare(b.name);
     });
+  const storeItems = [...rotating, ...permanent];
+
+  const endsAt = rotationEndIso(storeItemsRaw);
 
   return (
-    <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <div className="flex items-center gap-2 mb-2">
-          <Store className="h-5 w-5 text-purple-400" />
-          <h1 className="text-2xl font-bold text-white">S&box Store</h1>
-        </div>
-        <p className="text-sm text-neutral-400 max-w-2xl leading-relaxed">
-          What&apos;s currently purchasable in-game. Rotating items leave the
-          store on a schedule — once they&apos;re gone, the only way to get one
-          is the secondary market. Permanent items stay forever.
+    <div className="mx-auto max-w-[1240px] px-6 py-8">
+      {/* Header */}
+      <header className="mb-7">
+        <h1 className="font-display text-[38px] font-extrabold leading-tight tracking-[-.02em] text-tx">
+          Store &amp; new drops
+        </h1>
+        <p className="mt-2 text-[14.5px] text-mut">
+          What&apos;s live in the in-game store right now, and the freshest skins
+          added to the tracker.
         </p>
-      </div>
+      </header>
 
-      {/* Stats strip */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-8">
-        <Stat label="Rotating" value={rotating.length.toLocaleString()} />
-        <Stat label="Permanent" value={permanent.length.toLocaleString()} />
-        <Stat
-          label="Leaving in 7d"
-          value={rotating
-            .filter((i) => {
-              const d = daysUntil(i.leavingStoreAt);
-              return d != null && d <= 7;
-            })
-            .length.toLocaleString()}
-          tone="amber"
-        />
-        <Stat
-          label="Total active"
-          value={items.length.toLocaleString()}
-        />
-      </div>
+      {/* Store-rotation banner with live countdown */}
+      <StoreRotationBanner endsAt={endsAt} itemCount={storeItems.length} />
 
-      {/* Rotating section */}
-      <section className="mb-10">
-        <div className="flex items-center gap-2 mb-3">
-          <Clock className="h-4 w-4 text-amber-400" />
-          <h2 className="text-base font-semibold text-white">
-            Rotating now
-          </h2>
-          <span className="text-xs text-neutral-500">
-            sorted by leaving date
-          </span>
+      {/* In the store now */}
+      <SectionHeader title="In the store now" />
+      {storeItems.length === 0 ? (
+        <p className="mb-9 text-sm text-mut">
+          Nothing in the store right now — check back soon.
+        </p>
+      ) : (
+        <div className="mb-9 grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+          {storeItems.map((item) => (
+            <StoreItemTile key={item.id} item={item} />
+          ))}
         </div>
-        {rotating.length === 0 ? (
-          <p className="text-sm text-neutral-500 italic">
-            Nothing in rotation right now.
-          </p>
-        ) : (
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {rotating.map((item) => (
-              <StoreCard key={item.id} item={item} />
-            ))}
-          </ul>
-        )}
-      </section>
+      )}
 
-      {/* Permanent section */}
-      <section>
-        <div className="flex items-center gap-2 mb-3">
-          <InfinityIcon className="h-4 w-4 text-emerald-400" />
-          <h2 className="text-base font-semibold text-white">Permanent</h2>
-          <span className="text-xs text-neutral-500">
-            never rotates out
-          </span>
-        </div>
-        {permanent.length === 0 ? (
-          <p className="text-sm text-neutral-500 italic">
-            No permanent items flagged yet.
-          </p>
-        ) : (
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {permanent.map((item) => (
-              <StoreCard key={item.id} item={item} />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <p className="text-[11px] text-neutral-600 mt-10 leading-relaxed">
-        Store data refreshes daily from sbox.dev. Market prices come from
-        Steam Community Market — the delta to original store price tells
-        you whether an item has appreciated since release.
-      </p>
+      {/* Just added */}
+      <SectionHeader
+        title="Just added"
+        subtitle="Freshly tracked skins — prices sync within a few hours of listing."
+      />
+      {justAdded.length === 0 ? (
+        <p className="text-sm text-mut">
+          No new skins added in the last {JUST_ADDED_WINDOW_DAYS} days.
+        </p>
+      ) : (
+        <FreshDropsGrid items={justAdded} />
+      )}
     </div>
-  );
-}
-
-function Stat({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: string;
-  tone?: "default" | "amber";
-}) {
-  const toneClass =
-    tone === "amber"
-      ? "text-amber-300"
-      : "text-white";
-  return (
-    <div className="rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-neutral-500">
-        {label}
-      </div>
-      <div className={`text-lg font-bold tabular-nums ${toneClass}`}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function StoreCard({ item }: { item: StoreItem }) {
-  const left = daysUntil(item.leavingStoreAt);
-  const market = item.currentPrice;
-  const store = effectiveStorePrice(item);
-  const delta =
-    market != null && store != null && store > 0
-      ? ((market - store) / store) * 100
-      : null;
-  const Trend = delta != null && delta >= 0 ? TrendingUp : TrendingDown;
-  const deltaTone =
-    delta == null
-      ? "text-neutral-500"
-      : delta >= 0
-        ? "text-emerald-300"
-        : "text-red-300";
-
-  // Time-left tone: red <=2d, amber <=7d, neutral otherwise.
-  const leftTone =
-    left == null
-      ? "text-neutral-500"
-      : left <= 2
-        ? "text-red-300"
-        : left <= 7
-          ? "text-amber-300"
-          : "text-neutral-400";
-
-  return (
-    <li>
-      <Link
-        href={`/items/${item.slug}`}
-        className="group flex gap-3 rounded-lg border border-neutral-800 bg-neutral-900/40 p-3 hover:border-purple-500/40 hover:bg-neutral-900/80 transition"
-      >
-        <div className="h-14 w-14 rounded-md border border-neutral-700 overflow-hidden shrink-0 bg-neutral-950">
-          <ItemImage
-            src={item.imageUrl}
-            name={item.name}
-            type={item.type}
-            size="sm"
-            className="h-full w-full"
-          />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2">
-            <p className="text-sm font-semibold text-white truncate group-hover:text-purple-300 transition-colors">
-              {item.name}
-            </p>
-            {item.itemDisplayName && (
-              <span className="text-[10px] uppercase tracking-wider text-neutral-500 shrink-0">
-                {item.itemDisplayName}
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-neutral-500 capitalize">
-            {item.category ?? item.type}
-          </p>
-          <div className="flex items-center justify-between gap-2 mt-1.5">
-            <div className="text-xs">
-              <span className="text-neutral-500">Store </span>
-              <span className="text-neutral-200 tabular-nums">
-                {store != null ? formatPrice(store) : "—"}
-              </span>
-              {market != null && (
-                <>
-                  <span className="text-neutral-600 mx-1">·</span>
-                  <span className="text-neutral-500">Market </span>
-                  <span className="text-neutral-100 tabular-nums">
-                    {formatPrice(market)}
-                  </span>
-                </>
-              )}
-            </div>
-            {delta != null && Math.abs(delta) >= 0.5 && (
-              <span
-                className={`inline-flex items-center gap-0.5 text-[11px] font-semibold tabular-nums ${deltaTone}`}
-              >
-                <Trend className="h-3 w-3" />
-                {delta >= 0 ? "+" : ""}
-                {delta.toFixed(0)}%
-              </span>
-            )}
-          </div>
-          {!item.isPermanentStoreItem && (
-            <div
-              className={`mt-1 text-[11px] inline-flex items-center gap-1 ${leftTone}`}
-            >
-              <Clock className="h-3 w-3" />
-              {left == null
-                ? "Leaving date unknown"
-                : left === 0
-                  ? "Leaving today"
-                  : left === 1
-                    ? "1 day left"
-                    : `${left} days left`}
-            </div>
-          )}
-        </div>
-      </Link>
-    </li>
   );
 }
