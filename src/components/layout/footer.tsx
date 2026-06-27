@@ -1,59 +1,105 @@
 import Link from "next/link";
-import { Gamepad2 } from "lucide-react";
+
+const browseLinks = [
+  { label: "All Skins", href: "/items" },
+  { label: "Clothing", href: "/items/type/clothing" },
+  { label: "Accessories", href: "/items/type/accessory" },
+  { label: "Characters", href: "/items/type/character" },
+  { label: "Market Trends", href: "/trends" },
+  { label: "Leaderboard", href: "/leaderboard" },
+  { label: "Whales", href: "/whales" },
+  { label: "Compare Skins", href: "/compare" },
+];
+
+const toolsLinks: { label: string; href: string; external?: boolean }[] = [
+  { label: "Trading Board", href: "/trade" },
+  { label: "Inventory Checker", href: "/inventory" },
+  { label: "Watchlist", href: "/portfolio" },
+  { label: "Market Reports", href: "/blog" },
+  { label: "Export Data (CSV)", href: "/api/export", external: true },
+];
+
+const infoLinks = [
+  { label: "FAQ", href: "/faq" },
+  { label: "Contact", href: "/contact" },
+  { label: "Claude Bridge", href: "/claudebridge" },
+];
+
+function FooterColumn({
+  title,
+  links,
+}: {
+  title: string;
+  links: { label: string; href: string; external?: boolean }[];
+}) {
+  return (
+    <div>
+      <div className="mb-[13px] text-xs font-bold uppercase tracking-[0.4px] text-[var(--faint)]">
+        {title}
+      </div>
+      <div className="flex flex-col gap-[10px] text-[13.5px] text-[var(--mut)]">
+        {links.map((l) =>
+          l.external ? (
+            <a
+              key={l.href}
+              href={l.href}
+              className="transition-colors hover:text-[var(--tx)]"
+            >
+              {l.label}
+            </a>
+          ) : (
+            <Link
+              key={l.href}
+              href={l.href}
+              className="transition-colors hover:text-[var(--tx)]"
+            >
+              {l.label}
+            </Link>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function Footer() {
   return (
-    <footer className="border-t border-neutral-800 bg-[#0a0a0f] mt-auto">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-10">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 mb-8">
-          <div>
-            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Browse</h3>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/items" className="text-neutral-500 hover:text-white transition-colors">All Skins</Link></li>
-              <li><Link href="/leaderboard" className="text-neutral-500 hover:text-white transition-colors">Leaderboard</Link></li>
-              <li><Link href="/whales" className="text-neutral-500 hover:text-white transition-colors">Whales</Link></li>
-              <li><Link href="/compare" className="text-neutral-500 hover:text-white transition-colors">Compare Skins</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">By Type</h3>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/items/type/clothing" className="text-neutral-500 hover:text-white transition-colors">Clothing</Link></li>
-              <li><Link href="/items/type/accessory" className="text-neutral-500 hover:text-white transition-colors">Accessories</Link></li>
-              <li><Link href="/items/type/character" className="text-neutral-500 hover:text-white transition-colors">Characters</Link></li>
-              <li><Link href="/trends" className="text-neutral-500 hover:text-white transition-colors">Market Trends</Link></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Tools</h3>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/trade" className="text-neutral-500 hover:text-white transition-colors">Trading Board</Link></li>
-              <li><Link href="/inventory" className="text-neutral-500 hover:text-white transition-colors">Inventory Checker</Link></li>
-              <li><Link href="/portfolio" className="text-neutral-500 hover:text-white transition-colors">Watchlist</Link></li>
-              <li><Link href="/blog" className="text-neutral-500 hover:text-white transition-colors">Market Reports</Link></li>
-              <li><a href="/api/export" className="text-neutral-500 hover:text-white transition-colors">Export Data (CSV)</a></li>
-            </ul>
-          </div>
-          <div>
-            <h3 className="text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-3">Info</h3>
-            <ul className="space-y-2 text-sm">
-              <li><Link href="/faq" className="text-neutral-500 hover:text-white transition-colors">FAQ</Link></li>
-              <li><Link href="/contact" className="text-neutral-500 hover:text-white transition-colors">Contact</Link></li>
-              <li><Link href="/claudebridge" className="text-neutral-500 hover:text-white transition-colors">Claude Bridge</Link></li>
-            </ul>
-          </div>
+    <footer className="mt-auto border-t border-[var(--line)] bg-[var(--bg)]">
+      <div className="mx-auto grid max-w-[1240px] grid-cols-2 gap-8 px-6 pb-7 pt-[42px] md:grid-cols-[1.5fr_1fr_1fr_1fr]">
+        {/* Brand blurb */}
+        <div className="col-span-2 md:col-span-1">
+          <Link href="/" className="mb-3 flex items-center gap-[10px]">
+            <span
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[10px] font-display text-sm font-extrabold text-white"
+              style={{
+                background: "linear-gradient(140deg, var(--accent), var(--accent2))",
+              }}
+            >
+              S&amp;
+            </span>
+            <span className="font-display text-[17px] font-extrabold text-[var(--tx)]">
+              sboxskins<span className="font-semibold text-[var(--faint)]">.gg</span>
+            </span>
+          </Link>
+          <p className="m-0 max-w-[280px] text-[13px] leading-[1.6] text-[var(--faint)]">
+            The dedicated S&box cosmetics market tracker. Live prices, drops and
+            supply for every sbox skin on the Steam Community Market.
+          </p>
         </div>
 
-        <div className="border-t border-neutral-800 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <Gamepad2 className="h-5 w-5 text-purple-500" />
-            <span className="text-sm font-semibold text-neutral-400">
-              sboxskins.gg
-            </span>
-          </div>
-          <p className="text-xs text-neutral-600 text-center">
-            Not affiliated with Facepunch Studios or Valve Corporation. S&box is a trademark of Facepunch Studios.
-            Market data may be delayed.
+        <FooterColumn title="Browse" links={browseLinks} />
+        <FooterColumn title="Tools" links={toolsLinks} />
+        <FooterColumn title="Info" links={infoLinks} />
+      </div>
+
+      <div className="border-t border-[var(--line)]">
+        <div className="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-[10px] px-6 py-[18px]">
+          <p className="m-0 text-[11.5px] text-[var(--faint)]">
+            Not affiliated with Facepunch Studios or Valve Corporation. S&box is
+            a trademark of Facepunch Studios. Market data may be delayed.
+          </p>
+          <p className="m-0 font-mono text-[11.5px] text-[var(--faint)]">
+            © 2026 sboxskins.gg
           </p>
         </div>
       </div>

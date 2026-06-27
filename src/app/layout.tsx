@@ -1,5 +1,10 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
+import {
+  Bricolage_Grotesque,
+  Plus_Jakarta_Sans,
+  JetBrains_Mono,
+} from "next/font/google";
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { Navbar } from "@/components/layout/navbar";
@@ -7,6 +12,27 @@ import { Footer } from "@/components/layout/footer";
 import { Providers } from "@/components/providers";
 import { PageTracker } from "@/components/analytics/page-tracker";
 import "./globals.css";
+
+// Arcade type system: Bricolage Grotesque (display headings),
+// Plus Jakarta Sans (body/UI), JetBrains Mono (all numbers).
+const display = Bricolage_Grotesque({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-bricolage",
+  display: "swap",
+});
+const sans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
+  variable: "--font-jakarta",
+  display: "swap",
+});
+const mono = JetBrains_Mono({
+  subsets: ["latin"],
+  weight: ["500", "700"],
+  variable: "--font-jetbrains",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: {
@@ -105,8 +131,11 @@ export default function RootLayout({
   };
 
   return (
-    <html lang="en" className="h-full antialiased dark">
-      <body className="min-h-full flex flex-col bg-[#0a0a0f] text-neutral-100 font-sans">
+    <html
+      lang="en"
+      className={`h-full antialiased dark ${display.variable} ${sans.variable} ${mono.variable}`}
+    >
+      <body className="min-h-full flex flex-col bg-[var(--bg)] text-[var(--tx)] font-sans">
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}

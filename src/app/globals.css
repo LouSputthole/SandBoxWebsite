@@ -1,68 +1,246 @@
 @import "tailwindcss";
 
+/*
+ * ============================================================
+ *  ARCADE THEME — sboxskins.gg redesign
+ *  Dark "arcade trading floor": near-black + one purple accent.
+ *  Raw palette vars (matching the design references) live on :root;
+ *  shadcn token layer is mapped from the same values; Tailwind
+ *  utilities are generated in @theme inline below.
+ * ============================================================
+ */
+
 :root {
-  --background: #0a0a0f;
-  --foreground: #ededed;
+  /* ---- Core surfaces & text (design-reference names) ---- */
+  --bg: #0e0d13; /* page background (near-black, slight purple) */
+  --bg2: #16141d; /* row hover, inset fields, subtle blocks */
+  --panel: #1a1722; /* card / panel background */
+  --panel2: #13111a; /* panel gradient bottom, image-tile base */
+  --line: #2a2633; /* hairline borders (1px) */
+  --line2: rgba(255, 255, 255, 0.06); /* faintest dividers */
+  --tx: #f3f1f6; /* primary text */
+  --mut: #a39fb0; /* secondary text */
+  --faint: #6e6880; /* tertiary / labels / timestamps */
+
+  /* ---- Brand & signal ---- */
+  --accent: #a855f7; /* brand purple */
+  --accent2: #c77dff; /* gradient partner / lighter purple */
+  --up: #37e08b; /* price up / positive only */
+  --down: #ff5470; /* price down / negative only */
+
+  /* ---- Rarity (only on skin tiles / badges / glow borders) ---- */
+  --rarity-common: #aeb4be;
+  --rarity-uncommon: #54e08c;
+  --rarity-rare: #5aa9ff;
+  --rarity-legendary: #c77dff;
+
+  /* ---- Category accents (category cards / composition) ---- */
+  --cat-clothing: #f472b6;
+  --cat-accessory: #22d3ee;
+  --cat-character: #c084fc;
+  --cat-weapon: #f87171;
+  --cat-tool: #fbbf24;
+
+  /* ---- Canonical background/foreground aliases ---- */
+  --background: #0e0d13;
+  --foreground: #f3f1f6;
+
+  /* ---- shadcn token layer (consumed by any shadcn primitive) ----
+   * NOTE: the app's brand purple owns `--accent`. shadcn's "accent"
+   * hover-surface concept is represented directly by --panel / --bg2
+   * in restyled primitives, so there is no dark `--accent` token to
+   * clash with the brand purple. --primary is the brand purple.       */
+  --card: #1a1722;
+  --card-foreground: #f3f1f6;
+  --popover: #1a1722;
+  --popover-foreground: #f3f1f6;
+  --primary: #a855f7;
+  --primary-foreground: #ffffff;
+  --secondary: #16141d;
+  --secondary-foreground: #f3f1f6;
+  --muted: #16141d;
+  --muted-foreground: #a39fb0;
+  --destructive: #ff5470;
+  --destructive-foreground: #ffffff;
+  --border: #2a2633;
+  --input: #2a2633;
+  --ring: #a855f7;
+  --radius: 0.85rem; /* ~14px base; cards round more via explicit radii */
 }
 
 @theme inline {
+  /* Surfaces & text → utilities (bg-*, text-*, border-*, ring-*, …) */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-bg2: var(--bg2);
+  --color-panel: var(--panel);
+  --color-panel2: var(--panel2);
+  --color-line: var(--line);
+  --color-line2: var(--line2);
+  --color-tx: var(--tx);
+  --color-mut: var(--mut);
+  --color-faint: var(--faint);
+
+  /* Brand & signal */
+  --color-accent: var(--accent);
+  --color-accent2: var(--accent2);
+  --color-up: var(--up);
+  --color-down: var(--down);
+
+  /* Rarity */
+  --color-rarity-common: var(--rarity-common);
+  --color-rarity-uncommon: var(--rarity-uncommon);
+  --color-rarity-rare: var(--rarity-rare);
+  --color-rarity-legendary: var(--rarity-legendary);
+
+  /* Category accents */
+  --color-cat-clothing: var(--cat-clothing);
+  --color-cat-accessory: var(--cat-accessory);
+  --color-cat-character: var(--cat-character);
+  --color-cat-weapon: var(--cat-weapon);
+  --color-cat-tool: var(--cat-tool);
+
+  /* shadcn token utilities (bg-primary, bg-card, border-border, …) */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Fonts (wired from next/font in layout.tsx) */
+  --font-sans: var(--font-jakarta);
+  --font-display: var(--font-bricolage);
+  --font-mono: var(--font-jetbrains);
+}
+
+@theme {
+  /* Hero / featured motion → animate-* utilities */
+  --animate-floaty: floaty 7s ease-in-out infinite;
+  --animate-blob: blobMove 12s ease-in-out infinite;
+  --animate-pop-up: popUp 0.55s both;
+  --animate-pulse-dot: pulseDot 2s ease-in-out infinite;
+}
+
+@keyframes floaty {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes blobMove {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(20px, -14px) scale(1.08);
+  }
+}
+
+@keyframes popUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulseDot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--tx);
+  font-family: var(--font-jakarta), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Scrollbar styling */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 9px;
+  height: 9px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0a0f;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 4px;
+  background: #33303d;
+  border-radius: 5px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: #454150;
 }
 
-/* Rarity colors */
+/* Rarity text colors (Arcade palette) — kept for any consumer of these
+   utility classes; the colored-dot in item cards uses the Steam hex
+   directly via rarityCssColor(). */
 .rarity-common {
-  color: #9ca3af;
+  color: var(--rarity-common);
 }
 .rarity-uncommon {
-  color: #4ade80;
+  color: var(--rarity-uncommon);
 }
 .rarity-rare {
-  color: #60a5fa;
+  color: var(--rarity-rare);
 }
 .rarity-legendary {
-  color: #c084fc;
+  color: var(--rarity-legendary);
 }
 
 .rarity-bg-common {
-  background-color: rgba(156, 163, 175, 0.1);
-  border-color: rgba(156, 163, 175, 0.2);
+  background-color: color-mix(in srgb, var(--rarity-common) 12%, transparent);
+  border-color: color-mix(in srgb, var(--rarity-common) 24%, transparent);
 }
 .rarity-bg-uncommon {
-  background-color: rgba(74, 222, 128, 0.1);
-  border-color: rgba(74, 222, 128, 0.2);
+  background-color: color-mix(in srgb, var(--rarity-uncommon) 12%, transparent);
+  border-color: color-mix(in srgb, var(--rarity-uncommon) 24%, transparent);
 }
 .rarity-bg-rare {
-  background-color: rgba(96, 165, 250, 0.1);
-  border-color: rgba(96, 165, 250, 0.2);
+  background-color: color-mix(in srgb, var(--rarity-rare) 12%, transparent);
+  border-color: color-mix(in srgb, var(--rarity-rare) 24%, transparent);
 }
 .rarity-bg-legendary {
-  background-color: rgba(192, 132, 252, 0.1);
-  border-color: rgba(192, 132, 252, 0.2);
+  background-color: color-mix(in srgb, var(--rarity-legendary) 12%, transparent);
+  border-color: color-mix(in srgb, var(--rarity-legendary) 24%, transparent);
+}
+
+/* Respect reduced-motion: disable the decorative hero/card motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }

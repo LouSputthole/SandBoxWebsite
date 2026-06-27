@@ -25,9 +25,24 @@ interface ItemImageProps {
   type: string;
   size?: "sm" | "lg";
   className?: string;
+  /** When set, the image-less fallback renders the category glyph stroked in
+   *  this color on a transparent background (so a parent skin-tile gradient
+   *  shows through). When omitted, a standalone dark gradient fallback is used. */
+  rarityColor?: string | null;
+  /** Object-fit for the real image. Defaults to "contain" (legacy behavior);
+   *  the skin tile passes "cover". */
+  fit?: "cover" | "contain";
 }
 
-export function ItemImage({ src, name, type, size = "sm", className = "" }: ItemImageProps) {
+export function ItemImage({
+  src,
+  name,
+  type,
+  size = "sm",
+  className = "",
+  rarityColor,
+  fit = "contain",
+}: ItemImageProps) {
   const [failed, setFailed] = useState(false);
   const Icon = typeIcons[type] || Package;
   const iconSize = size === "lg" ? "h-16 w-16" : "h-8 w-8";
@@ -40,19 +55,35 @@ export function ItemImage({ src, name, type, size = "sm", className = "" }: Item
           src={src}
           alt={name}
           fill
-          className="object-contain"
+          className={fit === "cover" ? "object-cover" : "object-contain"}
           onError={() => setFailed(true)}
         />
       </div>
     );
   }
 
-  // Placeholder with type icon
+  // Skin-tile fallback: transparent, glyph stroked in the rarity color so the
+  // parent tile's radial gradient shows through.
+  if (rarityColor) {
+    return (
+      <div className={`relative flex items-center justify-center ${className}`}>
+        <Icon
+          className={iconSize}
+          strokeWidth={1.5}
+          style={{ color: rarityColor, opacity: 0.8 }}
+        />
+      </div>
+    );
+  }
+
+  // Standalone fallback: dark arcade gradient + neutral type icon.
   return (
-    <div className={`relative flex items-center justify-center bg-gradient-to-br from-neutral-700 to-neutral-800 ${className}`}>
-      <Icon className={`${iconSize} text-neutral-500`} />
+    <div
+      className={`relative flex items-center justify-center bg-gradient-to-br from-[var(--panel)] to-[var(--panel2)] ${className}`}
+    >
+      <Icon className={`${iconSize} text-[var(--faint)]`} />
       {size === "lg" && (
-        <span className="absolute bottom-3 left-0 right-0 text-center text-xs font-medium text-neutral-500 truncate px-4">
+        <span className="absolute bottom-3 left-0 right-0 truncate px-4 text-center text-xs font-medium text-[var(--faint)]">
           {name}
         </span>
       )}

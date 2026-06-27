@@ -1,6 +1,7 @@
+import type { CSSProperties } from "react";
 import Link from "next/link";
 import { TrendingUp, TrendingDown, Minus, Star } from "lucide-react";
-import { ItemImage } from "@/components/items/item-image";
+import { SkinTile } from "@/components/items/skin-tile";
 import { WatchlistButton } from "@/components/items/watchlist-button";
 import { formatPriceChange } from "@/lib/utils";
 import { rarityCssColor, rarityLabel } from "@/lib/rarity";
@@ -30,42 +31,49 @@ export function ItemCard({ item }: ItemCardProps) {
   const rarityColor = rarityCssColor(item.rarityColor);
   const rarityName = rarityLabel(item.rarityColor);
 
+  // Hover border brightens toward the item's rarity (or accent) color.
+  const cardStyle = {
+    "--rc": rarityColor ?? "var(--accent)",
+  } as CSSProperties;
+
   return (
     <Link href={`/items/${item.slug}`}>
       <div
-        className="group relative rounded-xl border border-neutral-800 bg-neutral-900/50 p-4 transition-all duration-200 hover:border-neutral-700 hover:bg-neutral-900 hover:shadow-lg"
+        style={cardStyle}
+        className="group relative rounded-[18px] border border-[var(--line)] bg-[var(--panel)] p-3 transition-[transform,border-color] duration-150 hover:-translate-y-1 hover:[border-color:color-mix(in_srgb,var(--rc)_55%,var(--line))]"
       >
-        <div className="absolute top-3 left-3 z-10">
+        <div className="absolute left-3 top-3 z-20">
           <WatchlistButton slug={item.slug} size="sm" />
         </div>
         {item.isLimited && (
-          <div className="absolute top-3 right-3 z-10">
-            <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+          <div className="absolute right-3 top-3 z-20">
+            <Star className="h-4 w-4 fill-[var(--cat-tool)] text-[var(--cat-tool)]" />
           </div>
         )}
 
-        {/* Image */}
-        <ItemImage
-          src={item.imageUrl}
+        {/* Skin tile (rarity-gradient frame + real image / category glyph) */}
+        <SkinTile
+          imageUrl={item.imageUrl}
           name={item.name}
           type={item.type}
-          size="sm"
-          className="mx-auto mb-4 h-32 w-32 rounded-lg border border-neutral-700/50"
+          rarityColor={rarityColor}
+          iconSize="lg"
+          className="mb-3"
         />
 
         {/* Info */}
-        <div className="space-y-2">
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-medium text-neutral-100 group-hover:text-white line-clamp-1">
-              {item.name}
-            </h3>
-          </div>
+        <div className="space-y-1.5">
+          <h3 className="line-clamp-1 font-sans text-sm font-bold text-[var(--tx)]">
+            {item.name}
+          </h3>
 
           <div className="flex items-center gap-2">
-            <span className="text-[10px] text-neutral-500 capitalize">{item.type}</span>
+            <span className="text-[11px] capitalize text-[var(--faint)]">
+              {item.type}
+            </span>
             {rarityColor && (
               <span
-                className="inline-flex items-center gap-1 text-[10px] font-medium text-neutral-400"
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--mut)]"
                 title={rarityName ? `Rarity: ${rarityName}` : "Rarity"}
               >
                 <span
@@ -78,34 +86,44 @@ export function ItemCard({ item }: ItemCardProps) {
             )}
           </div>
 
-          <div className="flex items-end justify-between pt-1">
-            <span className="text-lg font-bold text-white">
-              {item.currentPrice != null ? <Price amount={item.currentPrice} /> : "N/A"}
-            </span>
-            <div className="flex items-center gap-1">
-              {change > 0 ? (
-                <TrendingUp className="h-3 w-3 text-emerald-400" />
-              ) : change < 0 ? (
-                <TrendingDown className="h-3 w-3 text-red-400" />
+          <div className="flex items-end justify-between pt-0.5">
+            <span className="font-mono text-lg font-bold text-[var(--tx)]">
+              {item.currentPrice != null ? (
+                <Price amount={item.currentPrice} />
               ) : (
-                <Minus className="h-3 w-3 text-neutral-500" />
+                <span className="text-[var(--faint)]">N/A</span>
               )}
-              <span
-                className={`text-xs font-medium ${
+            </span>
+            <span
+              className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-xs font-bold"
+              style={{
+                color:
                   change > 0
-                    ? "text-emerald-400"
+                    ? "var(--up)"
                     : change < 0
-                    ? "text-red-400"
-                    : "text-neutral-500"
-                }`}
-              >
-                {formatPriceChange(change)}
-              </span>
-            </div>
+                    ? "var(--down)"
+                    : "var(--mut)",
+                backgroundColor:
+                  change > 0
+                    ? "color-mix(in srgb, var(--up) 16%, transparent)"
+                    : change < 0
+                    ? "color-mix(in srgb, var(--down) 16%, transparent)"
+                    : "transparent",
+              }}
+            >
+              {change > 0 ? (
+                <TrendingUp className="h-3 w-3" />
+              ) : change < 0 ? (
+                <TrendingDown className="h-3 w-3" />
+              ) : (
+                <Minus className="h-3 w-3" />
+              )}
+              {formatPriceChange(change)}
+            </span>
           </div>
 
           {item.volume != null && (
-            <p className="text-[10px] text-neutral-600">
+            <p className="font-mono text-[10px] text-[var(--faint)]">
               Vol: {item.volume.toLocaleString()}
             </p>
           )}
