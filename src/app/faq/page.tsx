@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { FaqAccordion } from "./_components/faq-accordion";
+import { ContactForm } from "../contact/_components/contact-form";
 
 export const metadata: Metadata = {
   title: "FAQ - S&box Skins",
@@ -204,49 +205,28 @@ export default function FAQPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
       />
-      <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-8">
-        {/* Breadcrumb */}
-        <nav className="text-sm text-neutral-500 mb-6" aria-label="Breadcrumb">
-          <ol className="flex items-center gap-1.5">
-            <li><Link href="/" className="hover:text-white transition-colors">Home</Link></li>
-            <li>/</li>
-            <li className="text-white">FAQ</li>
-          </ol>
-        </nav>
-
-        <h1 className="text-3xl font-bold text-white mb-2">Frequently Asked Questions</h1>
-        <p className="text-neutral-400 mb-10">
-          Everything you need to know about S&box skins, prices, and trading on the Steam Community Market.
-        </p>
-
-        <div className="space-y-6">
-          {faqs.map((faq, i) => (
-            <details
-              key={i}
-              className="group rounded-xl border border-neutral-800 bg-neutral-900/50 overflow-hidden"
-              {...(i === 0 ? { open: true } : {})}
-            >
-              <summary className="flex cursor-pointer items-center justify-between px-6 py-4 text-white font-medium hover:bg-neutral-800/50 transition-colors">
-                <span>{faq.question}</span>
-                <span className="ml-4 text-neutral-500 group-open:rotate-45 transition-transform text-xl">+</span>
-              </summary>
-              <div className="px-6 pb-5 text-sm text-neutral-400 leading-relaxed">
-                {faq.answer}
-              </div>
-            </details>
-          ))}
+      <div className="mx-auto max-w-[820px] px-6 py-[42px]">
+        {/* Centered header */}
+        <div className="mb-8 text-center">
+          <h1 className="font-display text-[42px] font-extrabold tracking-[-0.02em] text-tx">
+            Frequently Asked Questions
+          </h1>
+          <p className="mt-2.5 text-[15px] text-mut">
+            Everything you need to know about S&box skins, prices, and trading on
+            the Steam Community Market.
+          </p>
         </div>
 
-        {/* CTA */}
-        <div className="mt-12 text-center border-t border-neutral-800 pt-10">
-          <p className="text-neutral-400 mb-4">Ready to start tracking S&box skin prices?</p>
-          <Link
-            href="/items"
-            className="inline-flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white font-medium px-6 py-2.5 rounded-lg transition-colors"
-          >
-            Browse All Skins
-          </Link>
-        </div>
+        {/* Accordion — one open at a time */}
+        <FaqAccordion items={faqs} />
+
+        {/* Contact card */}
+        <ContactForm
+          id="contact"
+          className="mt-10"
+          title="Still have questions?"
+          description="Spotted bad data, want a skin added, or just want to say hi? Drop us a line — we usually reply within a day."
+        />
       </div>
     </>
   );

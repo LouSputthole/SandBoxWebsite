@@ -1,7 +1,8 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { prisma } from "@/lib/db";
-import { Newspaper } from "lucide-react";
+import { FeaturedPost } from "./_components/featured-post";
+import { PostCard } from "./_components/post-card";
+import { NewsletterStrip } from "./_components/newsletter-strip";
 
 export const revalidate = 600;
 
@@ -25,49 +26,42 @@ export default async function BlogIndexPage() {
     },
   });
 
+  const [featured, ...rest] = posts;
+
   return (
-    <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2 rounded-lg bg-emerald-500/10">
-            <Newspaper className="h-5 w-5 text-emerald-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-white">Market Reports</h1>
-        </div>
-        <p className="text-sm text-neutral-400">
-          Weekly analysis of the S&box skin market. Top movers, scarcity trends, and what it all means.
+    <div className="mx-auto max-w-[1140px] px-6 pb-12 pt-9">
+      {/* header */}
+      <div className="mb-6">
+        <h1 className="m-0 font-display text-[38px] font-extrabold tracking-[-0.02em] text-tx">
+          Market reports
+        </h1>
+        <p className="mt-2 text-[14.5px] text-mut">
+          Signal-driven analysis of the S&box skin market — momentum, movers and
+          the stories behind the prices.
         </p>
       </div>
 
       {posts.length === 0 ? (
-        <div className="rounded-xl border border-neutral-800 bg-neutral-900/30 p-12 text-center">
-          <p className="text-sm text-neutral-500">
+        <div className="rounded-[20px] border border-line bg-panel p-12 text-center">
+          <p className="text-[14px] text-faint">
             First report drops this Friday. Come back soon.
           </p>
         </div>
       ) : (
-        <div className="space-y-4">
-          {posts.map((post) => (
-            <Link
-              key={post.slug}
-              href={`/blog/${post.slug}`}
-              className="block rounded-xl border border-neutral-800 bg-neutral-900/30 p-5 hover:bg-neutral-800/30 transition-colors"
-            >
-              <div className="flex items-center gap-2 mb-2 text-[11px] text-neutral-500">
-                <span>{post.publishedAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
-                {post.kind && (
-                  <>
-                    <span>·</span>
-                    <span className="uppercase tracking-wider">{post.kind.replace("-", " ")}</span>
-                  </>
-                )}
-              </div>
-              <h2 className="text-lg font-semibold text-white mb-2">{post.title}</h2>
-              <p className="text-sm text-neutral-400 line-clamp-2">{post.excerpt}</p>
-            </Link>
-          ))}
-        </div>
+        <>
+          {featured && <FeaturedPost post={featured} />}
+
+          {rest.length > 0 && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {rest.map((post) => (
+                <PostCard key={post.slug} post={post} />
+              ))}
+            </div>
+          )}
+        </>
       )}
+
+      <NewsletterStrip />
     </div>
   );
 }
