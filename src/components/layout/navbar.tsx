@@ -12,22 +12,56 @@ import {
   LogIn,
   LogOut,
   User as UserIcon,
+  LayoutGrid,
+  Sparkles,
+  BarChart3,
+  Trophy,
+  ArrowRightLeft,
+  Store,
+  Crown,
+  Newspaper,
+  Backpack,
+  HelpCircle,
+  Mail,
+  ChevronDown,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth/context";
 import { CurrencyPicker } from "@/components/layout/currency-picker";
 import { NotificationBell } from "@/components/notifications/notification-bell";
 
-// Primary desktop destinations (Arcade nav). The full set stays reachable
-// via the mobile menu and footer.
-const NAV_ITEMS: { label: string; href: string }[] = [
-  { label: "Browse", href: "/items" },
-  { label: "Trends", href: "/trends" },
-  { label: "Leaderboard", href: "/leaderboard" },
-  { label: "Trade", href: "/trade" },
-  { label: "Store", href: "/store" },
-  { label: "Whales", href: "/whales" },
+type NavItem = { label: string; href: string; icon: LucideIcon };
+
+// The FULL navigation lives on desktop again, in the old navbar's order:
+// Browse · New · Trends · Leaderboard · Trade · Store · Whales · Blog ·
+// Inventory · Watchlist · FAQ · Contact. Because 12 icon-links can't share
+// the 64px Arcade bar with the logo, search, currency chip and Steam button,
+// it's split into an always-inline primary set, a couple that fold in at xl,
+// and a "More" dropdown that surfaces the rest — all reachable on desktop.
+const NAV_PRIMARY: NavItem[] = [
+  { label: "Browse", href: "/items", icon: LayoutGrid },
+  { label: "New", href: "/new", icon: Sparkles },
+  { label: "Trends", href: "/trends", icon: BarChart3 },
+  { label: "Leaderboard", href: "/leaderboard", icon: Trophy },
+  { label: "Trade", href: "/trade", icon: ArrowRightLeft },
+];
+
+// Inline at xl+, otherwise shown inside the "More" dropdown (no duplication —
+// these are hidden in the dropdown at xl via `xl:hidden`).
+const NAV_WIDE: NavItem[] = [
+  { label: "Store", href: "/store", icon: Store },
+  { label: "Whales", href: "/whales", icon: Crown },
+];
+
+// Always inside the "More" dropdown.
+const NAV_MORE: NavItem[] = [
+  { label: "Blog", href: "/blog", icon: Newspaper },
+  { label: "Inventory", href: "/inventory", icon: Backpack },
+  { label: "Watchlist", href: "/portfolio", icon: Heart },
+  { label: "FAQ", href: "/faq", icon: HelpCircle },
+  { label: "Contact", href: "/contact", icon: Mail },
 ];
 
 export function Navbar() {
@@ -37,10 +71,14 @@ export function Navbar() {
   const [search, setSearch] = useState("");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const isActive = (href: string) =>
     pathname === href || (href !== "/" && pathname.startsWith(href));
+
+  const moreActive = [...NAV_WIDE, ...NAV_MORE].some((i) => isActive(i.href));
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,7 +88,7 @@ export function Navbar() {
     }
   };
 
-  // Close user dropdown on outside click
+  // Close the user / More dropdowns on outside click
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (
@@ -58,6 +96,12 @@ export function Navbar() {
         !userMenuRef.current.contains(e.target as Node)
       ) {
         setUserMenuOpen(false);
+      }
+      if (
+        moreMenuRef.current &&
+        !moreMenuRef.current.contains(e.target as Node)
+      ) {
+        setMoreMenuOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -67,7 +111,7 @@ export function Navbar() {
   return (
     <nav className="sticky top-0 z-50 border-b border-[var(--line)] bg-[rgba(14,13,19,0.82)] backdrop-blur-[12px]">
       <div className="mx-auto max-w-[1240px] px-4 sm:px-6">
-        <div className="flex h-16 items-center gap-4 lg:gap-[22px]">
+        <div className="flex h-16 items-center gap-3 lg:gap-4">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-[11px] shrink-0">
             <span
@@ -84,19 +128,107 @@ export function Navbar() {
             </span>
           </Link>
 
-          {/* Desktop Nav */}
-          <div className="hidden items-center gap-5 md:flex">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`font-sans text-sm font-medium transition-colors hover:text-[var(--tx)] ${
-                  isActive(item.href) ? "text-[var(--accent)]" : "text-[var(--mut)]"
+          {/* Desktop Nav — full link set with icons, in Arcade style */}
+          <div className="hidden items-center gap-x-[18px] lg:flex">
+            {NAV_PRIMARY.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center gap-1.5 font-sans text-[13px] font-medium transition-colors hover:text-[var(--tx)] ${
+                    isActive(item.href)
+                      ? "text-[var(--accent)]"
+                      : "text-[var(--mut)]"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {item.label}
+                </Link>
+              );
+            })}
+
+            {/* Fold in at xl when there's room */}
+            {NAV_WIDE.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`hidden items-center gap-1.5 font-sans text-[13px] font-medium transition-colors hover:text-[var(--tx)] xl:flex ${
+                    isActive(item.href)
+                      ? "text-[var(--accent)]"
+                      : "text-[var(--mut)]"
+                  }`}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  {item.label}
+                </Link>
+              );
+            })}
+
+            {/* More dropdown — keeps the rest of the nav reachable on desktop */}
+            <div className="relative" ref={moreMenuRef}>
+              <button
+                type="button"
+                onClick={() => setMoreMenuOpen((o) => !o)}
+                aria-expanded={moreMenuOpen}
+                className={`flex items-center gap-1 font-sans text-[13px] font-medium transition-colors hover:text-[var(--tx)] ${
+                  moreActive || moreMenuOpen
+                    ? "text-[var(--accent)]"
+                    : "text-[var(--mut)]"
                 }`}
               >
-                {item.label}
-              </Link>
-            ))}
+                More
+                <ChevronDown
+                  className={`h-3.5 w-3.5 transition-transform ${
+                    moreMenuOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {moreMenuOpen && (
+                <div className="absolute left-0 top-full z-50 mt-2 w-48 rounded-xl border border-[var(--line)] bg-[var(--panel)] py-1 shadow-[0_24px_60px_-30px_rgba(0,0,0,0.8)]">
+                  {/* Shown here only below xl (these sit inline at xl) */}
+                  {NAV_WIDE.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMoreMenuOpen(false)}
+                        className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-[var(--bg2)] hover:text-[var(--tx)] xl:hidden ${
+                          isActive(item.href)
+                            ? "text-[var(--accent)]"
+                            : "text-[var(--mut)]"
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                  {NAV_MORE.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setMoreMenuOpen(false)}
+                        className={`flex items-center gap-2 px-3 py-2 text-sm transition-colors hover:bg-[var(--bg2)] hover:text-[var(--tx)] ${
+                          isActive(item.href)
+                            ? "text-[var(--accent)]"
+                            : "text-[var(--mut)]"
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {item.label}
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Search */}
@@ -113,7 +245,7 @@ export function Navbar() {
           </form>
 
           {/* Auth / User */}
-          <div className="hidden items-center gap-[10px] shrink-0 md:flex">
+          <div className="hidden items-center gap-[10px] shrink-0 lg:flex">
             <CurrencyPicker variant="desktop" />
             {!authLoading && user && <NotificationBell />}
             {authLoading ? (
@@ -192,7 +324,7 @@ export function Navbar() {
                 onClick={login}
               >
                 <LogIn className="h-3.5 w-3.5" />
-                Sign in
+                Sign in with Steam
               </Button>
             )}
           </div>
@@ -201,7 +333,7 @@ export function Navbar() {
           <Button
             variant="ghost"
             size="icon"
-            className="text-[var(--mut)] md:hidden"
+            className="text-[var(--mut)] lg:hidden"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
           >
             {mobileMenuOpen ? (
@@ -214,7 +346,7 @@ export function Navbar() {
 
         {/* Mobile menu */}
         {mobileMenuOpen && (
-          <div className="space-y-2 border-t border-[var(--line)] py-4 md:hidden">
+          <div className="space-y-2 border-t border-[var(--line)] py-4 lg:hidden">
             {[
               { label: "Browse", href: "/items" },
               { label: "New Drops", href: "/new" },

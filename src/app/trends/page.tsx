@@ -1,13 +1,16 @@
-import { getTrendsData } from "@/lib/services/trends";
+import { getTrendsData, type TrendsPeriod } from "@/lib/services/trends";
+import type { Period, RawSnapshot } from "@/lib/trends/candles";
 import {
   TrendsView,
   type KpiVM,
   type CategoryVM,
+  type TypeCountVM,
   type MoverVM,
-  type MarketCapPoint,
+  type SecondaryStatsVM,
 } from "./_components/trends-view";
 
 // ISR — regenerate every 5 minutes so search engines get cached HTML.
+// `searchParams` keeps each ?period= window cached independently.
 export const revalidate = 300;
 
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
@@ -19,19 +22,32 @@ const CATEGORY_META: Record<string, { label: string; color: string }> = {
   unknown: { label: "Other", color: "var(--faint)" },
 };
 
+const VALID_PERIODS: TrendsPeriod[] = ["live", "24h", "7d", "30d", "90d", "all"];
+
+const PERIOD_TO_CANDLE: Record<TrendsPeriod, Period> = {
+  live: "LIVE",
+  "24h": "24H",
+  "7d": "7D",
+  "30d": "30D",
+  "90d": "90D",
+  all: "ALL",
+};
+
+function isValidPeriod(p: string | undefined): p is TrendsPeriod {
+  return p !== undefined && (VALID_PERIODS as string[]).includes(p);
+}
+
 /**
  * Drop leading non-positive values. estMarketCap was added after launch, so
  * early MarketSnapshots store NULL (→ 0 here) and would otherwise draw a false
- * jump from $0 up to the first real value. Mirrors the existing chart-section
- * trimming, applied per metric.
+ * jump from $0 up to the first real value. Applied per metric for the KPIs.
  */
 function trimLeading(vals: number[]): number[] {
   const i = vals.findIndex((v) => v > 0);
   return i <= 0 ? vals : vals.slice(i);
 }
 
-/** Thin a series to at most `cap` points (keeps the last) so the client
- *  payload + chart render stay light over a 90-day window. */
+/** Thin a series to at most `cap` points (keeps the last) to bound payload. */
 function downsample<T>(arr: T[], cap: number): T[] {
   if (arr.length <= cap) return arr;
   const step = arr.length / cap;
@@ -42,8 +58,7 @@ function downsample<T>(arr: T[], cap: number): T[] {
   return out;
 }
 
-/** First→last percent change of a series, as an unsigned label + direction.
- *  StatCard prepends its own ▲/▼ arrow. */
+/** First→last percent change of a series, as an unsigned label + direction. */
 function kpiDelta(vals: number[]): { delta?: string; deltaPositive?: boolean } {
   if (vals.length < 2) return {};
   const first = vals[0];
@@ -75,15 +90,47 @@ function toMover(m: RawMover): MoverVM {
   };
 }
 
-export default async function TrendsPage() {
-  // Load a 90-day window so the client 7D/30D/90D toggle can slice the
-  // market-cap series without a server round-trip. currentStats, movers, and
-  // the category breakdown are period-independent.
-  const data = await getTrendsData("90d");
+interface RawWeeklyMover {
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+  type: string;
+  currentPrice: number | null;
+  weeklyChangePct: number;
+  weekAgoPrice: number;
+}
+
+function toWeeklyMover(m: RawWeeklyMover): MoverVM {
+  return {
+    name: m.name,
+    slug: m.slug,
+    imageUrl: m.imageUrl,
+    type: m.type,
+    price: m.currentPrice,
+    change: m.weeklyChangePct,
+    rarityColor: null,
+    sub: `${formatUsd(m.weekAgoPrice)} → ${formatUsd(m.currentPrice ?? 0)}`,
+  };
+}
+
+/** Plain USD for the server-rendered weekly-mover baseline line. */
+function formatUsd(n: number): string {
+  return `$${n.toFixed(2)}`;
+}
+
+interface PageProps {
+  searchParams: Promise<{ period?: string }>;
+}
+
+export default async function TrendsPage({ searchParams }: PageProps) {
+  const { period: rawPeriod } = await searchParams;
+  const period: TrendsPeriod = isValidPeriod(rawPeriod) ? rawPeriod : "30d";
+
+  const data = await getTrendsData(period);
   const s = data.currentStats;
   const snaps = data.snapshots;
 
-  // Per-metric historical series for the KPI sparklines + deltas.
+  // Per-metric historical series for the KPI sparklines + deltas (this window).
   const mcVals = trimLeading(snaps.map((x) => x.estMarketCap ?? 0));
   const avgVals = trimLeading(snaps.map((x) => x.avgPrice));
   const listVals = trimLeading(snaps.map((x) => x.totalVolume));
@@ -120,17 +167,38 @@ export default async function TrendsPage() {
     },
   ];
 
-  // Market-cap area series (epoch ms + value), trimmed + downsampled.
-  const mcSeriesFull: MarketCapPoint[] = snaps.map((x) => ({
-    t: new Date(x.timestamp).getTime(),
-    v: x.estMarketCap ?? 0,
-  }));
-  const firstReal = mcSeriesFull.findIndex((p) => p.v > 0);
-  const mcTrimmed =
-    firstReal <= 0 ? mcSeriesFull : mcSeriesFull.slice(firstReal);
-  const marketCapSeries = downsample(mcTrimmed, 360);
+  const stats: SecondaryStatsVM = {
+    medianPrice: s.medianPrice,
+    totalItems: s.totalItems,
+    totalSupply: s.totalSupply,
+    floor: s.floor,
+    ceiling: s.ceiling,
+    estMarketCapItemCount: s.estMarketCapItemCount,
+  };
 
-  // Category breakdown → each type's share of total listings value.
+  const metricCurrent = {
+    estMarketCap: s.estMarketCap,
+    listingsValue: s.listingsValue,
+    avgPrice: s.avgPrice,
+    totalVolume: s.totalVolume,
+  };
+
+  // Raw snapshot series for the chart (ISO timestamps, 4 metric fields).
+  // Capped so the client payload stays light on the wide windows; bucketize
+  // still aggregates these into OHLC candles, and the area view downsamples
+  // further client-side.
+  const snapshots: RawSnapshot[] = downsample(
+    snaps.map((x) => ({
+      timestamp: x.timestamp.toISOString(),
+      estMarketCap: x.estMarketCap,
+      listingsValue: x.listingsValue,
+      avgPrice: x.avgPrice,
+      totalVolume: x.totalVolume,
+    })),
+    2000,
+  );
+
+  // Category breakdown → each type's share of total listings value (bars).
   const totalCat = Object.values(data.typeBreakdown).reduce(
     (a, b) => a + b.totalValue,
     0,
@@ -150,13 +218,30 @@ export default async function TrendsPage() {
     .sort((a, b) => b.value - a.value)
     .slice(0, 6);
 
+  // Item count by type → the donut.
+  const typeCounts: TypeCountVM[] = Object.entries(data.typeBreakdown)
+    .map(([type, v]) => {
+      const meta = CATEGORY_META[type] ?? CATEGORY_META.unknown;
+      return { type, label: meta.label, color: meta.color, count: v.count };
+    })
+    .filter((t) => t.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6);
+
   return (
     <TrendsView
+      period={period}
+      candlePeriod={PERIOD_TO_CANDLE[period]}
       kpis={kpis}
-      marketCap={{ current: s.estMarketCap, series: marketCapSeries }}
+      stats={stats}
+      metricCurrent={metricCurrent}
+      snapshots={snapshots}
       categories={categories}
-      gainers={data.topGainers.slice(0, 5).map(toMover)}
-      losers={data.topLosers.slice(0, 5).map(toMover)}
+      typeCounts={typeCounts}
+      gainers={data.topGainers.slice(0, 8).map(toMover)}
+      losers={data.topLosers.slice(0, 8).map(toMover)}
+      gainers7d={data.topGainers7d.slice(0, 8).map(toWeeklyMover)}
+      losers7d={data.topLosers7d.slice(0, 8).map(toWeeklyMover)}
     />
   );
 }

@@ -21,3 +21,24 @@ export function formatRemaining(ms: number): string {
 export function formatRemainingUntil(iso: string): string {
   return formatRemaining(new Date(iso).getTime() - Date.now());
 }
+
+/**
+ * Whole days until a delisting date (ceil). `0` = leaving today, `null` =
+ * no known leaving date (sbox.dev sometimes omits it for rotating items).
+ * Pure given its argument, so it's safe in a render body; callers that need
+ * "until now" pass the ISO and we read the clock here.
+ */
+export function daysUntil(iso: string | null): number | null {
+  if (!iso) return null;
+  const ms = new Date(iso).getTime() - Date.now();
+  if (ms <= 0) return 0;
+  return Math.ceil(ms / (24 * 60 * 60 * 1000));
+}
+
+/** Human "Leaving today / N days left" label for a per-item delisting count. */
+export function leavingLabel(days: number | null): string {
+  if (days == null) return "Leaving date unknown";
+  if (days === 0) return "Leaving today";
+  if (days === 1) return "1 day left";
+  return `${days} days left`;
+}

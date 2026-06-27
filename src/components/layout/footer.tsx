@@ -2,6 +2,7 @@ import Link from "next/link";
 
 const browseLinks = [
   { label: "All Skins", href: "/items" },
+  { label: "New Drops", href: "/new" },
   { label: "Clothing", href: "/items/type/clothing" },
   { label: "Accessories", href: "/items/type/accessory" },
   { label: "Characters", href: "/items/type/character" },
