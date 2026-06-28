@@ -138,16 +138,9 @@ export default async function WhalesPage() {
       {/* Header */}
       <div className="mb-[22px]">
         <h1 className="flex items-center gap-3 font-display text-[38px] font-extrabold tracking-[-.02em] text-tx">
-          <svg
-            width="34"
-            height="34"
-            viewBox="0 0 24 24"
-            fill="currentColor"
-            className="text-accent"
-            aria-hidden
-          >
-            <path d="M3 13c2-1 4-1 6 0s4 1 6 0 4-1 6 0v3c-2 1-4 1-6 0s-4-1-6 0-4 1-6 0zM16 8a3 3 0 11-6 0 3 3 0 016 0zM20 9c1 0 2 1 2 2" />
-          </svg>
+          <span className="text-[32px] leading-none" aria-hidden>
+            🐳
+          </span>
           Whales
         </h1>
         <p className="mt-2 text-[14.5px] text-mut">

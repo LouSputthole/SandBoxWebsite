@@ -84,7 +84,12 @@ async function getHomepageData() {
       // first. Mirrors the /new feed; NewDropCard needs createdAt +
       // steamItemNameId for the "added Xd ago" / syncing badges.
       prisma.item.findMany({
-        where: { createdAt: { gte: windowStart(NEW_DROPS_WINDOW_DAYS) } },
+        // Hide the internal QA Team T-Shirt (non-marketable) from Fresh Drops,
+        // matching the /new feed.
+        where: {
+          createdAt: { gte: windowStart(NEW_DROPS_WINDOW_DAYS) },
+          slug: { not: "qa-team-t-shirt" },
+        },
         orderBy: { createdAt: "desc" },
         take: 8,
         select: {

@@ -31,7 +31,9 @@ export default async function NewDropsPage() {
   const since = windowStart(WINDOW_DAYS);
 
   const items = (await prisma.item.findMany({
-    where: { createdAt: { gte: since } },
+    // Hide the internal QA Team T-Shirt (non-marketable, granted-manually) —
+    // it's kept in the catalog but isn't a real "drop".
+    where: { createdAt: { gte: since }, slug: { not: "qa-team-t-shirt" } },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
