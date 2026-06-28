@@ -2050,41 +2050,65 @@ export function computeScarcityScore(input: {
   price: number | null;
   priceChange24hPercent: number | null;
 }): number {
-  // totalSupply === 0 is its own edge case (pre-release, delisted with
-  // no remaining supply). Treat as maximum scarcity rather than neutral.
-  if (input.totalSupply === 0) return 100;
+  const { totalSupply, uniqueOwners, supplyOnMarket, soldPast24h } = input;
 
+  // No usable supply figure (drop items report null supply from sbox.dev;
+  // freshly-seeded rows too). Don't assert a scarcity we can't justify — sit
+  // in a neutral-low band, nudged slightly by 24h momentum so movers aren't
+  // all identical. (price is intentionally NOT a factor: an expensive item is
+  // desirable, not necessarily scarce, and we don't want to double-count it.)
+  if (totalSupply == null || totalSupply < 0) {
+    const mom =
+      input.priceChange24hPercent != null
+        ? Math.min(100, Math.abs(input.priceChange24hPercent) * 5)
+        : 0;
+    return Math.round(40 + mom * 0.1); // 40–50
+  }
+  // 0 supply = pre-release or delisted-and-emptied: genuinely unobtainable.
+  if (totalSupply === 0) return 90;
+
+  // 1) Absolute supply scarcity (PRIMARY). Log scale so a handful of copies
+  //    scores ~100 and tens-of-thousands scores ~0. Anchors: 10^1.48 ≈ 30
+  //    units → 100, 10^4.70 ≈ 50,000 units → 0. This is the term the old
+  //    formula was missing entirely — without it a 32k-supply item and a
+  //    35-supply item could score the same (or inverted).
+  const LOG_RARE = 1.48; // ~30 units → max scarcity
+  const LOG_COMMON = 4.7; // ~50,000 units → min scarcity
+  const lg = Math.log10(totalSupply);
+  const supplyScarcity = Math.max(
+    0,
+    Math.min(100, ((LOG_COMMON - lg) / (LOG_COMMON - LOG_RARE)) * 100),
+  );
+
+  // 2) Liquidity — the INVERSE of scarcity. How easily can you get one right
+  //    now? Driven by daily turnover (sold ÷ supply) and how much is listed
+  //    for sale. A heavily-traded, well-stocked listing is liquid, NOT scarce
+  //    — the old formula treated "few listed" as scarce, so a cheap item that
+  //    everyone just holds scored as rare.
+  let liquidity = 0;
+  if (soldPast24h != null && soldPast24h > 0) {
+    const turnoverPct = (soldPast24h / totalSupply) * 100;
+    liquidity = Math.min(100, turnoverPct * 40); // ~2.5%/day turnover ⇒ fully liquid
+  }
+  if (supplyOnMarket != null) {
+    const onMarketPct =
+      (Math.min(supplyOnMarket, totalSupply) / totalSupply) * 100;
+    liquidity = Math.max(liquidity, Math.min(100, onMarketPct * 4)); // ~25% listed ⇒ fully liquid
+  }
+
+  // 3) Owner concentration (minor nudge). Many copies per owner makes it
+  //    harder for a new buyer to source from a broad base. Saturates at 10
+  //    copies/owner. Kept small — on its own it's a weak/ambiguous signal.
   let concentration = 50;
-  if (input.totalSupply && input.uniqueOwners && input.uniqueOwners > 0) {
-    const perOwner = input.totalSupply / input.uniqueOwners;
-    // Linear map: 1.0 per-owner → 0 (broadly distributed)
-    //            10.0 per-owner → 100 (whale-dominated)
-    // Previous multiplier (15) hit 100 at 7.67 per-owner, drifting from the
-    // documented range. 100/9 ≈ 11.11 gives us the full 1-10 runway.
+  if (uniqueOwners && uniqueOwners > 0) {
+    const perOwner = totalSupply / uniqueOwners;
     concentration = Math.max(0, Math.min(100, (perOwner - 1) * (100 / 9)));
   }
 
-  let illiquidity = 50;
-  if (
-    input.totalSupply &&
-    input.supplyOnMarket != null &&
-    input.totalSupply > 0
-  ) {
-    // Clamp supplyOnMarket to totalSupply — sbox.dev data sometimes has
-    // pending-trade items counted on both sides, pushing the ratio >100%.
-    const onMarket = Math.min(input.supplyOnMarket, input.totalSupply);
-    const marketPct = (onMarket / input.totalSupply) * 100;
-    illiquidity = Math.max(0, Math.min(100, 100 - marketPct * 5));
-  }
+  const raw =
+    supplyScarcity * 0.6 + (100 - liquidity) * 0.25 + concentration * 0.15;
 
-  let momentum = 0;
-  if (input.priceChange24hPercent != null) {
-    momentum = Math.min(100, Math.abs(input.priceChange24hPercent) * 5);
-  }
-
-  return Math.round(
-    concentration * 0.4 + illiquidity * 0.4 + momentum * 0.2,
-  );
+  return Math.round(Math.max(0, Math.min(100, raw)));
 }
 
 // ---------------------------------------------------------------------------
