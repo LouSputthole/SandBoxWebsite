@@ -47,6 +47,19 @@ export default function ContactPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(contactPageLd) }}
       />
       <div className="mx-auto max-w-[820px] px-6 py-[42px]">
+        {/* Breadcrumb */}
+        <nav className="mb-6 text-sm text-mut" aria-label="Breadcrumb">
+          <ol className="flex items-center gap-1.5">
+            <li>
+              <Link href="/" className="transition-colors hover:text-tx">
+                Home
+              </Link>
+            </li>
+            <li>/</li>
+            <li className="text-tx">Contact</li>
+          </ol>
+        </nav>
+
         {/* Centered header */}
         <div className="mb-8 text-center">
           <h1 className="font-display text-[42px] font-extrabold tracking-[-0.02em] text-tx">

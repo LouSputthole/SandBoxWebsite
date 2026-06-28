@@ -7,20 +7,22 @@ import {
   ResponsiveContainer,
   Bar,
   BarChart,
-  Cell,
 } from "recharts";
 import type { Candle } from "@/lib/trends/candles";
 
 /**
- * Arcade candlestick (OHLC) chart. Two passes through a Recharts BarChart:
- *   1. Wick   — `dataKey="lowHigh"`, a 1px bar drawn first (low → high).
- *   2. Body   — `dataKey="openClose"`, a wider bar (open ↔ close).
+ * Arcade candlestick (OHLC) chart. ONE Recharts <Bar dataKey="lowHigh"> per
+ * candle, drawn with a custom <CandleShape> so the wick and the body always
+ * share the same x-center. (Two separate un-stacked <Bar>s do NOT share a
+ * center in recharts 3.x — each gets its own sequential band slot, so the wick
+ * ends up offset to the side of the body.)
  *
- * Recharts honors a 2-tuple dataKey by drawing the bar between the two values
- * along the Y axis — exactly what a candle's wick + body need. Per-candle
- * color (green up / red down / faint flat) comes from <Cell> children using
- * the foundation `--up` / `--down` / `--faint` tokens. Green/red here is the
- * sanctioned price-signal use of those colors.
+ * recharts gives the shape the band geometry (x / y / width / height) for the
+ * low→high range plus the raw OHLC fields (open / close / high / low /
+ * direction). We map prices to pixels off that range and draw the wick (thin
+ * centered line, low → high) and the body (rectangle, open ↔ close) ourselves.
+ * Per-candle color (green up / red down / faint flat) uses the foundation
+ * `--up` / `--down` / `--faint` tokens — the sanctioned price-signal use.
  *
  * The Y domain is clamped to the candle min/max (Recharts otherwise starts at
  * 0, which crushes a chart whose values move only single-digit % over the
@@ -100,6 +102,67 @@ function colorFor(direction: Candle["direction"]): string {
       : FLAT_COLOR;
 }
 
+/** Props recharts injects into a Bar `shape`: band geometry for the dataKey
+ *  range (here lowHigh) plus the data entry. recharts reliably passes the
+ *  original row as `payload`; depending on version it may ALSO spread the row's
+ *  fields top-level, so we read payload first and fall back to top-level. */
+interface CandleShapeProps {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  open?: number;
+  close?: number;
+  high?: number;
+  low?: number;
+  direction?: Candle["direction"];
+  payload?: Candle;
+}
+
+/**
+ * One candle: y..y+height spans high..low (the bar's lowHigh range), so
+ * `ratio` px-per-price lets us place the open/close body inside that range.
+ * Wick and body are both centered on x + width/2.
+ */
+function CandleShape({
+  x = 0,
+  y = 0,
+  width = 0,
+  height = 0,
+  payload,
+  open: openProp,
+  close: closeProp,
+  high: highProp,
+  low: lowProp,
+  direction: directionProp,
+}: CandleShapeProps) {
+  // payload (the raw Candle) is the source of truth; top-level props are a
+  // version-dependent convenience fallback.
+  const open = payload?.open ?? openProp ?? 0;
+  const close = payload?.close ?? closeProp ?? 0;
+  const high = payload?.high ?? highProp ?? 0;
+  const low = payload?.low ?? lowProp ?? 0;
+  const direction = payload?.direction ?? directionProp ?? "flat";
+  const color = colorFor(direction);
+  const cx = x + width / 2;
+  const range = high - low;
+  const ratio = range > 0 ? height / range : 0; // px per price unit
+  const bodyTopPrice = Math.max(open, close);
+  const bodyBotPrice = Math.min(open, close);
+  const bodyTop = y + (high - bodyTopPrice) * ratio;
+  // Min 1px so a doji (open === close) still reads as a candle.
+  const bodyH = Math.max((bodyTopPrice - bodyBotPrice) * ratio, 1);
+  const bodyW = Math.max(Math.min(width * 0.72, 11), 2);
+  return (
+    <g>
+      {/* Wick: thin centered line, high → low. */}
+      <line x1={cx} x2={cx} y1={y} y2={y + height} stroke={color} strokeWidth={1} />
+      {/* Body: rectangle from open ↔ close, centered on the same x. */}
+      <rect x={cx - bodyW / 2} y={bodyTop} width={bodyW} height={bodyH} fill={color} />
+    </g>
+  );
+}
+
 export function CandleChart({
   data,
   height = 300,
@@ -149,18 +212,13 @@ export function CandleChart({
             cursor={{ fill: "rgba(255,255,255,0.04)" }}
             content={<CandleTooltip valueFormatter={valueFormatter} />}
           />
-          {/* Wick: thin bar from low to high */}
-          <Bar dataKey="lowHigh" barSize={1} isAnimationActive={false}>
-            {data.map((c, i) => (
-              <Cell key={`w-${i}`} fill={colorFor(c.direction)} />
-            ))}
-          </Bar>
-          {/* Body: thicker bar from min(open,close) to max(open,close) */}
-          <Bar dataKey="openClose" barSize={8} isAnimationActive={false}>
-            {data.map((c, i) => (
-              <Cell key={`b-${i}`} fill={colorFor(c.direction)} />
-            ))}
-          </Bar>
+          {/* One bar per candle; the custom shape draws the centered
+              wick (low→high) + body (open↔close) off the lowHigh range. */}
+          <Bar
+            dataKey="lowHigh"
+            shape={<CandleShape />}
+            isAnimationActive={false}
+          />
         </BarChart>
       </ResponsiveContainer>
     </div>

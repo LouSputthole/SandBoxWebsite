@@ -67,7 +67,9 @@ export interface RankedTableShellProps {
   className?: string;
 }
 
-/** Outer panel: rounded, hairline border, clipped corners. */
+/** Outer panel: rounded, hairline border, clipped corners. The inner wrapper
+ *  scrolls horizontally so the fixed-width columns pan instead of clipping on
+ *  narrow screens (the grid rows carry a matching min-width). */
 export function RankedTableShell({ children, className }: RankedTableShellProps) {
   return (
     <div
@@ -76,7 +78,9 @@ export function RankedTableShell({ children, className }: RankedTableShellProps)
         className
       )}
     >
-      {children}
+      <div role="table" className="overflow-x-auto">
+        {children}
+      </div>
     </div>
   );
 }
@@ -90,6 +94,25 @@ interface GridRowProps {
   children: React.ReactNode;
 }
 
+/**
+ * Sum a grid track list into a px floor so the table scrolls (via
+ * RankedTableShell's overflow-x-auto) instead of clipping fixed columns on
+ * narrow screens. `<n>px` tracks count at face value; flexible tracks
+ * (1fr / minmax / auto) get a modest floor so the primary column keeps room
+ * when scrolled. Inter-column gaps are included.
+ * // ponytail: rough px summer, not a real CSS grid parser — only the `<n>px`
+ * // and flexible (`minmax(...)`/`1fr`) tracks this table actually uses.
+ */
+function gridMinWidth(gridTemplate: string, gap: number): number {
+  const tracks = gridTemplate.trim().split(/\s+/);
+  let total = 0;
+  for (const track of tracks) {
+    const px = /^(\d+(?:\.\d+)?)px$/.exec(track);
+    total += px ? parseFloat(px[1]) : 160; // flexible track floor
+  }
+  return total + gap * Math.max(0, tracks.length - 1);
+}
+
 /** The faint mono uppercase header row. */
 export function RankedHeaderRow({
   gridTemplate,
@@ -99,11 +122,16 @@ export function RankedHeaderRow({
 }: GridRowProps) {
   return (
     <div
+      role="row"
       className={cn(
         "grid items-center border-b border-line px-5 py-[13px] font-mono text-[11px] uppercase tracking-[.4px] text-faint",
         className
       )}
-      style={{ gridTemplateColumns: gridTemplate, gap }}
+      style={{
+        gridTemplateColumns: gridTemplate,
+        gap,
+        minWidth: gridMinWidth(gridTemplate, gap),
+      }}
     >
       {children}
     </div>
@@ -122,7 +150,10 @@ export function RankedHeadCell({
   children,
 }: RankedHeadCellProps) {
   return (
-    <div className={cn("flex items-center", ALIGN[align], className)}>
+    <div
+      role="columnheader"
+      className={cn("flex items-center", ALIGN[align], className)}
+    >
       {children}
     </div>
   );
@@ -146,19 +177,41 @@ export function RankedRow({
 }: RankedRowProps) {
   const cls = cn(
     "grid items-center border-b border-line2 px-5 py-[13px] transition-colors last:border-b-0 hover:bg-bg2",
-    href && "cursor-pointer",
+    (href || onClick) && "cursor-pointer",
     className
   );
-  const style = { gridTemplateColumns: gridTemplate, gap };
+  const style = {
+    gridTemplateColumns: gridTemplate,
+    gap,
+    minWidth: gridMinWidth(gridTemplate, gap),
+  };
   if (href) {
     return (
-      <a href={href} className={cls} style={style} onClick={onClick}>
+      <a href={href} role="row" className={cls} style={style} onClick={onClick}>
         {children}
       </a>
     );
   }
+  // Interactive div rows (onClick, no href) need keyboard parity with the
+  // anchor branch: focusable + Enter/Space activates. Kept as role="row" for
+  // valid table semantics rather than role="button".
+  const handleKeyDown = onClick
+    ? (e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick(e as unknown as React.MouseEvent<HTMLDivElement>);
+        }
+      }
+    : undefined;
   return (
-    <div className={cls} style={style} onClick={onClick}>
+    <div
+      role="row"
+      className={cls}
+      style={style}
+      onClick={onClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={onClick ? 0 : undefined}
+    >
       {children}
     </div>
   );
@@ -180,6 +233,7 @@ export function RankedCell({
 }: RankedCellProps) {
   return (
     <div
+      role="cell"
       className={cn(
         "flex min-w-0 items-center",
         ALIGN[align],

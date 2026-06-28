@@ -9,6 +9,7 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { ItemDetailData } from "@/components/items/item-detail";
 
 /**
@@ -225,9 +226,15 @@ export function PriceSignals({ item }: { item: ItemDetailData }) {
   return (
     <div className="rounded-[18px] border border-line bg-panel p-5">
       <div className="mb-3.5 flex items-center justify-between">
-        <h2 className="font-display text-[18px] font-bold text-tx">
-          Price signals
-        </h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="font-display text-[18px] font-bold text-tx">
+            Price signals
+          </h2>
+          <Tooltip
+            asIcon
+            content="Automated bullish/bearish reads derived from momentum, supply scarcity, listing pressure, and store status. Informational only — not financial advice."
+          />
+        </div>
         <div
           className="inline-flex items-center gap-1.5 rounded-[9px] px-2.5 py-1 text-[12px] font-bold"
           style={{

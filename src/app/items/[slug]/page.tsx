@@ -82,7 +82,7 @@ async function getRelatedItems(item: { id: string; type: string }) {
       id: { not: item.id },
       type: item.type,
     },
-    take: 4,
+    take: 6,
     orderBy: { volume: "desc" },
   });
 }
@@ -236,7 +236,7 @@ export default async function ItemDetailPage({ params }: PageProps) {
           <h2 className="mb-4 font-display text-[24px] font-extrabold tracking-[-0.5px] text-tx">
             Similar skins
           </h2>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             {relatedItems.map((ri) => (
               <ItemCard key={ri.id} item={ri} />
             ))}

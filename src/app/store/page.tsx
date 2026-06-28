@@ -97,6 +97,7 @@ export default async function StorePage() {
         isLimited: true,
         createdAt: true,
         steamItemNameId: true,
+        rarityColor: true,
       },
     }),
   ]);
@@ -159,7 +160,11 @@ export default async function StorePage() {
         <StatCard label="Permanent" value={permanent.length.toLocaleString()} />
         <StatCard
           label="Leaving in 7d"
-          value={leavingIn7d.toLocaleString()}
+          // Amber urgency cue (matches the per-item delisting countdown's <=7d
+          // tint). StatCard has no tone prop, so we tint the value node here.
+          value={
+            <span className="text-cat-tool">{leavingIn7d.toLocaleString()}</span>
+          }
         />
         <StatCard
           label="Total active"
@@ -211,6 +216,13 @@ export default async function StorePage() {
       ) : (
         <FreshDropsGrid items={justAdded} />
       )}
+
+      {/* Data-provenance + appreciation note (SEO / crawlable copy) */}
+      <p className="mt-10 text-[11px] leading-relaxed text-faint">
+        Store data refreshes daily from sbox.dev. Market prices come from Steam
+        Community Market — the delta to original store price tells you whether an
+        item has appreciated since release.
+      </p>
     </div>
   );
 }

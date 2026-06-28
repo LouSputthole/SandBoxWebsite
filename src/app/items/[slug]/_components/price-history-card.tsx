@@ -229,9 +229,18 @@ export function PriceHistoryCard({
         </div>
       )}
 
-      {/* Chart */}
-      <div style={{ width: "100%", height: 220 }}>
-        <ResponsiveContainer width="100%" height="100%">
+      {/* Chart — a lone data point can't draw a line, so show a dedicated
+          state instead of an empty plot until we've tracked two+ points. */}
+      {rows.length <= 1 ? (
+        <div className="flex h-[220px] flex-col items-center justify-center gap-1 text-center">
+          <span className="text-sm text-faint">Not enough price history yet</span>
+          <span className="text-[11.5px] text-faint">
+            Charting begins once we&apos;ve tracked at least two price points.
+          </span>
+        </div>
+      ) : (
+        <div style={{ width: "100%", height: 220 }}>
+          <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={rows}
             margin={{ top: 6, right: 6, bottom: 0, left: 0 }}
@@ -320,8 +329,9 @@ export function PriceHistoryCard({
               isAnimationActive={false}
             />
           </ComposedChart>
-        </ResponsiveContainer>
-      </div>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       {stats && (
         <div className="mt-3 text-right">

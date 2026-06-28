@@ -18,7 +18,8 @@ import {
 import { StatCard } from "@/components/data";
 import { SkinTile } from "@/components/items/skin-tile";
 import { Price } from "@/components/ui/price";
-import { cn, formatPrice, formatPriceChange } from "@/lib/utils";
+import { useCurrency, formatInCurrency, convertFromUsd } from "@/lib/fx/context";
+import { cn, formatPriceChange } from "@/lib/utils";
 import { rarityCssColor } from "@/lib/rarity";
 import {
   bucketize,
@@ -143,8 +144,9 @@ export interface MoverVM {
   change: number;
   /** Steam-sourced rarity tint (hex, no leading #), when graded. */
   rarityColor?: string | null;
-  /** Optional secondary line (e.g. "$1.20 → $1.80" for weekly movers). */
-  sub?: string;
+  /** Weekly-mover baseline: the week-ago price in USD. When set, the row
+   *  shows "<week-ago> → <current>", both converted to the user's currency. */
+  baselineUsd?: number | null;
 }
 
 interface TrendsViewProps {
@@ -171,6 +173,28 @@ function formatCompactUsd(n: number): string {
   return `$${Math.round(n).toLocaleString()}`;
 }
 
+/** Abbreviated aggregate in the user's chosen currency (€1.6M / ¥240M).
+ *  Converts the USD figure the same way <Price> does, then uses Intl
+ *  compact-currency notation so the symbol + grouping stay locale-correct. */
+function formatCompactCurrency(
+  usdAmount: number,
+  currency: string,
+  rates: Record<string, number>,
+): string {
+  const converted = convertFromUsd(usdAmount, currency, rates);
+  try {
+    return new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency,
+      notation: "compact",
+      maximumFractionDigits: 2,
+    }).format(converted);
+  } catch {
+    // Unknown code → fall back to plain compact USD.
+    return formatCompactUsd(usdAmount);
+  }
+}
+
 /** Abbreviated count (12.3K / 3.4M) for the volume axis + tooltip. */
 function formatCompactNum(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -178,10 +202,18 @@ function formatCompactNum(n: number): string {
   return Math.round(n).toLocaleString();
 }
 
-function kpiValueNode(k: KpiVM) {
+function kpiValueNode(
+  k: KpiVM,
+  currency: string,
+  rates: Record<string, number>,
+) {
   if (k.format === "price") return <Price amount={k.value} />;
   if (k.format === "number") return k.value.toLocaleString();
-  return formatCompactUsd(k.value);
+  // compact (market cap / listings value): em-dash when there's no data
+  // yet (estMarketCap is NULL→0 pre-supply), else a currency-aware figure
+  // consistent with every <Price> on the page.
+  if (!(k.value > 0)) return "—";
+  return formatCompactCurrency(k.value, currency, rates);
 }
 
 /** Thin a series to at most `cap` points (keeps endpoints) for light render. */
@@ -200,12 +232,20 @@ function metricValue(s: RawSnapshot, metric: CandleMetric): number {
   return s[metric];
 }
 
-/** Axis/tooltip value formatter for a metric (USD-base, compact, string out).
- *  Compact so the Y-axis ticks + OHLC tooltip don't blow out their width. */
-function metricFormatter(metric: CandleMetric): (v: number) => string {
-  if (metric === "avgPrice") return (v) => formatPrice(v); // small, full precision
-  if (metric === "totalVolume") return (v) => formatCompactNum(v);
-  return (v) => formatCompactUsd(v); // estMarketCap, listingsValue
+/** Axis/tooltip value formatter for a metric (compact, currency-aware, string
+ *  out). Compact so the Y-axis ticks + OHLC tooltip don't blow out their width.
+ *  ponytail: the chart data stays in USD-space (domain + padding); only the
+ *  tick/tooltip *labels* are converted here. FX conversion is linear, so bar
+ *  positions are unaffected — no need to re-scale the whole series client-side. */
+function metricFormatter(
+  metric: CandleMetric,
+  currency: string,
+  rates: Record<string, number>,
+): (v: number) => string {
+  if (metric === "avgPrice")
+    return (v) => formatInCurrency(v, currency, rates); // small, full precision
+  if (metric === "totalVolume") return (v) => formatCompactNum(v); // count, no FX
+  return (v) => formatCompactCurrency(v, currency, rates); // estMarketCap, listingsValue
 }
 
 /** Period-aware X-axis label so the date granularity matches the window. */
@@ -240,6 +280,7 @@ export function TrendsView({
   gainers7d,
   losers7d,
 }: TrendsViewProps) {
+  const { currency, rates } = useCurrency();
   return (
     <div className="mx-auto max-w-[1240px] px-6 pb-12 pt-8">
       {/* Header + period switcher */}
@@ -262,7 +303,7 @@ export function TrendsView({
           <StatCard
             key={k.label}
             label={k.label}
-            value={kpiValueNode(k)}
+            value={kpiValueNode(k, currency, rates)}
             delta={k.delta}
             deltaPositive={k.deltaPositive}
             spark={k.spark}
@@ -409,8 +450,12 @@ function ChartSection({
   );
   const [view, setView] = useState<ViewMode>("area");
 
+  const { currency, rates } = useCurrency();
   const meta = METRIC_META[metric];
-  const fmt = useMemo(() => metricFormatter(metric), [metric]);
+  const fmt = useMemo(
+    () => metricFormatter(metric, currency, rates),
+    [metric, currency, rates],
+  );
   const labelFormatter = useMemo(
     () => makeDateLabel(candlePeriod),
     [candlePeriod],
@@ -582,6 +627,7 @@ function ViewToggle({
 }
 
 function CategoryCard({ categories }: { categories: CategoryVM[] }) {
+  const { currency, rates } = useCurrency();
   return (
     <div className="rounded-[18px] border border-line bg-panel p-[22px]">
       <h2 className="m-0 mb-1 font-display text-[18px] font-bold text-tx">
@@ -607,7 +653,7 @@ function CategoryCard({ categories }: { categories: CategoryVM[] }) {
                   {c.label}
                 </span>
                 <span className="font-mono text-[12.5px] text-mut">
-                  {formatCompactUsd(c.value)}
+                  {formatCompactCurrency(c.value, currency, rates)}
                 </span>
               </div>
               <div className="h-[9px] overflow-hidden rounded-[5px] bg-bg2">
@@ -714,8 +760,8 @@ function MoverPanel({
         <p className="py-4 text-center text-xs text-faint">{emptyText}</p>
       ) : (
         <div>
-          {items.map((it) => (
-            <MoverRow key={it.slug} item={it} color={color} />
+          {items.map((it, i) => (
+            <MoverRow key={it.slug} item={it} color={color} rank={i + 1} />
           ))}
         </div>
       )}
@@ -723,12 +769,23 @@ function MoverPanel({
   );
 }
 
-function MoverRow({ item, color }: { item: MoverVM; color: string }) {
+function MoverRow({
+  item,
+  color,
+  rank,
+}: {
+  item: MoverVM;
+  color: string;
+  rank: number;
+}) {
   return (
     <Link
       href={`/items/${item.slug}`}
       className="flex items-center gap-3 rounded-[11px] p-2 transition-colors hover:bg-bg2"
     >
+      <span className="w-4 shrink-0 text-right font-mono text-[12px] font-bold text-faint">
+        {rank}
+      </span>
       <SkinTile
         imageUrl={item.imageUrl}
         name={item.name}
@@ -740,9 +797,9 @@ function MoverRow({ item, color }: { item: MoverVM; color: string }) {
         <span className="block truncate text-[14px] font-semibold text-tx">
           {item.name}
         </span>
-        {item.sub ? (
+        {item.baselineUsd != null ? (
           <span className="block truncate font-mono text-[11.5px] text-faint">
-            {item.sub}
+            <Price amount={item.baselineUsd} /> → <Price amount={item.price} />
           </span>
         ) : (
           <span className="block truncate text-[11.5px] capitalize text-faint">

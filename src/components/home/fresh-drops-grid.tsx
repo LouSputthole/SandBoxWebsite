@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { SkinTile } from "@/components/items/skin-tile";
+import { Price } from "@/components/ui/price";
 import type { NewDropItem } from "@/components/items/new-drop-card";
 import { rarityCssColor } from "@/lib/rarity";
+import { formatPriceChange } from "@/lib/utils";
 
 function addedLabel(createdAt: Date): string {
   const ms = Date.now() - createdAt.getTime();
@@ -33,6 +35,11 @@ export function FreshDropsGrid({ items }: { items: NewDropItem[] }) {
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
       {items.map((item) => {
         const status = dataStatus(item);
+        // ponytail: teaser stays compact — only price + 24h here; full
+        // 24h/volume/watchlist data lives on /new (NewDropCard).
+        const change = item.priceChange24h ?? 0;
+        const changeColor =
+          change > 0 ? "var(--up)" : change < 0 ? "var(--down)" : "var(--mut)";
         return (
           <Link
             key={item.id}
@@ -56,6 +63,21 @@ export function FreshDropsGrid({ items }: { items: NewDropItem[] }) {
               <span className="block truncate pr-9 text-[13.5px] font-bold text-tx">
                 {item.name}
               </span>
+              {item.currentPrice != null && (
+                <span className="mt-0.5 flex items-center gap-1.5">
+                  <span className="font-mono text-[13px] font-bold text-tx">
+                    <Price amount={item.currentPrice} />
+                  </span>
+                  {change !== 0 && (
+                    <span
+                      className="font-mono text-[11px] font-bold"
+                      style={{ color: changeColor }}
+                    >
+                      {formatPriceChange(change)}
+                    </span>
+                  )}
+                </span>
+              )}
               <span className="block text-[11.5px] text-faint">
                 added {addedLabel(item.createdAt)}
               </span>

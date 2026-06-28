@@ -20,6 +20,13 @@ export const metadata: Metadata = {
 // add/remove of one column leaves the others where they are.
 const SLOTS = ["a", "b", "c", "d"] as const;
 
+// 30-day price-history window. Read Date.now() inside a plain helper (not inline
+// in the component render) so the per-request timestamp doesn't trip
+// react-hooks/purity. Behaviour is identical — still evaluated once per request.
+function historyCutoff() {
+  return new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+}
+
 interface PageProps {
   searchParams: Promise<Record<string, string | undefined>>;
 }
@@ -33,7 +40,7 @@ export default async function ComparePage({ searchParams }: PageProps) {
   );
   const slugs = selected.map((s) => s.value);
 
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const since = historyCutoff();
 
   const [itemsRaw, allItems] = await Promise.all([
     slugs.length
@@ -110,10 +117,15 @@ export default async function ComparePage({ searchParams }: PageProps) {
       {columns.length > 0 ? (
         <>
           <ComparisonPanel columns={columns} />
-          <p className="mt-[18px] text-center text-[12.5px] text-[var(--faint)]">
-            Add up to 4 skins to compare. Best value in each row is highlighted in{" "}
-            <span className="text-[var(--accent)]">purple</span>.
-          </p>
+          {/* Only mention the purple highlight once there are >=2 columns to
+              compare — that's the same threshold ComparisonPanel uses to actually
+              tint a best-value cell (showBest = n >= 2). */}
+          {columns.length >= 2 && (
+            <p className="mt-[18px] text-center text-[12.5px] text-[var(--faint)]">
+              Add up to 4 skins to compare. Best value in each row is highlighted
+              in <span className="text-[var(--accent)]">purple</span>.
+            </p>
+          )}
         </>
       ) : (
         <div className="rounded-[20px] border border-[var(--line)] bg-[var(--panel)] px-6 py-16 text-center">

@@ -76,7 +76,7 @@ export function Navbar() {
   const moreMenuRef = useRef<HTMLDivElement>(null);
 
   const isActive = (href: string) =>
-    pathname === href || (href !== "/" && pathname.startsWith(href));
+    pathname === href || (href !== "/" && pathname.startsWith(href + "/"));
 
   const moreActive = [...NAV_WIDE, ...NAV_MORE].some((i) => isActive(i.href));
 

@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { FaqAccordion } from "./_components/faq-accordion";
 import { ContactForm } from "../contact/_components/contact-form";
 
@@ -206,6 +209,19 @@ export default function FAQPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
       />
       <div className="mx-auto max-w-[820px] px-6 py-[42px]">
+        {/* Breadcrumb */}
+        <nav className="mb-6 text-sm text-mut" aria-label="Breadcrumb">
+          <ol className="flex items-center gap-1.5">
+            <li>
+              <Link href="/" className="transition-colors hover:text-tx">
+                Home
+              </Link>
+            </li>
+            <li>/</li>
+            <li className="text-tx">FAQ</li>
+          </ol>
+        </nav>
+
         {/* Centered header */}
         <div className="mb-8 text-center">
           <h1 className="font-display text-[42px] font-extrabold tracking-[-0.02em] text-tx">
@@ -217,7 +233,7 @@ export default function FAQPage() {
           </p>
         </div>
 
-        {/* Accordion — one open at a time */}
+        {/* Accordion — native details/summary, answers SSR'd & crawlable */}
         <FaqAccordion items={faqs} />
 
         {/* Contact card */}
@@ -227,6 +243,19 @@ export default function FAQPage() {
           title="Still have questions?"
           description="Spotted bad data, want a skin added, or just want to say hi? Drop us a line — we usually reply within a day."
         />
+
+        {/* Browse skins CTA */}
+        <div className="mt-10 border-t border-line pt-10 text-center">
+          <p className="mb-4 text-mut">
+            Ready to start tracking S&box skin prices?
+          </p>
+          <Link href="/items">
+            <Button className="gap-2">
+              Browse All Skins
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
       </div>
     </>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import Link from "next/link";
 import {
   Crown,
   TrendingUp,
@@ -11,19 +11,21 @@ import {
 } from "lucide-react";
 import { RankedTable, RankBadge, type RankedColumn } from "@/components/data";
 import { Sparkline } from "@/components/charts";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { SkinTile } from "@/components/items/skin-tile";
 import { Price } from "@/components/ui/price";
 import { rarityCssColor } from "@/lib/rarity";
-import { formatPriceChange } from "@/lib/utils";
-import { type TabKey, TAB_KEYS, DEFAULT_TAB } from "./tabs";
+import { cn, formatPriceChange } from "@/lib/utils";
+import { type TabKey, DEFAULT_TAB } from "./tabs";
 
 /**
- * Client leaderboard. The server page runs a distinct catalog-wide query per
- * tab (each already ranked + capped) and hands every ranked list down at once,
- * so switching tabs is instant *and* accurate — no client re-sorting of a
- * single pool. The active tab is seeded from `?tab=` (SSR) and mirrored back
- * into the URL on switch via the History API (shareable deep-link, no reload).
+ * Leaderboard table + tab nav. The server page runs a distinct catalog-wide
+ * query per tab (each already ranked + capped) and hands every ranked list down
+ * at once; the active tab comes straight from the `?tab=` param (`initialTab`),
+ * so the server renders the active tab's table in the initial HTML.
+ *
+ * The tabs are real <Link> anchors to `/leaderboard?tab=KEY` — one crawlable
+ * URL per tab (the site's SEO moat), with `replace`/`scroll={false}` so
+ * switching stays snappy without piling up history or jumping the scroll.
  *
  * The table is built here (not on the server) because RankedTable's `cell` and
  * `rowHref` are functions, which can't cross the client boundary.
@@ -79,19 +81,9 @@ export function LeaderboardTable({
   lists: LeaderboardData;
   initialTab: TabKey;
 }) {
-  const [tab, setTab] = React.useState<TabKey>(initialTab);
-
-  // Switch instantly from preloaded data, and mirror the choice into the URL
-  // (History API only — no navigation/refetch) so the view is shareable.
-  const selectTab = React.useCallback((next: string) => {
-    const key = (TAB_KEYS as string[]).includes(next)
-      ? (next as TabKey)
-      : DEFAULT_TAB;
-    setTab(key);
-    const search = key === DEFAULT_TAB ? "" : `?tab=${key}`;
-    window.history.replaceState(null, "", `${window.location.pathname}${search}`);
-  }, []);
-
+  // The active tab is driven by the URL (`?tab=`), so following the <Link> tabs
+  // below re-renders the page with the right list — no client state to drift.
+  const tab = initialTab;
   const rows = lists[tab] ?? [];
 
   const columns: RankedColumn<LeaderboardRow>[] = [
@@ -166,6 +158,24 @@ export function LeaderboardTable({
         </span>
       ),
     },
+    // ponytail: Listings only surfaces on the "Most listed" tab — it's the
+    // ranking metric there (supplyOnMarket→volume); other tabs stay lean.
+    ...(tab === "listed"
+      ? ([
+          {
+            key: "listings",
+            header: "Listings",
+            width: "110px",
+            align: "right",
+            mono: true,
+            cell: (row) => (
+              <span className="text-[13px] text-mut">
+                {row.listings.toLocaleString()}
+              </span>
+            ),
+          },
+        ] satisfies RankedColumn<LeaderboardRow>[])
+      : []),
     {
       key: "cap",
       header: "Mkt cap",
@@ -187,19 +197,37 @@ export function LeaderboardTable({
 
   return (
     <div>
-      <Tabs value={tab} onValueChange={selectTab} className="mb-[18px]">
-        <TabsList>
-          {TAB_DEFS.map((t) => {
-            const Icon = t.icon;
-            return (
-              <TabsTrigger key={t.key} value={t.key}>
-                <Icon className="h-4 w-4 opacity-70" />
-                {t.label}
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-      </Tabs>
+      <nav
+        aria-label="Leaderboard categories"
+        className="mb-[18px] inline-flex flex-wrap items-center gap-2"
+      >
+        {TAB_DEFS.map((t) => {
+          const Icon = t.icon;
+          const isActive = t.key === tab;
+          return (
+            <Link
+              key={t.key}
+              href={
+                t.key === DEFAULT_TAB
+                  ? "/leaderboard"
+                  : `/leaderboard?tab=${t.key}`
+              }
+              replace
+              scroll={false}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-[11px] border px-3.5 py-1.5 font-sans text-sm font-semibold transition-colors",
+                isActive
+                  ? "border-transparent bg-[var(--accent)] text-white"
+                  : "border-[var(--line)] bg-[var(--panel)] text-[var(--mut)] hover:text-[var(--tx)]"
+              )}
+            >
+              <Icon className="h-4 w-4 opacity-70" />
+              {t.label}
+            </Link>
+          );
+        })}
+      </nav>
 
       <RankedTable
         columns={columns}

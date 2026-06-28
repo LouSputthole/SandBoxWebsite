@@ -70,6 +70,7 @@ export function NewsletterStrip() {
               type="email"
               inputMode="email"
               autoComplete="email"
+              aria-label="Email address"
               required
               placeholder="you@email.com"
               value={email}

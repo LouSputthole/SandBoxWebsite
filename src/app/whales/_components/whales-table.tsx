@@ -7,7 +7,6 @@ import {
   RankedTableShell,
   RankedHeaderRow,
   RankedHeadCell,
-  RankedRow,
   RankedCell,
   RankBadge,
 } from "@/components/data";
@@ -95,10 +94,23 @@ export function WhalesTable({ whales }: { whales: Whale[] }) {
           const expanded = open.has(w.steamId);
           return (
             <React.Fragment key={w.steamId}>
-              <RankedRow
-                gridTemplate={GRID}
+              {/* ponytail: RankedRow (owned by src/components/data) doesn't forward
+                  a11y props, so the disclosure header inlines RankedRow's row
+                  styling to add keyboard support (role/tabIndex/onKeyDown/aria-expanded). */}
+              <div
+                role="button"
+                tabIndex={0}
+                aria-expanded={expanded}
+                aria-label={`${expanded ? "Hide" : "Show"} ${w.name}'s top items`}
                 onClick={() => toggle(w.steamId)}
-                className="cursor-pointer"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    toggle(w.steamId);
+                  }
+                }}
+                className="grid cursor-pointer items-center border-b border-line2 px-5 py-[13px] transition-colors last:border-b-0 hover:bg-bg2 focus-visible:bg-bg2"
+                style={{ gridTemplateColumns: GRID, gap: 14 }}
               >
                 <RankedCell align="left">
                   <RankBadge rank={i + 1} />
@@ -133,7 +145,12 @@ export function WhalesTable({ whales }: { whales: Whale[] }) {
                 </RankedCell>
 
                 <RankedCell align="right" mono className="text-[13px] text-mut">
-                  {w.totalQuantity.toLocaleString()}
+                  <div className="flex flex-col items-end leading-tight">
+                    <span>{w.totalQuantity.toLocaleString()}</span>
+                    <span className="text-[11px] text-faint">
+                      {w.uniqueItems.toLocaleString()} unique
+                    </span>
+                  </div>
                 </RankedCell>
 
                 <RankedCell align="right" mono className="text-[13px]">
@@ -143,15 +160,9 @@ export function WhalesTable({ whales }: { whales: Whale[] }) {
                 </RankedCell>
 
                 <RankedCell align="right">
-                  <button
-                    type="button"
-                    aria-expanded={expanded}
-                    aria-label={`${expanded ? "Hide" : "Show"} ${w.name}'s top items`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggle(w.steamId);
-                    }}
-                    className="flex h-7 w-7 items-center justify-center rounded-[8px] text-faint transition-colors hover:bg-bg2 hover:text-tx"
+                  <span
+                    aria-hidden
+                    className="flex h-7 w-7 items-center justify-center rounded-[8px] text-faint"
                   >
                     <ChevronDown
                       className={cn(
@@ -159,9 +170,9 @@ export function WhalesTable({ whales }: { whales: Whale[] }) {
                         expanded && "rotate-180"
                       )}
                     />
-                  </button>
+                  </span>
                 </RankedCell>
-              </RankedRow>
+              </div>
 
               {expanded && (
                 <div className="border-b border-line2 bg-bg px-5 py-4">

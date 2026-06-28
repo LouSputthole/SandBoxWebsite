@@ -75,6 +75,7 @@ export function ContactForm({
             <input
               type="text"
               autoComplete="name"
+              aria-label="Your name"
               required
               placeholder="Your name"
               value={name}
@@ -85,6 +86,7 @@ export function ContactForm({
               type="email"
               inputMode="email"
               autoComplete="email"
+              aria-label="Your email"
               required
               placeholder="you@email.com"
               value={email}
@@ -95,6 +97,7 @@ export function ContactForm({
           <textarea
             rows={4}
             required
+            aria-label="Your message"
             placeholder="What's on your mind?"
             value={message}
             onChange={(e) => setMessage(e.target.value)}

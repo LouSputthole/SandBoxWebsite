@@ -79,10 +79,22 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
   const [view, setView] = useState<ItemsView>(initialState.view);
   const [filters, setFilters] = useState<FilterState>(initialState.filters);
 
+  // Force the card grid on phones — the dense 8-col table is unusable at that
+  // width, and a shared ?view=table link shouldn't drop a mobile user into it.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    setIsMobile(mq.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+  const effectiveView = isMobile ? "grid" : view;
+
   // Skip the very first fetch (we already have initialState.items from SSR).
   const firstRenderRef = useRef(true);
 
-  const pageSize = view === "table" ? TABLE_PAGE_SIZE : GRID_PAGE_SIZE;
+  const pageSize = effectiveView === "table" ? TABLE_PAGE_SIZE : GRID_PAGE_SIZE;
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
@@ -217,7 +229,10 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
           total={initialState.catalogTotal}
           onChange={handleTypeChange}
         />
-        <ViewToggle value={view} onChange={handleViewChange} />
+        {/* Toggle is desktop-only; phones are forced to the grid (effectiveView). */}
+        <div className="hidden md:flex">
+          <ViewToggle value={view} onChange={handleViewChange} />
+        </div>
       </div>
 
       {/* Toolbar row 2: price range (left) · sort chips + full dropdown (right) */}
@@ -237,12 +252,12 @@ export function ItemsBrowser({ initialState }: { initialState: InitialState }) {
 
       {/* Content */}
       {loading ? (
-        view === "table" ? (
+        effectiveView === "table" ? (
           <SkeletonTable />
         ) : (
           <SkeletonGrid />
         )
-      ) : view === "table" ? (
+      ) : effectiveView === "table" ? (
         <ItemTable
           items={items}
           rankOffset={(page - 1) * pageSize}

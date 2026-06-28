@@ -7,6 +7,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { Price } from "@/components/ui/price";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { UseOrders } from "./use-orders";
 
 /**
@@ -105,11 +106,18 @@ export function SpreadAnalysis({ orders }: { orders: UseOrders }) {
         <h2 className="font-display text-[18px] font-bold text-tx">
           Spread analysis
         </h2>
+        <Tooltip
+          asIcon
+          content="Measures how tight or loose the market is. Narrow spread + balanced orders = healthy liquidity. A wide spread or one-sided pressure suggests volatility or thin trading."
+        />
       </div>
 
       {/* Spread stats */}
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-        <Stat label="Spread">
+        <Stat
+          label="Spread"
+          tip="The gap between the lowest sell price and the highest buy price. Narrow = liquid, easy to buy/sell near market price. Wide = illiquid, costly to enter/exit."
+        >
           <span className="font-mono text-[15px] font-bold text-tx">
             <Price amount={spread} />
           </span>
@@ -117,17 +125,26 @@ export function SpreadAnalysis({ orders }: { orders: UseOrders }) {
             {spreadPct.toFixed(1)}%
           </span>
         </Stat>
-        <Stat label="Midpoint">
+        <Stat
+          label="Midpoint"
+          tip="The average of the highest buy order and lowest sell order — a reasonable estimate of the item's current fair market value."
+        >
           <span className="font-mono text-[15px] font-bold text-tx">
             <Price amount={midpoint} />
           </span>
         </Stat>
-        <Stat label="Near-buy depth">
+        <Stat
+          label="Near-buy depth"
+          tip="Items buyers want to purchase within 10% of the midpoint price. High near-buy depth means strong demand close to market rate."
+        >
           <span className="font-mono text-[15px] font-bold text-up">
             {nearBuyQty.toLocaleString()}
           </span>
         </Stat>
-        <Stat label="Near-sell depth">
+        <Stat
+          label="Near-sell depth"
+          tip="Items sellers have listed within 10% of the midpoint price. High near-sell depth means plenty of supply close to market rate."
+        >
           <span className="font-mono text-[15px] font-bold text-down">
             {nearSellQty.toLocaleString()}
           </span>
@@ -187,14 +204,19 @@ export function SpreadAnalysis({ orders }: { orders: UseOrders }) {
 
 function Stat({
   label,
+  tip,
   children,
 }: {
   label: string;
+  tip?: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="rounded-[12px] border border-line bg-bg2 px-3 py-2.5">
-      <div className="mb-1 text-[10.5px] text-faint">{label}</div>
+      <div className="mb-1 flex items-center gap-1 text-[10.5px] text-faint">
+        {label}
+        {tip && <Tooltip asIcon content={tip} />}
+      </div>
       <div className="flex items-baseline">{children}</div>
     </div>
   );

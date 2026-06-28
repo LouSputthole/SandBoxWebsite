@@ -109,13 +109,10 @@ function toWeeklyMover(m: RawWeeklyMover): MoverVM {
     price: m.currentPrice,
     change: m.weeklyChangePct,
     rarityColor: null,
-    sub: `${formatUsd(m.weekAgoPrice)} → ${formatUsd(m.currentPrice ?? 0)}`,
+    // Pass the week-ago baseline as a raw USD number; the client row renders
+    // it through <Price> so the "from → to" line follows the user's currency.
+    baselineUsd: m.weekAgoPrice,
   };
-}
-
-/** Plain USD for the server-rendered weekly-mover baseline line. */
-function formatUsd(n: number): string {
-  return `$${n.toFixed(2)}`;
 }
 
 interface PageProps {

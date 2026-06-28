@@ -72,7 +72,9 @@ export default async function TradePage({ searchParams }: PageProps) {
       skip: (page - 1) * PAGE_SIZE,
       include: {
         user: { select: { steamId: true, username: true, avatarUrl: true } },
-        _count: { select: { comments: true } },
+        // Match the detail page's thread (deletedAt: null) — soft-deleted
+        // comments must not inflate the reply count shown on the card.
+        _count: { select: { comments: { where: { deletedAt: null } } } },
         items: {
           include: {
             item: {

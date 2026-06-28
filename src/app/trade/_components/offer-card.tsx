@@ -155,8 +155,9 @@ function ColumnLabel({ children }: { children: string }) {
  * One offer card on the Arcade trading board: trader (avatar + age + replies),
  * a color-coded WTS/WTB/WTT badge, an offering → looking-for layout built from
  * the listing's real items, and Make-offer / Message actions into the listing
- * detail page. One-sided listings (sell wants cash, buy pays cash) surface the
- * listing description in the empty column so the asking terms still show.
+ * detail page. Any non-empty description renders as its own line-clamped block
+ * below the grid, so trade terms/contact show even on two-sided (WTT) listings
+ * where neither column is empty.
  */
 export function OfferCard({ listing }: { listing: OfferListing }) {
   const meta = SIDE_META[listing.side] ?? {
@@ -217,18 +218,23 @@ export function OfferCard({ listing }: { listing: OfferListing }) {
           <ColumnLabel>Offering</ColumnLabel>
           <SideContent
             items={offering}
-            fallback={bothEmpty ? "Open offer" : desc || "Cash / offers"}
+            fallback={bothEmpty ? "Open offer" : "Cash / offers"}
           />
         </div>
         <ArrowRight className="h-[22px] w-[22px] shrink-0 text-faint" />
         <div className="min-w-0 flex-1">
           <ColumnLabel>Looking for</ColumnLabel>
-          <SideContent
-            items={wanting}
-            fallback={desc || "Open to offers"}
-          />
+          <SideContent items={wanting} fallback="Open to offers" />
         </div>
       </div>
+
+      {/* description — its own block so two-sided (WTT) listings, where neither
+          column is empty, still surface their trade terms/contact */}
+      {desc && (
+        <p className="mt-3 whitespace-pre-wrap text-[12.5px] leading-snug text-mut line-clamp-2">
+          {desc}
+        </p>
+      )}
 
       {/* actions */}
       <div className="mt-4 flex gap-2.5">

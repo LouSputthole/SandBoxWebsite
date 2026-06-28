@@ -356,7 +356,7 @@ export function InventoryView() {
       {/* Header */}
       <div className="mb-[26px] text-center">
         <h1 className="m-0 font-display text-[clamp(30px,6vw,40px)] font-extrabold tracking-[-.02em] text-tx">
-          Inventory checker
+          Check Your S&amp;box Inventory Value
         </h1>
         <p className="mx-auto mt-[9px] max-w-xl text-[15px] text-mut">
           Estimate the total market value of any Steam user&apos;s S&amp;box
@@ -721,6 +721,8 @@ function ItemTile({ item }: { item: InventoryItem }) {
         }
       />
       <div className="truncate text-[13.5px] font-bold text-tx">{item.name}</div>
+      {/* Item type/category label — restored from the pre-redesign row. */}
+      <div className="truncate text-[11px] capitalize text-faint">{item.type}</div>
       <div className="mt-1 flex items-baseline justify-between gap-2">
         <span className="truncate text-[11px] text-faint">
           {item.unitPrice != null ? (

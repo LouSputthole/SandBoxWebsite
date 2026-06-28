@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /**
  * Two-sided depth view for the item detail page. Asks (red `--down`) stack
@@ -53,11 +54,10 @@ function buildSide(
   );
   const capped =
     maxRows && maxRows > 0 ? sorted.slice(0, maxRows) : sorted;
-  let cum = 0;
-  return capped.map((l) => {
-    cum += l.qty;
-    return { ...l, cum };
-  });
+  // Steam's order graph qty is ALREADY cumulative out from the best price
+  // (see src/lib/steam/types.ts:118) — use it directly. Re-accumulating it
+  // would double-count the depth and over-fill every bar.
+  return capped.map((l) => ({ ...l, cum: l.qty }));
 }
 
 function DepthLevel({
@@ -126,7 +126,13 @@ export function OrderBook({
       )}
     >
       <div className="mb-3.5 flex items-center justify-between">
-        <h2 className="font-display text-[18px] font-bold text-tx">{title}</h2>
+        <div className="flex items-center gap-1.5">
+          <h2 className="font-display text-[18px] font-bold text-tx">{title}</h2>
+          <Tooltip
+            asIcon
+            content="Live buy and sell orders from the Steam Market. Sell orders (asks) stack above the spread, buy orders (bids) below. Bar width shows cumulative depth out from the best price."
+          />
+        </div>
         <span className="font-mono text-[11px] text-faint">PRICE · QTY</span>
       </div>
 
@@ -145,7 +151,13 @@ export function OrderBook({
 
       {showSpread && (
         <div className="my-[7px] flex items-center justify-between border-y border-line px-[9px] py-[11px]">
-          <span className="text-[11px] text-faint">Spread</span>
+          <span className="flex items-center gap-1 text-[11px] text-faint">
+            Spread
+            <Tooltip
+              asIcon
+              content="The gap between the lowest sell and the highest buy. Narrow = liquid, easy to trade near market price. Wide = illiquid and potentially volatile."
+            />
+          </span>
           <span className="font-mono text-[14px] font-bold text-tx">
             {formatPrice(spread)}{" "}
             <span className="text-[12px] font-medium text-faint">

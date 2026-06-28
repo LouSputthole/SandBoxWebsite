@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { X } from "lucide-react";
 
 interface PriceRangeFilterProps {
@@ -35,9 +35,20 @@ export function PriceRangeFilter({
   const [max, setMax] = useState(maxPrice);
 
   // Keep local inputs in sync when the committed values change elsewhere
-  // (e.g. "Clear filters" or a deep-linked URL).
-  useEffect(() => setMin(minPrice), [minPrice]);
-  useEffect(() => setMax(maxPrice), [maxPrice]);
+  // (e.g. "Clear filters" or a deep-linked URL). React's "adjusting state when
+  // a prop changes" pattern — sync during render via stored previous props, not
+  // in an effect, so typing isn't clobbered and react-hooks/set-state-in-effect
+  // doesn't fire.
+  const [prevMin, setPrevMin] = useState(minPrice);
+  const [prevMax, setPrevMax] = useState(maxPrice);
+  if (minPrice !== prevMin) {
+    setPrevMin(minPrice);
+    setMin(minPrice);
+  }
+  if (maxPrice !== prevMax) {
+    setPrevMax(maxPrice);
+    setMax(maxPrice);
+  }
 
   const commit = () => {
     if (min !== minPrice || max !== maxPrice) onApply(min, max);

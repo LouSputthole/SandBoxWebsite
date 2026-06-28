@@ -245,15 +245,17 @@ export default async function HomePage() {
         </section>
       )}
 
-      {/* Rarest of the rare */}
-      <section className="mx-auto max-w-[1240px] px-6 pb-2 pt-11">
-        <SectionHeader
-          title="Rarest of the rare"
-          subtitle="Lowest supply in the game — blink and they're gone."
-          link={{ href: "/items?sort=supply-asc&hasSupply=true", label: "View all" }}
-        />
-        <RarestGrid items={rarest.slice(0, 6)} />
-      </section>
+      {/* Rarest of the rare — hidden when no supply-graded items exist */}
+      {rarest.length > 0 && (
+        <section className="mx-auto max-w-[1240px] px-6 pb-2 pt-11">
+          <SectionHeader
+            title="Rarest of the rare"
+            subtitle="Lowest supply in the game — blink and they're gone."
+            link={{ href: "/items?sort=supply-asc&hasSupply=true", label: "View all" }}
+          />
+          <RarestGrid items={rarest.slice(0, 6)} />
+        </section>
+      )}
 
       {/* Limited editions — capped-supply skins, paired with Rarest by theme */}
       {limited.length > 0 && (

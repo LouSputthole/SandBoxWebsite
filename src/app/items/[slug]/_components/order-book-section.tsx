@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { ArrowDownToLine, ArrowUpFromLine, Loader2 } from "lucide-react";
 import { OrderBook, type OrderLevel } from "@/components/data";
 import { Price } from "@/components/ui/price";
+import { Tooltip } from "@/components/ui/tooltip";
 import type { UseOrders } from "./use-orders";
 
 /**
@@ -47,6 +48,14 @@ function SummaryCard({
         <span className="text-[11px] text-faint">
           {isBuy ? "Highest buy" : "Lowest sell"}
         </span>
+        <Tooltip
+          asIcon
+          content={
+            isBuy
+              ? "The most anyone is currently offering to pay for this item. List at or below this price and you'll sell instantly."
+              : "The cheapest current listing on the Steam Market — what you'd pay to buy one right now."
+          }
+        />
       </div>
       <div
         className="font-mono text-[19px] font-bold leading-none"
@@ -54,9 +63,19 @@ function SummaryCard({
       >
         {price != null ? <Price amount={price} /> : "—"}
       </div>
-      <div className="mt-1 text-[11px] text-faint">
-        {count.toLocaleString()} {isBuy ? "buy" : "sell"} order
-        {count === 1 ? "" : "s"}
+      <div className="mt-1 flex items-center gap-1 text-[11px] text-faint">
+        <span>
+          {count.toLocaleString()} {isBuy ? "buy" : "sell"} order
+          {count === 1 ? "" : "s"}
+        </span>
+        <Tooltip
+          asIcon
+          content={
+            isBuy
+              ? "Total buy orders waiting at various prices. High buy depth means strong demand if the price drops."
+              : "Total items listed for sale across all sell orders. High sell depth means plenty of supply near market rate."
+          }
+        />
       </div>
     </div>
   );
@@ -122,7 +141,7 @@ export function OrderBookSection({ orders }: { orders: UseOrders }) {
           count={data?.sellOrderCount ?? 0}
         />
       </div>
-      <OrderBook bids={bids} asks={asks} maxRows={6} />
+      <OrderBook bids={bids} asks={asks} maxRows={10} />
     </div>
   );
 }

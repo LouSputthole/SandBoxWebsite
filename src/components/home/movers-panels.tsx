@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { TrendingUp, TrendingDown, type LucideIcon } from "lucide-react";
+import { TrendingUp, TrendingDown, ArrowRight, type LucideIcon } from "lucide-react";
 import { SkinTile } from "@/components/items/skin-tile";
 import { Price } from "@/components/ui/price";
 import { rarityCssColor } from "@/lib/rarity";
@@ -49,24 +49,35 @@ function Panel({
   color,
   Icon,
   items,
+  viewAllHref,
 }: {
   title: string;
   color: string;
   Icon: LucideIcon;
   items: HomeItem[];
+  viewAllHref: string;
 }) {
   return (
     <div className="rounded-[20px] border border-line bg-panel p-4">
-      <div className="mb-3 flex items-center gap-2.5">
-        <span
-          className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px]"
-          style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
+      <div className="mb-3 flex items-center justify-between gap-2.5">
+        <div className="flex items-center gap-2.5">
+          <span
+            className="inline-flex h-[30px] w-[30px] items-center justify-center rounded-[9px]"
+            style={{ background: `color-mix(in srgb, ${color} 16%, transparent)`, color }}
+          >
+            <Icon className="h-[17px] w-[17px]" />
+          </span>
+          <h3 className="font-display text-[17px] font-bold" style={{ color }}>
+            {title}
+          </h3>
+        </div>
+        <Link
+          href={viewAllHref}
+          className="flex shrink-0 items-center gap-1 text-[12.5px] font-semibold text-mut transition-colors hover:text-tx"
         >
-          <Icon className="h-[17px] w-[17px]" />
-        </span>
-        <h3 className="font-display text-[17px] font-bold" style={{ color }}>
-          {title}
-        </h3>
+          View all
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
       <div>
         {items.map((item) => (
@@ -90,8 +101,20 @@ export function MoversPanels({
 }) {
   return (
     <div className="grid grid-cols-1 gap-[18px] lg:grid-cols-2">
-      <Panel title="Top gainers" color="var(--up)" Icon={TrendingUp} items={gainers} />
-      <Panel title="Top losers" color="var(--down)" Icon={TrendingDown} items={losers} />
+      <Panel
+        title="Top gainers"
+        color="var(--up)"
+        Icon={TrendingUp}
+        items={gainers}
+        viewAllHref="/items?sort=change-desc"
+      />
+      <Panel
+        title="Top losers"
+        color="var(--down)"
+        Icon={TrendingDown}
+        items={losers}
+        viewAllHref="/items?sort=change-asc"
+      />
     </div>
   );
 }

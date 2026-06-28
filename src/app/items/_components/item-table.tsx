@@ -72,19 +72,20 @@ function SortableHeader({
   return (
     <th
       scope="col"
-      onClick={handleClick}
       aria-sort={isAsc ? "ascending" : isDesc ? "descending" : "none"}
       className={cn(
-        "cursor-pointer select-none px-3 py-2.5 font-sans text-[11px] font-semibold uppercase tracking-wider transition-colors",
+        "select-none px-3 py-2.5 font-sans text-[11px] font-semibold uppercase tracking-wider transition-colors",
         align === "right" ? "text-right" : "text-left",
         isActive
           ? "text-[var(--accent)]"
           : "text-[var(--faint)] hover:text-[var(--tx)]"
       )}
     >
-      <span
+      <button
+        type="button"
+        onClick={handleClick}
         className={cn(
-          "inline-flex items-center gap-1",
+          "inline-flex cursor-pointer items-center gap-1 rounded transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent)]",
           align === "right" && "flex-row-reverse"
         )}
       >
@@ -103,7 +104,7 @@ function SortableHeader({
             )}
           />
         </span>
-      </span>
+      </button>
     </th>
   );
 }

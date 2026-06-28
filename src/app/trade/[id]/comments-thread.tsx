@@ -116,7 +116,10 @@ export function CommentsThread({
   }
 
   return (
-    <section className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-5 mt-4">
+    <section
+      id="comments"
+      className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-5 mt-4"
+    >
       <div className="flex items-center gap-2 mb-4">
         <MessageCircle className="h-4 w-4 text-purple-400" />
         <h2 className="text-sm font-semibold text-white">

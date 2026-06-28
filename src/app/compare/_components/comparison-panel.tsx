@@ -101,11 +101,11 @@ export function ComparisonPanel({ columns }: { columns: ComparisonColumn[] }) {
   const n = items.length;
   const showBest = n >= 2;
 
-  const priceMax = nums(items.map((i) => i.currentPrice));
+  const priceVals = nums(items.map((i) => i.currentPrice));
   const supplyMin = nums(items.map((i) => i.totalSupply));
   const soldMax = nums(items.map((i) => i.soldPast24h));
   const scarcMax = nums(items.map((i) => i.scarcityScore));
-  const bestPrice = priceMax.length ? Math.max(...priceMax) : null;
+  const bestPrice = priceVals.length ? Math.min(...priceVals) : null; // lower price = better value for a buyer
   const bestSupply = supplyMin.length ? Math.min(...supplyMin) : null; // rarer = better
   const bestSold = soldMax.length ? Math.max(...soldMax) : null; // more sales = better
   const bestScarc = scarcMax.length ? Math.max(...scarcMax) : null;

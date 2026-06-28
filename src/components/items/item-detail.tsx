@@ -6,6 +6,7 @@ import Link from "next/link";
 import { ExternalLink, GitCompare, Heart, User, Users } from "lucide-react";
 import { SkinTile } from "@/components/items/skin-tile";
 import { Price } from "@/components/ui/price";
+import { Tooltip } from "@/components/ui/tooltip";
 import { PriceAlertForm } from "@/components/alerts/price-alert-form";
 import { useWatchlist } from "@/lib/watchlist/context";
 import { formatPriceChange } from "@/lib/utils";
@@ -434,6 +435,7 @@ function InfoColumn({
         />
         <StatTile
           label="Spread"
+          tip="Current price minus the lowest ask, with the % premium over that lowest ask. A wide spread can mean a thin or volatile market."
           value={
             spreadAbs != null ? (
               <>
@@ -457,13 +459,20 @@ function InfoColumn({
         <StatTile
           label="Released"
           value={
-            item.releaseDate
-              ? new Date(item.releaseDate).toLocaleDateString("en-US", {
+            item.releaseDate ? (
+              <>
+                {new Date(item.releaseDate).toLocaleDateString("en-US", {
                   month: "short",
                   day: "numeric",
                   year: "numeric",
-                })
-              : "N/A"
+                })}
+                <span className="mt-0.5 block text-[10.5px] font-medium text-faint">
+                  {formatReleaseAge(item.releaseDate)}
+                </span>
+              </>
+            ) : (
+              "N/A"
+            )
           }
         />
       </div>
@@ -527,10 +536,21 @@ function PriceSubtext({ item }: { item: ItemDetailData }) {
   );
 }
 
-function StatTile({ label, value }: { label: string; value: ReactNode }) {
+function StatTile({
+  label,
+  value,
+  tip,
+}: {
+  label: string;
+  value: ReactNode;
+  tip?: string;
+}) {
   return (
     <div className="rounded-[13px] border border-line bg-panel px-3.5 py-3">
-      <div className="mb-1 text-[11px] text-faint">{label}</div>
+      <div className="mb-1 flex items-center gap-1 text-[11px] text-faint">
+        {label}
+        {tip && <Tooltip asIcon content={tip} />}
+      </div>
       <div className="font-mono text-[15px] font-bold text-tx">{value}</div>
     </div>
   );
@@ -818,6 +838,16 @@ function timeAgo(iso: string): string {
   const mo = Math.floor(d / 30);
   if (mo < 12) return `${mo}mo ago`;
   return `${Math.floor(d / 365)}y ago`;
+}
+
+function formatReleaseAge(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days < 7) return `${days}d ago`;
+  if (days < 60) return `${Math.floor(days / 7)}w ago`;
+  if (days < 365) return `${Math.floor(days / 30)}mo ago`;
+  const years = (days / 365).toFixed(1);
+  return `${years}y ago`;
 }
 
 function formatTimeLeft(dateStr: string): string {

@@ -32,18 +32,21 @@ interface FilterChipsProps {
 
 export function FilterChips({ value, counts, total, onChange }: FilterChipsProps) {
   return (
-    <Tabs value={value} onValueChange={onChange}>
-      <TabsList className="gap-2">
-        {TYPE_CHIPS.map((chip) => {
-          const count = chip.value === "" ? total : counts[chip.value] ?? 0;
-          return (
-            <TabsTrigger key={chip.value || "all"} value={chip.value}>
-              {chip.label}
-              <span className="font-mono opacity-60">{count}</span>
-            </TabsTrigger>
-          );
-        })}
-      </TabsList>
-    </Tabs>
+    <div className="flex items-center gap-2">
+      <span className="font-sans text-xs text-[var(--faint)]">Type</span>
+      <Tabs value={value} onValueChange={onChange}>
+        <TabsList className="gap-2" aria-label="Filter by type">
+          {TYPE_CHIPS.map((chip) => {
+            const count = chip.value === "" ? total : counts[chip.value] ?? 0;
+            return (
+              <TabsTrigger key={chip.value || "all"} value={chip.value}>
+                {chip.label}
+                <span className="font-mono opacity-60">{count}</span>
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+      </Tabs>
+    </div>
   );
 }
