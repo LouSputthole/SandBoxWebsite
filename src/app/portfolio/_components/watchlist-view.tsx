@@ -53,6 +53,8 @@ interface PortfolioItem {
   isLimited: boolean;
   storeStatus: string;
   rarityColor: string | null;
+  /** Real last-7d price series (even-thinned, ≤24 pts) from /api/portfolio. */
+  spark7d: number[];
 }
 
 interface PortfolioData {
@@ -71,19 +73,6 @@ type SortKey = "name" | "price" | "change" | "volume";
 function deltaColor(change: number | null | undefined): string {
   if (change == null || change === 0) return "var(--mut)";
   return change > 0 ? "var(--up)" : "var(--down)";
-}
-
-/**
- * The watchlist API only returns a single 24h delta per item (no price-point
- * series), so the inline trend is reconstructed from `currentPrice` and the
- * 24h % move — a real, direction-true two-point line. A full 7d series would
- * need the price-history layer wired into /api/portfolio.
- */
-function trendFromChange(price: number | null, change: number | null): number[] {
-  if (price == null || price <= 0) return [];
-  const c = change ?? 0;
-  const prev = c === -100 ? price : price / (1 + c / 100);
-  return [prev, price];
 }
 
 /** Value-weighted blended 24h move across the tracked skins. */
@@ -271,14 +260,16 @@ export function WatchlistView() {
       header: "7d",
       width: "100px",
       align: "right",
-      cell: (it) => (
-        <Sparkline
-          data={trendFromChange(it.currentPrice, it.priceChange24h)}
-          color={deltaColor(it.priceChange24h)}
-          width={80}
-          height={26}
-        />
-      ),
+      // Real 7d price series from /api/portfolio. New items without enough
+      // history (<2 points) show "—" rather than a fake line. The sparkline
+      // self-colors by its own 7d net change (up/down), which can legitimately
+      // differ from the 24h column.
+      cell: (it) =>
+        it.spark7d.length >= 2 ? (
+          <Sparkline data={it.spark7d} width={80} height={26} />
+        ) : (
+          <span className="text-[13px] text-mut">—</span>
+        ),
     },
     {
       key: "alert",
