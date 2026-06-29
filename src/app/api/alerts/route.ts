@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth/session";
 
 /**
  * POST /api/alerts — Create a new price alert.
@@ -86,8 +87,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Stamp the creator's userId when they're logged in, so the watchlist can
+    // show "% away from your alert". Anonymous (email/Discord-only) alerts stay
+    // userId-null and just don't surface there. Best-effort — a session hiccup
+    // must never block alert creation.
+    const user = await getCurrentUser().catch(() => null);
     const alert = await prisma.priceAlert.create({
-      data: { email: email ?? null, discordWebhook: discordWebhook ?? null, itemId, targetPrice, direction },
+      data: {
+        email: email ?? null,
+        discordWebhook: discordWebhook ?? null,
+        itemId,
+        targetPrice,
+        direction,
+        userId: user?.id ?? null,
+      },
     });
 
     return NextResponse.json(alert, { status: 201 });

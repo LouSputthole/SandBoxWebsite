@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth/session";
 
-// ponytail: mirrors the 7d-spark logic in src/app/leaderboard/page.tsx
-// (same window + even-thinning) so the watchlist + leaderboard sparklines
-// stay visually consistent. Extract to a shared helper if a third caller appears.
-const SPARK_DAYS = 7;
+// ponytail: same even-thinning as the leaderboard's 7d sparkline, but over a
+// 30d window — a watchlist is a longer-horizon view than the leaderboard's
+// short-term movers. Extract to a shared helper if a third caller appears.
+const SPARK_DAYS = 30;
 const SPARK_MAX_POINTS = 24;
 
 /** Evenly thin a series so the sparkline payload stays small per row. */
@@ -46,7 +47,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Real last-7d price series per item for the inline sparkline. One query
+    // Real last-30d price series per item for the inline sparkline. One query
     // for every watched item, grouped into per-item series (asc by time).
     // Items without ≥2 points just get an empty array; the UI renders "—".
     const ids = items.map((i) => i.id);
@@ -66,9 +67,40 @@ export async function POST(request: NextRequest) {
       else seriesByItem.set(p.itemId, [p.price]);
     }
 
+    // Logged-in user's active price-alert target per watched item, so the UI
+    // can show "X% from your alert". getCurrentUser() does no DB work for
+    // anonymous visitors (no session cookie → early null), so this is free
+    // for the common case.
+    const user = await getCurrentUser().catch(() => null);
+    const alertByItem = new Map<
+      string,
+      { targetPrice: number; direction: string }
+    >();
+    if (user && ids.length) {
+      const alerts = await prisma.priceAlert.findMany({
+        where: {
+          userId: user.id,
+          itemId: { in: ids },
+          active: true,
+          triggered: false,
+        },
+        select: { itemId: true, targetPrice: true, direction: true },
+        orderBy: { createdAt: "desc" },
+      });
+      // Keep the most recent active alert per item if there are several.
+      for (const a of alerts) {
+        if (!alertByItem.has(a.itemId))
+          alertByItem.set(a.itemId, {
+            targetPrice: a.targetPrice,
+            direction: a.direction,
+          });
+      }
+    }
+
     const itemsWithSpark = items.map((it) => ({
       ...it,
-      spark7d: downsample(seriesByItem.get(it.id) ?? []),
+      spark30d: downsample(seriesByItem.get(it.id) ?? []),
+      alert: alertByItem.get(it.id) ?? null,
     }));
 
     const totalValue = items.reduce(

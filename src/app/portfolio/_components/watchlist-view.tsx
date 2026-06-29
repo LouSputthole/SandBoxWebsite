@@ -7,6 +7,8 @@ import {
   Plus,
   Bell,
   X,
+  ArrowUp,
+  ArrowDown,
   Trash2,
   TrendingUp,
   TrendingDown,
@@ -53,8 +55,10 @@ interface PortfolioItem {
   isLimited: boolean;
   storeStatus: string;
   rarityColor: string | null;
-  /** Real last-7d price series (even-thinned, ≤24 pts) from /api/portfolio. */
-  spark7d: number[];
+  /** Real last-30d price series (even-thinned, ≤24 pts) from /api/portfolio. */
+  spark30d: number[];
+  /** The signed-in user's active alert on this item, if any (drives "% away"). */
+  alert: { targetPrice: number; direction: string } | null;
 }
 
 interface PortfolioData {
@@ -256,17 +260,17 @@ export function WatchlistView() {
       ),
     },
     {
-      key: "d7",
-      header: "7d",
+      key: "d30",
+      header: "30d",
       width: "100px",
       align: "right",
-      // Real 7d price series from /api/portfolio. New items without enough
+      // Real 30d price series from /api/portfolio. New items without enough
       // history (<2 points) show "—" rather than a fake line. The sparkline
-      // self-colors by its own 7d net change (up/down), which can legitimately
+      // self-colors by its own 30d net change (up/down), which can legitimately
       // differ from the 24h column.
       cell: (it) =>
-        it.spark7d.length >= 2 ? (
-          <Sparkline data={it.spark7d} width={80} height={26} />
+        it.spark30d.length >= 2 ? (
+          <Sparkline data={it.spark30d} width={80} height={26} />
         ) : (
           <span className="text-[13px] text-mut">—</span>
         ),
@@ -276,15 +280,7 @@ export function WatchlistView() {
       header: "Price alert",
       width: "180px",
       align: "left",
-      cell: (it) => (
-        <Link
-          href={`/items/${it.slug}#alerts`}
-          className="inline-flex items-center gap-1.5 rounded-[8px] border border-line px-2.5 py-1 text-[12px] text-faint transition-colors hover:border-[color-mix(in_srgb,var(--accent)_40%,var(--line))] hover:text-accent"
-        >
-          <Bell className="h-3 w-3" strokeWidth={2} />
-          Set alert
-        </Link>
-      ),
+      cell: (it) => <AlertCell item={it} />,
     },
     {
       key: "remove",
@@ -465,6 +461,55 @@ function SortButton({
         <ChevronsUpDown className="h-3 w-3 opacity-50" strokeWidth={2.2} />
       )}
     </button>
+  );
+}
+
+/**
+ * Price-alert cell. When the signed-in user has an active alert on this item
+ * (alerts only carry a userId when set while logged in), show the target with a
+ * directional arrow and how far the current price is from it. Otherwise a
+ * "Set alert" CTA. "% away" = |target − current| / current.
+ */
+function AlertCell({ item }: { item: PortfolioItem }) {
+  const base =
+    "inline-flex items-center gap-1.5 rounded-[8px] border border-line px-2.5 py-1 text-[12px] transition-colors hover:border-[color-mix(in_srgb,var(--accent)_40%,var(--line))] hover:text-accent";
+
+  if (!item.alert) {
+    return (
+      <Link
+        href={`/items/${item.slug}#alerts`}
+        className={cn(base, "text-faint")}
+      >
+        <Bell className="h-3 w-3" strokeWidth={2} />
+        Set alert
+      </Link>
+    );
+  }
+
+  const { targetPrice, direction } = item.alert;
+  const cur = item.currentPrice;
+  const pct = cur != null && cur > 0 ? ((targetPrice - cur) / cur) * 100 : null;
+  const Arrow = direction === "above" ? ArrowUp : ArrowDown;
+
+  return (
+    <Link
+      href={`/items/${item.slug}#alerts`}
+      title={`Alert when price goes ${direction} ${targetPrice}`}
+      className={cn(base, "text-mut")}
+    >
+      <Arrow
+        className="h-3 w-3 shrink-0"
+        strokeWidth={2.4}
+        style={{ color: direction === "above" ? "var(--up)" : "var(--down)" }}
+      />
+      <Price amount={targetPrice} />
+      {pct != null && (
+        <span className="text-faint">
+          ·{" "}
+          {Math.abs(pct) < 0.5 ? "at target" : `${Math.abs(pct).toFixed(0)}% away`}
+        </span>
+      )}
+    </Link>
   );
 }
 
