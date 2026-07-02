@@ -9,7 +9,7 @@ import { DEFAULT_TAB, isValidTab } from "./_components/tabs";
 
 // ISR — leaderboard data changes every sync (15-30 min). Caching the rendered
 // HTML for 5 min keeps Googlebot fed without slamming the DB.
-export const revalidate = 300;
+export const revalidate = 1800;
 
 const DISPLAY_LIMIT = 25;
 const SPARK_DAYS = 7;

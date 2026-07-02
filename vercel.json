@@ -7,11 +7,11 @@
   "crons": [
     {
       "path": "/api/sync",
-      "schedule": "0,30 0,1,2,3,4,5,6,7,8,9,10 * * *"
+      "schedule": "0 0-10 * * *"
     },
     {
       "path": "/api/sync",
-      "schedule": "0,15,30,45 11,12,13,14,15,16,17,18,19,20,21,22,23 * * *"
+      "schedule": "0,30 11-23 * * *"
     },
     {
       "path": "/api/cron/tweet",
@@ -23,7 +23,11 @@
     },
     {
       "path": "/api/cron/tweet-dispatcher",
-      "schedule": "0,30 * * * *"
+      "schedule": "0 11,13,15,17,19,21,23 * * *"
+    },
+    {
+      "path": "/api/cron/tweet-dispatcher",
+      "schedule": "0 3,9 * * *"
     },
     {
       "path": "/api/cron/weekly-report",

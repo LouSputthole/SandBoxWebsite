@@ -16,7 +16,7 @@ import { formatPrice } from "@/lib/utils";
 // items, but that's a Next.js streaming limitation we can't fix at this layer.
 // The noindex meta tag from not-found.tsx is what keeps Google from indexing
 // fake slugs — it works identically with or without dynamic rendering.)
-export const revalidate = 300;
+export const revalidate = 1800;
 
 interface PageProps {
   params: Promise<{ slug: string }>;

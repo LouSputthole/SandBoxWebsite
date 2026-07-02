@@ -25,7 +25,7 @@ import { CopyLinkButton } from "@/components/share/copy-link-button";
  * beats sboxskins.gg/items/cardboard-king/share by 14 characters.
  */
 
-export const revalidate = 300;
+export const revalidate = 1800;
 
 interface PageProps {
   params: Promise<{ slug: string }>;

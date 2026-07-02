@@ -40,7 +40,7 @@ interface PageProps {
 
 // ISR: regenerate category pages every 5 minutes. Matches the homepage —
 // keeps data fresh without re-running the DB query on every request.
-export const revalidate = 300;
+export const revalidate = 1800;
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { type } = await params;

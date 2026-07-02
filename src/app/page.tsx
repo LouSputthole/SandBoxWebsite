@@ -18,7 +18,7 @@ import type { HomeItem } from "@/components/home/types";
 
 // Render at request time — homepage data changes every sync cycle (15-30 min).
 // Next.js will cache the rendered HTML briefly at the edge anyway.
-export const revalidate = 300; // 5 minutes
+export const revalidate = 1800; // 30 minutes — matches the sync cadence
 
 // New Drops teaser mirrors the /new page's 30-day createdAt window.
 const NEW_DROPS_WINDOW_DAYS = 30;

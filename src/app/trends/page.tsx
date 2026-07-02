@@ -11,7 +11,7 @@ import {
 
 // ISR — regenerate every 5 minutes so search engines get cached HTML.
 // `searchParams` keeps each ?period= window cached independently.
-export const revalidate = 300;
+export const revalidate = 1800;
 
 const CATEGORY_META: Record<string, { label: string; color: string }> = {
   accessory: { label: "Accessories", color: "var(--cat-accessory)" },

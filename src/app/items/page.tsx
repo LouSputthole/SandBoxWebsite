@@ -5,7 +5,7 @@ import { prisma } from "@/lib/db";
 // ISR — page is regenerated every 5 minutes so search engines get cached HTML
 // without us hitting the DB on every request. Filter changes are still
 // fully interactive client-side after hydration.
-export const revalidate = 300;
+export const revalidate = 1800;
 
 // Per-view page sizes — keep in sync with GRID_PAGE_SIZE / TABLE_PAGE_SIZE in
 // items-browser.tsx so the first server paint and the client fetches agree on

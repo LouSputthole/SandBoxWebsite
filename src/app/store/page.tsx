@@ -20,10 +20,11 @@ export const metadata: Metadata = {
   },
 };
 
-// Refresh on each request — `leavingStoreAt` countdowns and active-item flags
-// change as the store rotates, and the "just added" badges should reflect the
-// live backfill state. Cheap queries (~80 rows), so we don't cache.
-export const dynamic = "force-dynamic";
+// ISR at 120s. The `leavingStoreAt` countdown is computed client-side from the
+// timestamp, so it stays live regardless of render time; the "just added" badges
+// only need to be fresh within 2 min. Caching the render keeps organic pageviews
+// from waking Neon on every hit — the cost here is compute-hours, not query time.
+export const revalidate = 120;
 
 // "Just added" mirrors the /new feed: newest items added in the last 30 days.
 const JUST_ADDED_WINDOW_DAYS = 30;

@@ -15,10 +15,9 @@ export const metadata: Metadata = {
   },
 };
 
-// Render per request — the table is tiny, the "syncing/pending" badges should
-// reflect the live backfill state, and this avoids a build-time DB dependency.
-// (Same approach as /store.)
-export const dynamic = "force-dynamic";
+// ISR at 120s — badges refresh within 2 min and the table is tiny. Caching the
+// render keeps organic pageviews from waking Neon on every hit. (Same as /store.)
+export const revalidate = 120;
 
 const WINDOW_DAYS = 30;
 

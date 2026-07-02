@@ -7,7 +7,7 @@ import {
 } from "./_components/comparison-panel";
 import { toComparedItem, type RawCompareItem } from "./_components/metrics";
 
-export const revalidate = 300;
+export const revalidate = 1800;
 
 export const metadata: Metadata = {
   title: "Compare S&box Skins",
