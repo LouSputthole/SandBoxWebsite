@@ -187,6 +187,13 @@ model User {
   steamTradeUrl String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  // Self-service account deletion (DSAR / GDPR-CCPA erasure). Set when the user
+  // deletes their account: the row is ANONYMIZED (steamId tombstoned to
+  // "deleted:<id>", username/avatarUrl/profileUrl/steamTradeUrl nulled) rather
+  // than hard-deleted, because completed MarketOrders FK to it with onDelete
+  // RESTRICT (financial records must survive for accounting). A tombstoned row
+  // carries no PII. NULL = live account. See src/lib/account/delete-account.ts.
+  deletedAt DateTime?
 
   sessions       Session[]
   watchlistItems WatchlistItem[]
