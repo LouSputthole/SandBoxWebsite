@@ -174,7 +174,7 @@ export default async function TradePage({ searchParams }: PageProps) {
         <p className="text-[13.5px] text-mut">
           <span className="font-semibold text-tx">A real-money marketplace is on the way</span> — buy
           and sell S&amp;box skins for USDC with escrow protection, next-day seller payouts, and a
-          3.6% fee. The trading board stays free.
+          low fee. The trading board stays free.
         </p>
       </div>
 
