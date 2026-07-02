@@ -13,6 +13,7 @@ const browseLinks = [
 ];
 
 const toolsLinks: { label: string; href: string; external?: boolean }[] = [
+  { label: "Marketplace", href: "/market" },
   { label: "Trading Board", href: "/trade" },
   { label: "Inventory Checker", href: "/inventory" },
   { label: "Watchlist", href: "/portfolio" },

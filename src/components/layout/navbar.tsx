@@ -17,7 +17,6 @@ import {
   Sparkles,
   BarChart3,
   Trophy,
-  ArrowRightLeft,
   Store,
   Crown,
   Newspaper,
@@ -46,7 +45,6 @@ const NAV_PRIMARY: NavItem[] = [
   { label: "New", href: "/new", icon: Sparkles },
   { label: "Trends", href: "/trends", icon: BarChart3 },
   { label: "Leaderboard", href: "/leaderboard", icon: Trophy },
-  { label: "Trade", href: "/trade", icon: ArrowRightLeft },
   { label: "Market", href: "/market", icon: ShoppingBag },
 ];
 
@@ -354,13 +352,14 @@ export function Navbar() {
               { label: "New Drops", href: "/new" },
               { label: "Market Trends", href: "/trends" },
               { label: "Leaderboard", href: "/leaderboard" },
-              { label: "Trading Board", href: "/trade" },
+              { label: "Marketplace", href: "/market" },
               { label: "Store", href: "/store" },
               { label: "Whales", href: "/whales" },
               { label: "Market Reports", href: "/blog" },
               { label: "Compare", href: "/compare" },
               { label: "Inventory Checker", href: "/inventory" },
               { label: "Watchlist", href: "/portfolio" },
+              { label: "Trading Board", href: "/trade" },
               { label: "FAQ", href: "/faq" },
               { label: "Contact", href: "/contact" },
             ].map((item) => (
