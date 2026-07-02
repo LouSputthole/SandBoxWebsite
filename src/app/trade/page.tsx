@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRightLeft, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ArrowRightLeft, ChevronLeft, ChevronRight, Plus, Sparkles } from "lucide-react";
 import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { buttonVariants } from "@/components/ui/button";
@@ -163,6 +163,19 @@ export default async function TradePage({ searchParams }: PageProps) {
           <Plus className="h-4 w-4" />
           Post a trade
         </Link>
+      </div>
+
+      {/* market coming-soon banner */}
+      <div className="mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[18px] border border-accent/30 bg-accent/10 px-5 py-4">
+        <Sparkles className="h-5 w-5 shrink-0 text-accent" />
+        <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-white">
+          Coming soon
+        </span>
+        <p className="text-[13.5px] text-mut">
+          <span className="font-semibold text-tx">A real-money marketplace is on the way</span> — buy
+          and sell S&amp;box skins for USDC with escrow protection, next-day seller payouts, and a
+          3.6% fee. The trading board stays free.
+        </p>
       </div>
 
       {/* search + side chips (client → URL searchParams) */}
