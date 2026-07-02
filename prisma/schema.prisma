@@ -81,6 +81,7 @@ model Item {
 
   supplySnapshots SupplySnapshot[]
   tradeListingItems TradeListingItem[]
+  marketListings MarketListing[]
 
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -194,6 +195,15 @@ model User {
   tradeComments  TradeComment[]
   loginEvents    LoginEvent[]
   notifications  Notification[]
+
+  // --- marketplace (crypto escrow) ---
+  wallet          UserWallet?
+  steamCredential SellerSteamCredential?
+  marketListings  MarketListing[] @relation("MarketListingSeller")
+  buyerOrders     MarketOrder[]   @relation("MarketOrderBuyer")
+  sellerOrders    MarketOrder[]   @relation("MarketOrderSeller")
+  reviewsWritten  MarketReview[]  @relation("MarketReviewRater")
+  reviewsReceived MarketReview[]  @relation("MarketReviewRated")
 }
 
 model Session {
@@ -481,4 +491,241 @@ model NewsletterSubscription {
 
   @@index([verified])
   @@index([unsubscribedAt])
+}
+
+// ===========================================================================
+// MARKETPLACE (crypto escrow) — spec: docs/superpowers/specs/2026-07-01-marketplace-design.md
+// Real-money, non-custodial P2P escrow settling in USDC on Solana. Distinct from the
+// barter-style TradeListing board above (that one moves no money). "Enum" fields are
+// String + comment, matching the rest of this schema; the authoritative state machine
+// lives in src/lib/market/escrow-state.ts.
+//
+// NB: the migration also adds guards Prisma can't express in-schema (raw SQL) — three
+// PARTIAL UNIQUE indexes (one ACTIVE listing per steam asset; one LIVE order per listing; one
+// LIVE order per steam asset — the double-spend backstops) and CHECK constraints (priceUsd/priceUsdc >= 0, feeBps 0..10000,
+// buyer <> seller). See migrations/20260701134600_add_marketplace/migration.sql. Keep them when
+// editing; `prisma migrate dev` won't round-trip them.
+// ===========================================================================
+
+// One Solana wallet per user: buyers fund escrow from it, sellers receive USDC to it.
+model UserWallet {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address   String // Solana wallet address (base58)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([address])
+}
+
+// Seller's Steam Web API key, AES-GCM encrypted at rest (see src/lib/market/steam-credential.ts).
+// Lets the oracle read the seller's outgoing trade-offer status; the buyer side is covered by
+// public inventory. Also records the Mobile-Authenticator requirement (no 15-day trade hold).
+model SellerSteamCredential {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  encryptedApiKey     String // AES-GCM ciphertext (base64)
+  iv                  String // base64
+  authTag             String // base64
+  mobileAuthConfirmed Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model MarketListing {
+  id     String @id @default(cuid())
+  sellerId String
+  seller   User  @relation("MarketListingSeller", fields: [sellerId], references: [id], onDelete: Cascade)
+  itemId String
+  item   Item   @relation(fields: [itemId], references: [id])
+
+  // Snapshot of the exact Steam copy being sold (anti-scam / exact-item match).
+  steamAssetId String
+  classId      String
+  instanceId   String
+
+  priceUsd Float // display price; converted to USDC base units at buy time
+  // "ACTIVE" | "SOLD" | "DELISTED" | "UNAVAILABLE" (seller no longer holds it)
+  status   String @default("ACTIVE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders MarketOrder[]
+
+  @@index([status])
+  @@index([sellerId])
+  @@index([itemId])
+}
+
+model MarketOrder {
+  id        String        @id @default(cuid())
+  listingId String
+  listing   MarketListing @relation(fields: [listingId], references: [id])
+  buyerId   String
+  buyer     User          @relation("MarketOrderBuyer", fields: [buyerId], references: [id])
+  sellerId  String
+  seller    User          @relation("MarketOrderSeller", fields: [sellerId], references: [id])
+
+  // Price-agnostic settlement amount in USDC base units (6dp) — set at buy time from whatever
+  // listing type agreed the price (fixed now; offers/auctions later, §6.5 seam). BigInt maps to
+  // JS `bigint`, matching src/lib/market/fees.ts.
+  priceUsdc BigInt
+  feeBps    Int    @default(360)
+
+  // On-chain escrow (Solana program). Null until the buyer's deposit tx confirms.
+  // Unique: one escrow PDA maps to at most one order (nullable → many NULLs allowed).
+  escrowPda      String? @unique
+  onchainOrderId String? @unique
+
+  // Public-trust-ledger proof-chain signatures (Solana tx signatures, base58). Best-effort: written
+  // in the same money-write as the state change, but a missing one NEVER fails that write — they are
+  // display-only proof links for /market/ledger. openTxSig = the buyer's open_escrow funding tx
+  // (null on the mock/dev + reconcile paths); confirmTxSig = the authorizer confirm_delivery tx;
+  // settleTxSig = the release/refund payout tx.
+  openTxSig    String?
+  confirmTxSig String?
+  settleTxSig  String?
+
+  // Per-party visibility on the PUBLIC ledger. Amounts + on-chain proof links stay visible either
+  // way (the chain is public regardless); these flags gate ONLY the party's Steam identity (persona,
+  // avatar, profile link) and — when either is false — the delivery-evidence Steam ids (trade-offer
+  // id + delivered asset id, which could deanonymize an inventory). Default public.
+  buyerPublic  Boolean @default(true)
+  sellerPublic Boolean @default(true)
+
+  // "PENDING" | "FUNDING" | "FUNDED" | "PROTECTION_HOLD" | "RELEASED" | "REFUNDED" | "DISPUTED"
+  // (escrow-state.ts, MarketOrderState). PENDING = created but the buyer's on-chain open_escrow tx
+  // hasn't confirmed yet (no escrow exists). FUNDING = a fund call atomically claimed the order and
+  // is submitting/verifying the buyer's tx right now (stops a concurrent cancel from deleting the
+  // row mid-confirm). Default PENDING: every order is born pre-funding and is promoted to FUNDED
+  // only once funding verifies on-chain.
+  state String @default("PENDING")
+
+  // The exact item to deliver (copied from the listing snapshot).
+  steamAssetId     String
+  classId          String
+  instanceId       String
+  // The buyer's assetids of this class at order time. Delivery = a NEW assetid of the class
+  // appears that isn't in this set — correct even if the buyer already owns identical copies
+  // (prevents a seller getting paid off the buyer's pre-existing copy without ever sending).
+  buyerPriorAssetIds String[]
+  deliveredAssetId String? // the assetid that actually arrived (tracked for reversal)
+
+  deliveryDeadline DateTime // seller must send the Steam trade by here, else buyer refund
+  protectionUntil  DateTime? // payout releases after this (7-day Steam trade-protection window)
+
+  // Lifecycle timestamps — fuel Phase-2 ratings + "avg time to accept" (§6.5 seam).
+  // fundedAt is nullable + no default: it is set ONLY when on-chain funding verifies (order leaves
+  // PENDING → FUNDED). A PENDING order has fundedAt = null.
+  fundedAt            DateTime?
+  sellerSentAt        DateTime?
+  deliveredAt         DateTime?
+  protectionStartedAt DateTime?
+  releasedAt          DateTime?
+  refundedAt          DateTime?
+
+  disputeReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tradeAttempts TradeAttempt[]
+  review        MarketReview?
+  // Bans quick-issued from this order (buyer/seller ban from the dispute panel).
+  bans          MarketBan[]
+
+  @@index([state])
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([listingId])
+}
+
+// ---------------------------------------------------------------------------
+// Buyer's rating of a seller after a COMPLETED (RELEASED) order. One review per
+// order (orderId @unique) so rep can't be padded — every star is backed by a
+// real, escrow-settled trade. Never fabricated: a review row only exists because
+// a buyer actually rated a delivered order (enforced in review-service.ts +
+// the API). The migration adds a CHECK (stars BETWEEN 1 AND 5) the schema can't
+// express. onDelete Cascade on `order`: a review is meaningless without its
+// order, and only terminal RELEASED orders (never deleted — funds have moved)
+// can carry one, so the cascade is a correctness backstop that never fires in
+// practice rather than a way to lose live rep.
+// ---------------------------------------------------------------------------
+model MarketReview {
+  id      String      @id @default(cuid())
+  orderId String      @unique
+  order   MarketOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // The buyer who left the review.
+  raterId String
+  rater   User        @relation("MarketReviewRater", fields: [raterId], references: [id], onDelete: Cascade)
+  // The seller being reviewed (rep accrues here).
+  ratedId String
+  rated   User        @relation("MarketReviewRated", fields: [ratedId], references: [id], onDelete: Cascade)
+  // 1..5 — CHECK constraint in the migration (Prisma can't express it in-schema).
+  stars   Int
+  // Optional free-text, capped at 500 chars in the API. Rendered as plain text
+  // (pre-wrap) in JSX — no HTML/markdown, same XSS-safe convention as TradeComment.
+  comment   String?
+  createdAt DateTime @default(now())
+
+  @@index([ratedId, createdAt])
+  @@index([raterId])
+}
+
+model TradeAttempt {
+  id           String      @id @default(cuid())
+  orderId      String
+  order        MarketOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  tradeOfferId String? // Steam trade-offer id from the seller's outgoing offer
+  // "PENDING" | "SENT" | "ACCEPTED" | "DECLINED" | "EXPIRED" | "REVERSED" | "DISPUTED"
+  status       String      @default("PENDING")
+  evidence     Json? // raw oracle evidence (correlation verdict / hold-disappearance) for audit
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([orderId])
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace ban list — makes the TOS §17 "ban a Steam id + wallet" promise
+// real, enforced at every money-entry point (createOrder / createListing /
+// createReview) via src/lib/market/bans.ts. A ban carries EITHER a steamId OR a
+// walletAddress (or both) — at least one is required (the service enforces it;
+// the migration adds a CHECK backstop). Both identifiers are recorded when known
+// so a re-ban of either is idempotent, and a banned actor can't relink one to
+// dodge (design §9 cross-identity tracking). A ban is ACTIVE while `liftedAt` IS
+// NULL; lifting is a SOFT delete (keeps the ban history). The match identifiers
+// are NOT FK-tied to a User row on purpose: we may need to ban a raw identifier
+// we've seen abuse from even when no current User carries it (a wallet that
+// funded a scam, a Steam id that hasn't signed up yet). `orderId` DOES FK to the
+// triggering order (SET NULL) so a quick-ban keeps its provenance without ever
+// blocking that order's deletion. The migration adds partial-unique indexes (one
+// ACTIVE ban per identifier) the schema can't express in-line.
+// ---------------------------------------------------------------------------
+model MarketBan {
+  id String @id @default(cuid())
+
+  // Match identifiers, stored EXACTLY as elsewhere in the app (no case-folding):
+  // steamId is the 64-bit string (User.steamId); walletAddress is base58 as-is
+  // (UserWallet.address). At least one is set — service-enforced + DB CHECK.
+  steamId       String?
+  walletAddress String?
+
+  reason String
+  // Which admin key issued the ban — "analytics" | "cron" (guardAdminRoute.keyType).
+  bannedByKeyType String
+  // Optional link to the order that triggered the ban (quick-ban from a dispute).
+  // SET NULL on order delete: ban history outlives the order it was born from.
+  orderId String?
+  order   MarketOrder? @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime  @default(now())
+  // NULL = active. Set to the lift time on a soft-lift (history is never deleted).
+  liftedAt  DateTime?
+
+  @@index([steamId])
+  @@index([walletAddress])
 }

@@ -1,0 +1,2 @@
+# The Anchor/Rust escrow program is built + deployed separately (WSL/CI), not by Vercel.
+solana

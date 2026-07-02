@@ -13,6 +13,7 @@ import {
   GitMerge,
   Tag,
   Hash,
+  Coins,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -29,6 +30,13 @@ interface AdminPage {
 }
 
 const PAGES: AdminPage[] = [
+  {
+    href: "/admin/market",
+    label: "Marketplace",
+    description:
+      "Live order book for the USDC escrow marketplace: filter by state, inspect escrow vs on-chain, freeze / resolve disputes, force oracle ticks, and pull the fee-revenue books + ledger CSV.",
+    icon: Coins,
+  },
   {
     href: "/admin/analytics",
     label: "Analytics",

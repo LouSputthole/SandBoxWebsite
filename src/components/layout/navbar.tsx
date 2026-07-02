@@ -13,6 +13,7 @@ import {
   LogOut,
   User as UserIcon,
   LayoutGrid,
+  ShoppingBag,
   Sparkles,
   BarChart3,
   Trophy,
@@ -46,6 +47,7 @@ const NAV_PRIMARY: NavItem[] = [
   { label: "Trends", href: "/trends", icon: BarChart3 },
   { label: "Leaderboard", href: "/leaderboard", icon: Trophy },
   { label: "Trade", href: "/trade", icon: ArrowRightLeft },
+  { label: "Market", href: "/market", icon: ShoppingBag },
 ];
 
 // Inline at xl+, otherwise shown inside the "More" dropdown (no duplication —

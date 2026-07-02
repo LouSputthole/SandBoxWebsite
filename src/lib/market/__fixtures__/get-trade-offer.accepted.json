@@ -1,0 +1,31 @@
+{
+  "response": {
+    "offer": {
+      "tradeofferid": "4444444444",
+      "accountid_other": 39734272,
+      "message": "",
+      "expiration_time": 1893456000,
+      "trade_offer_state": 3,
+      "items_to_give": [
+        {
+          "appid": 590830,
+          "contextid": "2",
+          "assetid": "11111111111",
+          "classid": "9876543210",
+          "instanceid": "0",
+          "amount": "1",
+          "missing": false,
+          "est_usd": "0"
+        }
+      ],
+      "items_to_receive": [],
+      "is_our_offer": true,
+      "time_created": 1893369600,
+      "time_updated": 1893370000,
+      "from_real_time_trade": false,
+      "escrow_end_date": 0,
+      "confirmation_method": 2,
+      "tradeid": "7777777777"
+    }
+  }
+}
